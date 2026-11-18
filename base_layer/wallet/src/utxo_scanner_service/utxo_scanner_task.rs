@@ -610,13 +610,14 @@ where
                         if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                             debug!(
                                 target: LOG_TARGET,
-                                "Scanned up to block {current_height} with a current tip_height of {tip_height}"
+                                "Scanned up to block {} with a current tip_height of {tip_height}",
+                                scanned_block.height
                             );
 
                             let latency = client.get_last_request_latency().await.unwrap_or_default();
                             let node = client.get_address().await;
                             self.publish_event(UtxoScannerEvent::Progress {
-                                current_height,
+                                current_height: scanned_block.height,
                                 tip_height,
                                 current_node: node,
                                 latency,
@@ -633,12 +634,12 @@ where
             }
             // We need to update the last one
             if let Some(scanned_block) = prev_scanned_block.clone() {
+                if last_saved_hash != Some(scanned_block.header_hash) {
+                    self.resources.db.save_scanned_block(scanned_block.clone())?;
+                }
                 self.resources
                     .db
                     .apply_sparse_scanned_blocks_schedule(scanned_block.height)?;
-                if last_saved_hash != Some(scanned_block.header_hash) {
-                    self.resources.db.save_scanned_block(scanned_block)?;
-                }
             }
 
             if stopped_by_shutdown {

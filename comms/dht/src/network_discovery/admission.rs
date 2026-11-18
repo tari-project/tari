@@ -20,8 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Per-source admission of new peer records. Join gossip and OnConnect peer sync each keep their own budget, so
-//! that a Join flood relayed by honest neighbours cannot stop OnConnect between them.
+//! Per-source admission of new peer records. Join and Discovery gossip share one budget and OnConnect peer sync keeps
+//! its own, so that a gossip flood relayed by honest neighbours cannot stop OnConnect between them.
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -36,7 +36,8 @@ use crate::{
     peer_validator::DhtPeerValidatorError,
 };
 
-/// A budget shared by the concurrent tasks of one path (the DHT handler's Join gossip, or network discovery).
+/// A budget shared by the concurrent tasks of one path (the DHT handler's Join and Discovery gossip, or network
+/// discovery).
 pub(crate) type SharedSourceBudget = Arc<Mutex<SourceBudget>>;
 
 /// When each directly connected source last had new peer records stored, within `source_budget_window`. Identities

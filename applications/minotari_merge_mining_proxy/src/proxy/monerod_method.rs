@@ -26,10 +26,15 @@ use std::{fmt::Display, str::FromStr};
 use bytes::Bytes;
 use hyper::{Method, Uri};
 use log::warn;
+use tari_comms::utils::text::sanitize_for_display;
 
 use crate::error::MmProxyError;
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy::monerod_method";
+/// An unknown method name is attacker-chosen and reaches both the log file and the operator's console, so it is
+/// stripped of control, invisible and line-breaking characters and bounded before it is formatted. A monerod RPC
+/// method name is far shorter than this.
+const MAX_LOGGED_METHOD_BYTES: usize = 64;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -59,7 +64,10 @@ impl FromStr for MonerodMethod {
             "get_last_block_header" | "getlastblockheader" => Ok(MonerodMethod::GetLastBlockHeader),
             "get_block" | "getblovk" => Ok(MonerodMethod::GetLastBlockHeader),
             _ => {
-                let msg = format!("Unknown monerod rpc method: '{s}'");
+                let msg = format!(
+                    "Unknown monerod rpc method: '{}'",
+                    sanitize_for_display(s, MAX_LOGGED_METHOD_BYTES)
+                );
                 warn!(target: LOG_TARGET, "{msg}");
                 Err(MmProxyError::ConversionError(msg))
             },
@@ -100,5 +108,46 @@ pub fn parse_monerod_rpc_method(request_method: &Method, request_uri: &Uri, requ
             }
         },
         _ => MonerodMethod::RpcMethodNotDefined,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn unknown_method_is_not_written_raw() {
+        // One POST to /json_rpc puts this string in `method`; it reaches the log file and, through the `stdout`
+        // appender that log4rs_sample.yml attaches to the root logger, the operator's console.
+        let payload = "\u{1b}]0;TAKEN\u{7}\u{1b}[2J\u{1b}[1;1H\u{1b}[31mFAKE\u{1b}[0m\n14:00 INFO  Block accepted";
+        let err = MonerodMethod::from_str(payload).unwrap_err();
+        let rendered = err.to_string();
+
+        assert!(
+            !rendered.contains('\u{1b}'),
+            "escape byte reached the message: {rendered:?}"
+        );
+        assert!(!rendered.contains('\u{7}'), "bell reached the message: {rendered:?}");
+        assert!(!rendered.contains('\n'), "line break reached the message: {rendered:?}");
+        assert!(
+            !rendered.contains('\r'),
+            "carriage return reached the message: {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_method_is_bounded() {
+        let err = MonerodMethod::from_str(&"a".repeat(100_000)).unwrap_err();
+        assert!(err.to_string().len() < 200, "unbounded method name reached the message");
+    }
+
+    #[test]
+    fn ordinary_method_names_are_unchanged() {
+        let err = MonerodMethod::from_str("get_fee_estimate").unwrap_err();
+        assert!(err.to_string().contains("get_fee_estimate"));
+        assert_eq!(
+            MonerodMethod::from_str("submit_block").unwrap(),
+            MonerodMethod::SubmitBlock
+        );
     }
 }

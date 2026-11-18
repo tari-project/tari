@@ -353,7 +353,7 @@ impl HiddenServiceController {
         debug!(target: LOG_TARGET, "Tor SOCKS address is '{socks_addr}'" );
 
         // Initialize a onion hidden service - either from the given private key or by creating a new one
-        match self.identity.take() {
+        match self.identity.clone() {
             Some(identity) => {
                 let resp = self.create_or_reuse_onion(&identity).await?;
                 self.identity = Some(TorIdentity {
@@ -364,10 +364,11 @@ impl HiddenServiceController {
             None => {
                 let port_mapping = self.proxied_port_mapping;
                 let resp = self.client_mut()?.add_onion(vec![], port_mapping, None).await?;
-                let private_key = resp
-                    .private_key
-                    .clone()
-                    .expect("Tor server MUST return private key according to spec");
+                let private_key = resp.private_key.clone().ok_or_else(|| {
+                    TorClientError::ServerInvalidResponse(
+                        "ADD_ONION response did not contain a private key".to_string(),
+                    )
+                })?;
 
                 self.identity = Some(TorIdentity {
                     private_key,
@@ -442,5 +443,90 @@ impl HiddenServiceController {
                 Err(err) => break Err(err.into()),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_shutdown::Shutdown;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, duplex};
+
+    use super::*;
+    use crate::tor::PrivateKey;
+
+    fn build_test_controller(
+        client_io: impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+        identity: Option<TorIdentity>,
+    ) -> (HiddenServiceController, Shutdown) {
+        let shutdown = Shutdown::new();
+        let (event_tx, _) = broadcast::channel(4);
+        let mut controller = HiddenServiceController::new(
+            "/ip4/127.0.0.1/tcp/9051".parse().unwrap(),
+            Authentication::None,
+            PortMapping::from_port(9090),
+            Some("/ip4/127.0.0.1/tcp/9050".parse().unwrap()),
+            socks::Authentication::None,
+            identity,
+            HsFlags::NONE,
+            TorProxyOpts::default(),
+            shutdown.to_signal(),
+        );
+        controller.client = Some(TorControlPortClient::new(client_io, event_tx));
+        (controller, shutdown)
+    }
+
+    #[tokio::test]
+    async fn failed_create_or_reuse_onion_keeps_identity() {
+        let (client_io, server_io) = duplex(1024);
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(server_io);
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            reader.get_mut().write_all(b"552 Unrecognized key\r\n").await.unwrap();
+        });
+
+        let saved_identity = TorIdentity {
+            private_key: PrivateKey::Ed25519V3("saved-key-blob".to_string()),
+            service_id: "qigbgbs4ue3ghbupsotgh73cmmkjrin2aprlyxsrnrvpmcmzy3g4wbid".to_string(),
+            onion_port: 9090,
+        };
+        let (mut controller, _shutdown) = build_test_controller(client_io, Some(saved_identity.clone()));
+
+        assert!(controller.create_hidden_service_from_identity().await.is_err());
+        let retained = controller
+            .identity
+            .as_ref()
+            .expect("identity must be retained on error");
+        assert_eq!(retained.service_id, saved_identity.service_id);
+        assert_eq!(retained.private_key, saved_identity.private_key);
+    }
+
+    #[tokio::test]
+    async fn add_onion_without_private_key_returns_server_invalid_response() {
+        let (client_io, server_io) = duplex(1024);
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(server_io);
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            reader
+                .get_mut()
+                .write_all(b"250-ServiceID=qigbgbs4ue3ghbupsotgh73cmmkjrin2aprlyxsrnrvpmcmzy3g4wbid\r\n250 OK\r\n")
+                .await
+                .unwrap();
+        });
+
+        let (mut controller, _shutdown) = build_test_controller(client_io, None);
+        let err = controller
+            .create_hidden_service_from_identity()
+            .await
+            .err()
+            .expect("missing PrivateKey must return an error");
+        assert!(
+            matches!(
+                err,
+                HiddenServiceControllerError::TorClientError(TorClientError::ServerInvalidResponse(_))
+            ),
+            "unexpected error: {err:?}"
+        );
     }
 }

@@ -22,7 +22,7 @@
 use std::{
     cmp,
     cmp::{Ordering, max, min},
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
@@ -51,6 +51,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
+    payment_reference::generate_payment_reference,
     types::{
         BadBlock,
         BlockHash,
@@ -127,7 +128,7 @@ use crate::{
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
-        db_transaction::{DbKey, DbTransaction, DbValue, HorizonSyncOutputCheckpoint},
+        db_transaction::{DbKey, DbTransaction, DbValue, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint},
         error::ChainStorageError,
         lmdb_db::{BREATHING_TIME_MS_MAX, BREATHING_TIME_MS_MIN, BlockchainCheckStatus},
         smt_hasher::ValidatorNodeJmtHasher,
@@ -170,6 +171,10 @@ const STRICT_REBUILD_THROTTLE_MS: u64 = 10;
 /// How many times the consistency check re-checks a height whose corruption does not hold under the rewind's write
 /// lock before it gives up on that height.
 const MAX_CONSISTENCY_RECHECKS: u32 = 3;
+/// About how many headers, outputs and kernels one write of a header rewind, or of removing block data above the block
+/// tip, removes. Horizon sync commits batches of
+/// this many outputs, so a write this size is known to fit. Tests use a small size to rewind in several writes.
+const HEADER_REWIND_WRITE_SIZE: usize = if cfg!(test) { 4 } else { 10_000 };
 /// Configuration for the BlockchainDatabase.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1654,16 +1659,21 @@ where B: BlockchainBackend
         second_height: u64,
     ) -> Result<(Option<BlockHeader>, Option<BlockHeader>), ChainStorageError> {
         let db = self.db_read_access()?;
-        let mut headers = [None, None];
-        for (header, height) in headers.iter_mut().zip([first_height, second_height]) {
-            *header = match fetch_header(&*db, height) {
-                Ok(found) => Some(found),
-                Err(err) if err.is_value_not_found() => None,
-                Err(err) => return Err(err),
-            };
-        }
-        let [first, second] = headers;
-        Ok((first, second))
+        fetch_header_pair(&*db, first_height, second_height)
+    }
+
+    /// Returns the outputs of the block with `header_hash` and the block headers at two heights, all read under one
+    /// read lock so that they come from the same chain.
+    pub fn fetch_outputs_in_block_and_header_pair(
+        &self,
+        header_hash: HashOutput,
+        first_height: u64,
+        second_height: u64,
+    ) -> Result<(Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>), ChainStorageError> {
+        let db = self.db_read_access()?;
+        let outputs = db.fetch_outputs_in_block(&header_hash)?;
+        let (first, second) = fetch_header_pair(&*db, first_height, second_height)?;
+        Ok((outputs, first, second))
     }
 
     /// Returns the block header at the given block height.
@@ -2515,6 +2525,115 @@ where B: BlockchainBackend
         db.verify_horizon_sync_output_root(expected_root)
     }
 
+    pub fn fetch_output_smt_leaf_count(&self) -> Result<u64, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_output_smt_leaf_count()
+    }
+
+    /// Removes the kernels, inputs and block accumulated data that kernel sync stored for blocks above the block tip,
+    /// keeping their headers, so that the blocks can be added on the tip. Works from the top down in writes of about
+    /// `HEADER_REWIND_WRITE_SIZE` rows, taking the write lock for each write only.
+    pub fn delete_block_data_above_block_tip(&self) -> Result<(), ChainStorageError> {
+        let mut next_height = u64::MAX;
+        loop {
+            let mut db = self.db_write_access()?;
+            let best_block_height = db.fetch_chain_metadata()?.best_block_height();
+            // Kernel sync stores block data from the block after the tip up, and this removes it top down, so any left
+            // includes the block after the tip
+            if db
+                .fetch_block_accumulated_data_by_height(best_block_height.saturating_add(1))?
+                .is_none()
+            {
+                return Ok(());
+            }
+            // The chain may have changed since the last write, so start again from the top if there is nothing left
+            // below where it stopped
+            let last_header_height = db.fetch_last_header()?.height;
+            let mut height = cmp::min(next_height, last_header_height);
+            if height <= best_block_height {
+                height = last_header_height;
+            }
+            // Block data above the tip with no header above it is never removed, so this would not get anywhere
+            if height <= best_block_height {
+                return Err(ChainStorageError::DataInconsistencyDetected {
+                    function: "delete_block_data_above_block_tip",
+                    details: format!(
+                        "Block data is stored at height {} above the block tip, which has no header",
+                        best_block_height.saturating_add(1)
+                    ),
+                });
+            }
+            let mut txn = DbTransaction::new();
+            let mut write_size = 0usize;
+            while height > best_block_height && write_size < HEADER_REWIND_WRITE_SIZE {
+                let header = fetch_header(&*db, height)?;
+                write_size = write_size
+                    .saturating_add(1)
+                    .saturating_add(queue_block_data_removal(&*db, &mut txn, &header)?);
+                height = height.saturating_sub(1);
+            }
+            if !txn.operations().is_empty() {
+                db.write(txn)?;
+            }
+            next_height = height;
+        }
+    }
+
+    /// Whether the output tables and the output tree hold exactly what inserting the genesis block leaves
+    pub fn output_state_is_genesis(&self) -> Result<bool, ChainStorageError> {
+        let db = self.db_read_access()?;
+        output_state_is_genesis(&*db, &self.fetch_genesis_block())
+    }
+
+    /// Clears all output state and restores the genesis outputs. Clean up only finds outputs under canonical blocks,
+    /// so this is what guarantees a sync from height 1 starts from the genesis state.
+    pub fn reset_output_state_to_genesis(&self) -> Result<(), ChainStorageError> {
+        let genesis_block = self.fetch_genesis_block();
+        let mut db = self.db_write_access()?;
+        if output_state_is_genesis(&*db, &genesis_block)? {
+            debug!(target: LOG_TARGET, "Output state is already the genesis state");
+            return Ok(());
+        }
+        let genesis_header_hash = *genesis_block.hash();
+        let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
+        let spent = genesis_spent_output_hashes(&genesis_block);
+        // Cleared in its own write. If the restore below does not happen, the empty state is not the genesis state, so
+        // the next attempt, which starts from height 1 as there is no checkpoint, resets again.
+        let mut txn = DbTransaction::new();
+        txn.clear_horizon_sync_output_state();
+        db.write(txn)?;
+        let mut txn = DbTransaction::new();
+        let mut state_tree_updates = Vec::new();
+        for output in genesis_block.block().body.outputs() {
+            txn.insert_utxo(output.clone(), genesis_header_hash, 0, genesis_timestamp);
+            if output.is_burned() {
+                continue;
+            }
+            if spent.contains(&output.hash()) {
+                // Spent by the genesis block itself
+                txn.delete_utxo_commitment_index_entry(output.commitment.clone());
+                continue;
+            }
+            let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
+            state_tree_updates.push(HorizonStateTreeUpdate {
+                key: FixedHash::from(key_bytes),
+                value: Some(output.smt_hash(0)),
+                replaces_value: false,
+            });
+        }
+        if !state_tree_updates.is_empty() {
+            txn.apply_horizon_state_tree_updates(state_tree_updates);
+        }
+        db.write(txn)?;
+
+        db.verify_horizon_sync_output_root(genesis_block.header().output_mr)
+            .inspect_err(|e| {
+                if let ChainStorageError::InvalidOperation(e) = e {
+                    error!(target: LOG_TARGET, "Output state does not match the genesis block after resetting it: {e}");
+                }
+            })
+    }
+
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         let lock = self.db_read_access()?;
         lock.get_stats()
@@ -2980,6 +3099,23 @@ pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<Bloc
     fetch!(db, block_num, HeaderHeight)
 }
 
+fn fetch_header_pair<T: BlockchainBackend>(
+    db: &T,
+    first_height: u64,
+    second_height: u64,
+) -> Result<(Option<BlockHeader>, Option<BlockHeader>), ChainStorageError> {
+    let mut headers = [None, None];
+    for (header, height) in headers.iter_mut().zip([first_height, second_height]) {
+        *header = match fetch_header(db, height) {
+            Ok(found) => Some(found),
+            Err(err) if err.is_value_not_found() => None,
+            Err(err) => return Err(err),
+        };
+    }
+    let [first, second] = headers;
+    Ok((first, second))
+}
+
 pub fn fetch_headers<T: BlockchainBackend>(
     db: &T,
     mut start: u64,
@@ -3168,6 +3304,79 @@ fn reset_chain_to_genesis<T: BlockchainBackend>(db: &mut T) -> Result<(), ChainS
     txn.set_pruned_height(0);
     txn.set_horizon_data(kernel_sum, total_utxo_sum);
     db.write(txn)
+}
+
+/// The outputs the genesis block's own inputs spend. Inserting the genesis block keeps their rows but removes them
+/// from the commitment index and the output tree.
+fn genesis_spent_output_hashes(genesis_block: &ChainBlock) -> BTreeSet<FixedHash> {
+    genesis_block
+        .block()
+        .body
+        .inputs()
+        .iter()
+        .map(|input| input.output_hash())
+        .collect()
+}
+
+/// Whether a genesis output is indexed and in the output tree after inserting the genesis block
+fn is_unspent_genesis_output(output: &TransactionOutput, spent: &BTreeSet<FixedHash>) -> bool {
+    !output.is_burned() && !spent.contains(&output.hash())
+}
+
+/// Whether the output tables and the output tree hold exactly what inserting the genesis block leaves
+fn output_state_is_genesis<T: BlockchainBackend>(
+    db: &T,
+    genesis_block: &ChainBlock,
+) -> Result<bool, ChainStorageError> {
+    match db.verify_horizon_sync_output_root(genesis_block.header().output_mr) {
+        Ok(()) => {},
+        Err(ChainStorageError::InvalidOperation(_)) => return Ok(false),
+        Err(e) => return Err(e),
+    }
+    let outputs = genesis_block.block().body.outputs();
+    let spent = genesis_spent_output_hashes(genesis_block);
+    let unspent = outputs
+        .iter()
+        .filter(|output| is_unspent_genesis_output(output, &spent))
+        .count();
+    // The tables `insert_output` writes and the output tree values, by their table names
+    let mut tables_checked = 0usize;
+    for stat in db.get_stats()?.db_stats() {
+        let expected = match stat.name {
+            "utxos" | "txos_hash_to_index" | "payref_to_output_index" => outputs.len(),
+            "utxo_commitment_index" | "jmt_values_data" => unspent,
+            _ => continue,
+        };
+        if stat.entries != expected {
+            return Ok(false);
+        }
+        tables_checked = tables_checked.saturating_add(1);
+    }
+    if tables_checked != 5 {
+        return Ok(false);
+    }
+    // With the counts matching, every genesis output being stored as expected leaves no room for anything else
+    let genesis_hash = *genesis_block.hash();
+    for output in outputs {
+        let hash = output.hash();
+        let stored = db
+            .fetch_outputs(&hash)?
+            .iter()
+            .any(|row| row.header_hash == genesis_hash);
+        let indexed_hash = if output.is_burned() {
+            None
+        } else {
+            db.fetch_unspent_output_hash_by_commitment(&output.commitment)?
+        };
+        let expected_hash = is_unspent_genesis_output(output, &spent).then_some(hash);
+        let has_payref = db
+            .fetch_mined_info_by_payref(&generate_payment_reference(&genesis_hash, &hash))
+            .is_ok();
+        if !stored || indexed_hash != expected_hash || !has_payref {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64) -> Result<(), ChainStorageError> {
@@ -3656,17 +3865,42 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
         );
     }
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
+    let new_header_tip = last_header_height.saturating_sub(steps_back);
     let mut txn = DbTransaction::new();
-    for h in 0..steps_back {
-        let height = last_header_height.saturating_sub(h);
+    // The checkpoint's outputs sit under headers up to its target, which are about to go
+    if db.fetch_horizon_sync_output_checkpoint()?.is_some_and(|checkpoint| {
+        cmp::max(checkpoint.checkpoint_height, checkpoint.sync_target_height) > new_header_tip
+    }) {
+        txn.clear_horizon_sync_output_checkpoint();
+    }
+    let mut write_size = 0usize;
+    for height in (new_header_tip.saturating_add(1)..=last_header_height).rev() {
         info!(
             target: LOG_TARGET,
             "Rewinding headers at height {}",
             height,
         );
+        let header = fetch_header(db, height)?;
+        let header_hash = header.hash();
+        // A failed horizon sync leaves outputs, and kernels with their block data, under headers above the block tip
+        let outputs = db.fetch_outputs_in_block(&header_hash)?;
+        if !outputs.is_empty() {
+            txn.prune_synced_outputs(header_hash, &outputs);
+        }
+        write_size = write_size
+            .saturating_add(outputs.len())
+            .saturating_add(1)
+            .saturating_add(queue_block_data_removal(db, &mut txn, &header)?);
         txn.delete_header(height);
+        // Each write removes whole heights from the top, so an interrupted rewind leaves a shorter consistent chain
+        if write_size >= HEADER_REWIND_WRITE_SIZE {
+            db.write(mem::take(&mut txn))?;
+            write_size = 0;
+        }
     }
-    db.write(txn)?;
+    if !txn.operations().is_empty() {
+        db.write(txn)?;
+    }
     // Delete blocks
     let steps_back = last_block_height.saturating_sub(target_height);
     // No blocks to remove, no need to update the best block
@@ -3731,6 +3965,26 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
     }
 
     Ok((removed_blocks, false))
+}
+
+/// Queues the removal of the kernels, inputs and block accumulated data stored for the block of `header` without its
+/// body, as kernel sync leaves them above the block tip. Returns about how many rows that removes.
+fn queue_block_data_removal<T: BlockchainBackend>(
+    db: &T,
+    txn: &mut DbTransaction,
+    header: &BlockHeader,
+) -> Result<usize, ChainStorageError> {
+    if db.fetch_block_accumulated_data_by_height(header.height)?.is_none() {
+        return Ok(0);
+    }
+    let header_hash = header.hash();
+    txn.delete_block_accumulated_data(header.height);
+    txn.delete_all_kernerls_in_block(header_hash);
+    txn.delete_all_inputs_in_block(header_hash);
+    let kernels = header
+        .kernel_mmr_size
+        .saturating_sub(fetch_header(db, header.height.saturating_sub(1))?.kernel_mmr_size);
+    Ok(usize::try_from(kernels).unwrap_or(usize::MAX).saturating_add(1))
 }
 
 /// Whether rewinding to `target_height` reaches below a pruned node's pruned height, which resets the chain to the
@@ -6664,6 +6918,23 @@ mod test {
             let db_read = db.db_read_access().unwrap();
             assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed[..]).unwrap(), 2);
         }
+    }
+
+    #[test]
+    fn fetch_outputs_in_block_and_header_pair_reads_the_block_and_both_headers() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
+        let b = chain.get("B").unwrap();
+
+        let (outputs, header_at_height, end_header) =
+            db.fetch_outputs_in_block_and_header_pair(*b.hash(), 2, 3).unwrap();
+        assert_eq!(outputs, db.fetch_outputs_in_block(*b.hash()).unwrap());
+        assert!(!outputs.is_empty());
+        assert_eq!(header_at_height.unwrap().hash(), *b.hash());
+        assert_eq!(end_header.unwrap().hash(), *chain.get("C").unwrap().hash());
+
+        let (_, _, missing) = db.fetch_outputs_in_block_and_header_pair(*b.hash(), 2, 4).unwrap();
+        assert!(missing.is_none());
     }
 
     /// A rewind past a pruned node's horizon keeps none of the blocks it removes, so it must not index an orphan chain
