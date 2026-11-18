@@ -152,6 +152,18 @@ pub(super) async fn ensure_on_requested_chain<B: BlockchainBackend + 'static>(
     }
 }
 
+/// Logs that a stream ends with `status` because the block at `height` is no longer an ancestor of the requested end
+/// block, if `status` is a Conflict
+fn warn_if_reorg(status: &RpcStatus, height: u64, end_height: u64, peer_node_id: &NodeId) {
+    if status.as_status_code() == RpcStatusCode::Conflict {
+        warn!(
+            target: LOG_TARGET,
+            "Block #{height} is no longer an ancestor of the requested end block #{end_height} during sync, letting \
+             the sync peer {peer_node_id} know that the chain has changed."
+        );
+    }
+}
+
 /// A read that fails after a reorg most likely failed because of it, so `res`'s error is replaced by a Conflict if the
 /// chain has changed since the block `hash` at `height` was read.
 pub(super) async fn check_chain_on_err<B: BlockchainBackend + 'static, T>(
@@ -294,13 +306,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     if let Err(status) =
                         ensure_on_requested_chain(&db, height, block.hash(), end_height, &end_hash).await
                     {
-                        if status.as_status_code() == RpcStatusCode::Conflict {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Block #{height} is no longer an ancestor of the requested end block #{end_height} \
-                                 during sync, letting the sync peer {peer_node_id} know that the chain has changed."
-                            );
-                        }
+                        warn_if_reorg(&status, height, end_height, &peer_node_id);
                         let _result = tx.send(Err(status)).await;
                         break;
                     }
@@ -611,6 +617,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         }
                     },
                     Err(err) => {
+                        warn_if_reorg(&err, current_height, end_height, &peer_node_id);
                         let _result = tx.send(Err(err)).await;
                         break;
                     },
@@ -650,6 +657,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             current_header_hash = header.hash();
                         },
                         Err(status) => {
+                            warn_if_reorg(&status, last_height, end_height, &peer_node_id);
                             let _result = tx.send(Err(status)).await;
                             break;
                         },

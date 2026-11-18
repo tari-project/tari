@@ -29,7 +29,7 @@ use std::{
 use log::*;
 use tari_comms::{
     peer_manager::NodeId,
-    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
+    protocol::rpc::{Request, RpcStatus, RpcStatusCode, RpcStatusResultExt},
     utils,
 };
 use tari_node_components::blocks::BlockHeader;
@@ -99,16 +99,26 @@ where B: BlockchainBackend + 'static
             )));
         }
 
+        let (start_height, end_height) = (start_header.height, end_header.height);
         task::spawn(async move {
             debug!(
                 target: LOG_TARGET,
                 "Starting UTXO stream for peer '{}'", self.peer_node_id
             );
             if let Err(err) = self.start_streaming(&mut tx, start_header, end_header).await {
-                debug!(
-                    target: LOG_TARGET,
-                    "UTXO stream errored for peer '{}': {}", self.peer_node_id, err
-                );
+                if err.as_status_code() == RpcStatusCode::Conflict {
+                    warn!(
+                        target: LOG_TARGET,
+                        "The chain changed below the requested end block #{end_height} during TXO sync from block \
+                         #{start_height}, letting the sync peer {} know.",
+                        self.peer_node_id
+                    );
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "UTXO stream errored for peer '{}': {}", self.peer_node_id, err
+                    );
+                }
                 let _result = tx.send(Err(err)).await;
             }
             debug!(
