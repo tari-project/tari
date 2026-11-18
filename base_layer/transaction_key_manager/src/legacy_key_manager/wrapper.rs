@@ -218,6 +218,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner.get_view_key()
     }
 
+    fn get_payload_auth_key(&self) -> Option<(u64, TariKeyId)> {
+        self.transaction_key_manager_inner.key_manager().get_payload_auth_key()
+    }
+
     fn is_ledger(&self) -> bool {
         self.transaction_key_manager_inner.get_wallet_type().is_ledger()
     }

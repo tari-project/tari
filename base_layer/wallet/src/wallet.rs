@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -54,7 +54,13 @@ use tari_transaction_components::{
     MicroMinotari,
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, TariKeyId, wallet_types::KeyDigest},
+    key_manager::{
+        RecoveryProvenance,
+        SecretTransactionKeyManagerInterface,
+        TariKeyId,
+        error::KeyManagerError,
+        wallet_types::KeyDigest,
+    },
     transaction_components::{
         EncryptedData,
         OutputFeatures,
@@ -100,6 +106,14 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet";
+/// Client key under which the imported offline-signing payload key is stored, as `<index>:<encrypted key id>`.
+const PAYLOAD_AUTH_KEY: &str = "payload_auth_key";
+
+/// Parses a [`PAYLOAD_AUTH_KEY`] value.
+fn parse_payload_auth_key(stored: &str) -> Option<(u64, TariKeyId)> {
+    let (index, key_id) = stored.split_once(':')?;
+    Some((index.parse().ok()?, TariKeyId::from_str(key_id).ok()?))
+}
 /// How long [`Wallet::wait_until_shutdown`] waits for wallet tasks to exit after the shutdown signal fires.
 pub const WALLET_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -241,6 +255,12 @@ where
         } else {
             None
         };
+        if let Some(stored) = wallet_database.get_client_key_value(PAYLOAD_AUTH_KEY.to_string())? {
+            let payload_key = parse_payload_auth_key(&stored)
+                .ok_or_else(|| KeyManagerError::InvalidKeyId("The stored payload auth key is malformed".to_string()))?;
+            key_manager_handle.key_manager().set_payload_auth_key(Some(payload_key));
+        }
+
         let spend_key = key_manager_handle.get_spend_key();
 
         persist_one_sided_payment_script_for_node_identity(
@@ -376,6 +396,25 @@ where
             address_interactive,
             address_one_sided,
         ))
+    }
+
+    /// Imports offline-signing payload key `index` (exported by the offline signer), replacing any imported before.
+    /// It is stored encrypted under the view key, and the `prepare_*` offline-signing calls sign with it from then on.
+    pub fn import_payload_auth_key(&self, index: u64, private_key: PrivateKey) -> Result<(), WalletError> {
+        let key_id = self.key_manager_service.create_encrypted_key(private_key, None)?;
+        self.db
+            .set_client_key_value(PAYLOAD_AUTH_KEY.to_string(), format!("{index}:{key_id}"))?;
+        self.key_manager_service
+            .key_manager()
+            .set_payload_auth_key(Some((index, key_id)));
+        Ok(())
+    }
+
+    /// Removes the imported payload key, so payloads are signed with the view key again. Returns whether one was set.
+    pub fn clear_payload_auth_key(&self) -> Result<bool, WalletError> {
+        let cleared = self.db.clear_client_value(PAYLOAD_AUTH_KEY.to_string())?;
+        self.key_manager_service.key_manager().set_payload_auth_key(None);
+        Ok(cleared)
     }
 
     pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
@@ -737,4 +776,22 @@ async fn persist_one_sided_payment_script_for_node_identity<KM: LegacyTransactio
 
     output_manager_service.add_known_script(known_script).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn stored_payload_auth_key_round_trips() {
+        let key_id = TariKeyId::Encrypted {
+            encrypted: vec![1, 2, 3],
+            key: TariKeyId::ViewKey.into(),
+        };
+        let stored = format!("7:{key_id}");
+        assert_eq!(parse_payload_auth_key(&stored), Some((7, key_id)));
+        assert_eq!(parse_payload_auth_key("7"), None);
+        assert_eq!(parse_payload_auth_key("x:view_key"), None);
+        assert_eq!(parse_payload_auth_key("7:not_a_key"), None);
+    }
 }

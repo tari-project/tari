@@ -25,6 +25,7 @@ use std::{fmt, path::PathBuf, time::Duration};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::{Network, serializers};
+use tari_transaction_components::offline_signing::PayloadKeyPolicy;
 
 const LOG_TARGET: &str = "wallet::transaction_service::config";
 
@@ -74,8 +75,25 @@ pub struct TransactionServiceConfig {
     /// (e.g. ~/.local/share/tari/{network}/burn_proofs on Linux, ~/Library/Application
     /// Support/tari/{network}/burn_proofs on macOS).
     pub burn_proof_output_dir: Option<PathBuf>,
+    /// When signing offline payloads, refuse any that is not signed with a payload key (version 5 payloads and those
+    /// signed with the shared view key). Off by default.
+    #[serde(default)]
+    pub require_payload_key: bool,
+    /// The payload key indices accepted when `require_payload_key` is on. Empty refuses every payload.
+    #[serde(default)]
+    pub accepted_payload_key_indices: Vec<u64>,
 }
 impl TransactionServiceConfig {
+    pub fn payload_key_policy(&self) -> PayloadKeyPolicy {
+        if self.require_payload_key {
+            PayloadKeyPolicy::RequirePayloadKey {
+                accepted_indices: self.accepted_payload_key_indices.clone(),
+            }
+        } else {
+            PayloadKeyPolicy::AcceptViewKey
+        }
+    }
+
     pub fn get_burn_proof_output_dir(&self, network: Network) -> PathBuf {
         self.burn_proof_output_dir
             .clone()
@@ -99,6 +117,8 @@ impl Default for TransactionServiceConfig {
             transaction_event_channel_size: 1000,
             transaction_mempool_resubmission_window: Duration::from_secs(600),
             burn_proof_output_dir: None,
+            require_payload_key: false,
+            accepted_payload_key_indices: Vec::new(),
         }
     }
 }

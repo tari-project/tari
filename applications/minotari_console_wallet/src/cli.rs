@@ -216,6 +216,11 @@ pub enum CliCommands {
 
     BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
 
+    /// Import the offline signer's payload key, so prepared payloads are signed with it instead of the view key
+    ImportPayloadKey(ImportPayloadKeyArgs),
+    /// Remove the imported payload key, so prepared payloads are signed with the view key again
+    ClearPayloadKey,
+
     SignMessage(SignMessageArgs),
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
@@ -240,6 +245,9 @@ pub struct PrepareDepositMultisigTransactionArgs {
     #[clap(long)]
     /// The recipient address of the multisig UTXO
     pub recipient_address: TariAddress,
+    /// Hours the offline signer accepts the prepared payload for (default 24)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..))]
+    pub payload_expiry_hours: Option<u64>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -251,6 +259,9 @@ pub struct PrepareWithdrawMultisigTransactionArgs {
     #[clap(long)]
     /// The recipient address that will receive the funds
     pub recipient_address: TariAddress,
+    /// Hours the offline signer accepts the prepared payload for (default 24)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..))]
+    pub payload_expiry_hours: Option<u64>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -261,6 +272,33 @@ pub struct PrepareOneSidedTransactionForSigningArgs {
     pub payment_id: String,
     #[clap(short, long)]
     pub output_file: PathBuf,
+    /// Hours the offline signer accepts the prepared payload for (default 24)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..))]
+    pub payload_expiry_hours: Option<u64>,
+}
+
+#[derive(Args, Clone)]
+pub struct ImportPayloadKeyArgs {
+    /// The payload key index given to `minotari_offline_signer export-payload-key`
+    #[clap(long)]
+    pub index: u64,
+    /// The payload private key in hex
+    #[clap(long, conflicts_with = "file", required_unless_present = "file")]
+    pub key: Option<String>,
+    /// The file written by `minotari_offline_signer export-payload-key --output`
+    #[clap(long)]
+    pub file: Option<PathBuf>,
+}
+
+/// Commands are echoed with `Debug`, so the private key is left out.
+impl std::fmt::Debug for ImportPayloadKeyArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportPayloadKeyArgs")
+            .field("index", &self.index)
+            .field("key", &self.key.as_ref().map(|_| "<hidden>"))
+            .field("file", &self.file)
+            .finish()
+    }
 }
 
 #[derive(Debug, Args, Clone)]

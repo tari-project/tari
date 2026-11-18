@@ -82,6 +82,55 @@ to treat the online wallet as untrusted in general, because a view key holder ca
 verification. Check every recipient, amount and "Other outputs" entry, and the fee, total spend and change, in the
 summary before approving.
 
+### Payload Keys and Strict Mode
+
+The online wallet signs each payload it prepares so the signer can tell whether it was changed on the way. By default
+it signs with the wallet's view key, which is also held by view-only wallets, auditors and explorers, so anyone with
+the view key could produce a payload the signer accepts. A payload key closes that gap: it is derived from the spend
+key on the signer, so only the signer can create it, and only the wallet it is given to can sign with it.
+
+Nothing changes unless you set it up; payloads signed with the view key, and older version 5 payloads, keep working.
+To set it up:
+
+1. On the signer, export payload key 1 (any index works; a key is retired by no longer accepting its index):
+
+   ```bash
+   minotari_offline_signer export-payload-key --index 1 --output payload_key.json
+   ```
+
+   The file holds the private payload key and is created readable by the owner only. Without `--output` the key is
+   printed. Move it to the online wallet the same way you move payloads, and delete it once imported.
+
+2. On the online (view) wallet, import it:
+
+   ```bash
+   minotari_console_wallet --command "import-payload-key --index 1 --file payload_key.json"
+   ```
+
+   or `import-payload-key --index 1 --key <hex>`. Importing again replaces the key; `clear-payload-key` removes it.
+   From then on every prepared payload is signed with it.
+
+3. On the signer, require it:
+
+   ```bash
+   minotari_offline_signer sign --require-payload-key --payload-key-index 1 \
+       --input-file unsigned_transaction.json --output-file signed_transaction.json
+   ```
+
+   With `--require-payload-key` the signer refuses version 5 payloads, payloads signed with the view key, and payloads
+   signed with a payload key whose index is not given with `--payload-key-index` (repeat it to accept more than one).
+   With no index given it refuses everything. A console wallet that signs offline payloads does the same with
+   `require_payload_key = true` and `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config.
+
+The summary says which key signed the payload: `payload key #<index>` or `view key (shared key)`.
+
+### Payload Expiry
+
+A payload prepared by this version expires 24 hours after it was prepared, or after `--payload-expiry-hours <n>` on
+the console wallet's `prepare-*` commands (`payload_expiry_hours` over gRPC). The signer refuses an expired payload
+before showing its summary, and the summary shows the expiry in UTC and the time left. The signer's own clock is used,
+so keep it roughly right. Version 5 payloads have no expiry.
+
 ### Clear Stored Keys
 
 Remove all keys from the keystore:
@@ -97,6 +146,7 @@ minotari_offline_signer clear
 | `init keys`          | Initialize the signer with spend and view keys directly |
 | `init seed-words`    | Initialize the signer with seed words (mnemonic phrase) |
 | `sign`               | Sign a one-sided transaction using stored keys |
+| `export-payload-key` | Export a payload key for the online wallet |
 | `status`             | Check if the signer has been initialized |
 | `clear`              | Clear all stored keys from the keystore |
 
@@ -120,6 +170,14 @@ minotari_offline_signer clear
 - `--output-file, -o`: Path where the signed transaction will be written
 - `--passphrase`: Passphrase to decrypt the keys (will prompt if not provided, can also be set via `TARI_PASSPHRASE` env var)
 - `--network, -n`: Network to use (mainnet, nextnet, esmeralda, localnet). Default: mainnet
+- `--require-payload-key`: Refuse any payload not signed with an accepted payload key
+- `--payload-key-index`: A payload key index to accept with `--require-payload-key`; repeat for more
+
+### `export-payload-key` Command
+
+- `--index`: The payload key index
+- `--output, -o`: Write the key to this new file (owner-only) instead of stdout
+- `--passphrase`: Passphrase to decrypt the keys (can also be set via `TARI_PASSPHRASE` env var)
 
 ## Security
 
@@ -146,7 +204,7 @@ This provides defense-in-depth: even if the OS keystore is compromised, the keys
 
 - **Key protection**: When initializing, avoid passing keys or seed words via command line arguments as they may be visible in shell history. Use the interactive prompt or environment variables instead.
 
-- **Verify before signing**: Always verify the transaction details before signing: every recipient address, every amount, every "Other outputs" entry, and the fee, total spend and change (a payload can keep a dust change while sending the rest to the miner as fee). Anyone holding the view key can produce a payload that passes the integrity check, and the change-output rule above only closes one known way of recovering the spend key, so the summary is the check that matters.
+- **Verify before signing**: Always verify the transaction details before signing: every recipient address, every amount, every "Other outputs" entry, and the fee, total spend and change (a payload can keep a dust change while sending the rest to the miner as fee). Unless the signer requires a payload key, anyone holding the view key can produce a payload that passes the integrity check, and the change-output rule above only closes one known way of recovering the spend key, so the summary is the check that matters.
 
 ## Building
 

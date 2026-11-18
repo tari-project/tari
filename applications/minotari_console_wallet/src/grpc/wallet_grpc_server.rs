@@ -972,6 +972,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 OutputFeatures::default(),
                 recipient.fee_per_gram.into(),
                 payment_id,
+                payload_lifetime(message.payload_expiry_hours),
             )
             .await
         {
@@ -1087,6 +1088,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 party_number_u8,
                 public_keys,
                 recipient.clone(),
+                payload_lifetime(message.payload_expiry_hours),
             )
             .await
         {
@@ -1143,7 +1145,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
 
         let response = match transaction_service
-            .prepare_withdraw_multisig_transaction(commitment, signatures, recipient.clone())
+            .prepare_withdraw_multisig_transaction(
+                commitment,
+                signatures,
+                recipient.clone(),
+                payload_lifetime(message.payload_expiry_hours),
+            )
             .await
         {
             Ok(data) => {
@@ -4049,6 +4056,11 @@ fn db_wallet_output_to_info(
 }
 
 // Helper function to update the latency history and compute the average latency
+/// The prepared payload's lifetime from a request's `payload_expiry_hours`, where 0 means the default.
+fn payload_lifetime(hours: u64) -> Option<Duration> {
+    (hours > 0).then(|| Duration::from_secs(hours.saturating_mul(3600)))
+}
+
 fn update_and_average_latency(latencies: &mut VecDeque<u64>, new_latency: u64) -> u64 {
     latencies.push_front(new_latency);
     while latencies.len() > AVG_LATENCIES_CAPACITY {

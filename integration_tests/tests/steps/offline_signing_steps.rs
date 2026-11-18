@@ -101,6 +101,7 @@ async fn prepare_offline_transaction_with_memo(
 
     let request = grpc::PrepareOneSidedTransactionForSigningRequest {
         recipient: Some(recipient),
+        payload_expiry_hours: 0,
     };
 
     let response = sender_client

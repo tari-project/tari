@@ -127,6 +127,10 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     fn get_view_key(&self) -> TariKeyAndId;
 
+    /// The payload-authentication key imported into this wallet, as its index and the key id it is stored under.
+    /// The offline-signing `prepare_*` functions sign with it in place of the view key.
+    fn get_payload_auth_key(&self) -> Option<(u64, TariKeyId)>;
+
     /// Whether this is a ledger wallet, whose device holds the spend key
     fn is_ledger(&self) -> bool;
 

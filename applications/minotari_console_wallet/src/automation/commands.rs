@@ -90,6 +90,7 @@ use tari_transaction_components::{
         OfflinePayload,
         PayloadSummary,
         models::{
+            ExportedPayloadKey,
             PrepareDepositMultisigTransactionResult,
             PrepareOneSidedTransactionForSigningResult,
             PrepareWithdrawMultisigTransactionResult,
@@ -151,7 +152,7 @@ use crate::{
             write_to_json_file,
         },
     },
-    cli::{CliCommands, CliRecipientInfo, MakeItRainTransactionType},
+    cli::{CliCommands, CliRecipientInfo, ImportPayloadKeyArgs, MakeItRainTransactionType},
     init::init_wallet,
     recovery::{get_seed_from_seed_words, wallet_recovery},
 };
@@ -713,6 +714,41 @@ fn read_payload_file(path: &Path) -> Result<String, CommandError> {
         return Err(CommandError::InvalidArgument("Input file too large".to_string()));
     }
     Ok(data)
+}
+
+fn payload_lifetime(hours: Option<u64>) -> Option<Duration> {
+    hours.map(|hours| Duration::from_secs(hours.saturating_mul(3600)))
+}
+
+/// The payload key `import-payload-key` names, checked to be a canonical, non-zero scalar (and, from a file, to match
+/// the file's index and public key), with its public key.
+fn read_payload_key(args: &ImportPayloadKeyArgs) -> Result<(PrivateKey, CompressedPublicKey), CommandError> {
+    let invalid = |reason: &str| CommandError::InvalidArgument(format!("Invalid payload key: {reason}"));
+    let (private_key_hex, expected_public_key) = match (&args.key, &args.file) {
+        (Some(key), _) => (key.clone(), None),
+        (None, Some(path)) => {
+            let file: ExportedPayloadKey = serde_json::from_str(&read_payload_file(path)?)
+                .map_err(|_| invalid("the file is not a payload key file"))?;
+            if file.index != args.index {
+                return Err(invalid(&format!(
+                    "the file holds payload key #{}, not #{}",
+                    file.index, args.index
+                )));
+            }
+            (file.private_key, Some(file.public_key))
+        },
+        (None, None) => return Err(invalid("give --key or --file")),
+    };
+    let private_key =
+        PrivateKey::from_hex(private_key_hex.trim()).map_err(|_| invalid("not a canonical private key"))?;
+    if private_key == PrivateKey::default() {
+        return Err(invalid("the key is zero"));
+    }
+    let public_key = CompressedPublicKey::from_secret_key(&private_key);
+    if expected_public_key.is_some_and(|expected| expected.trim() != public_key.to_hex()) {
+        return Err(invalid("the private key does not match the file's public key"));
+    }
+    Ok((private_key, public_key))
 }
 
 /// Writes the summary of an offline payload and returns it confirmed, or an error if it was not confirmed.
@@ -2833,6 +2869,7 @@ pub async fn command_runner(
                         OutputFeatures::default(),
                         MicroMinotari::from(config.fee_per_gram),
                         memo,
+                        payload_lifetime(args.payload_expiry_hours),
                     )
                     .await
                     .map_err(CommandError::TransactionServiceError);
@@ -2865,7 +2902,13 @@ pub async fn command_runner(
                     .collect::<Result<Vec<_>, CommandError>>()?;
 
                 let result = wallet_transaction_service
-                    .prepare_deposit_multisig_transaction(args.amount, args.party_number, public_keys, recipient)
+                    .prepare_deposit_multisig_transaction(
+                        args.amount,
+                        args.party_number,
+                        public_keys,
+                        recipient,
+                        payload_lifetime(args.payload_expiry_hours),
+                    )
                     .await?;
 
                 println!("Prepared deposit multisig transaction: {:?}", result);
@@ -2892,7 +2935,12 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::InvalidArgument(format!("Invalid UTXO commitment: {e}")))?;
 
                 let result = wallet_transaction_service
-                    .prepare_withdraw_multisig_transaction(commitment, schnorr_signatures, recipient)
+                    .prepare_withdraw_multisig_transaction(
+                        commitment,
+                        schnorr_signatures,
+                        recipient,
+                        payload_lifetime(args.payload_expiry_hours),
+                    )
                     .await?;
 
                 println!("Prepared withdraw multisig transaction: {:?}", result);
@@ -3012,6 +3060,18 @@ pub async fn command_runner(
                         })?;
                     },
                     Err(e) => eprintln!("SignOneSidedWithdrawMultisigTransaction error! {e}"),
+                }
+            },
+            ImportPayloadKey(args) => {
+                let (private_key, public_key) = read_payload_key(&args)?;
+                wallet.import_payload_auth_key(args.index, private_key)?;
+                println!("Payload key #{} imported (public key {public_key}).", args.index);
+            },
+            ClearPayloadKey => {
+                if wallet.clear_payload_auth_key()? {
+                    println!("Payload key removed; payloads will be signed with the view key.");
+                } else {
+                    println!("No payload key was imported.");
                 }
             },
             BroadcastSignedOneSidedTransaction(args) => {
@@ -4070,6 +4130,66 @@ mod test {
 
     use super::*;
 
+    fn import_args(index: u64, key: Option<&str>, file: Option<PathBuf>) -> ImportPayloadKeyArgs {
+        ImportPayloadKeyArgs {
+            index,
+            key: key.map(str::to_string),
+            file,
+        }
+    }
+
+    #[test]
+    fn import_payload_key_reads_an_exported_key() {
+        let signer = KeyManager::new_random().unwrap();
+        let private_key = signer.get_private_key(&TariKeyId::PayloadAuth { index: 1 }).unwrap();
+        let public_key = CompressedPublicKey::from_secret_key(&private_key);
+        let export = |index: u64, public_key: &CompressedPublicKey| {
+            let path = std::env::temp_dir().join(format!("payload_key_{}_{index}.json", std::process::id()));
+            let export = ExportedPayloadKey {
+                index,
+                private_key: private_key.to_hex(),
+                public_key: public_key.to_hex(),
+            };
+            fs::write(&path, serde_json::to_string(&export).unwrap()).unwrap();
+            path
+        };
+
+        let file = export(1, &public_key);
+        assert_eq!(
+            read_payload_key(&import_args(1, None, Some(file.clone()))).unwrap(),
+            (private_key.clone(), public_key.clone())
+        );
+        let err = read_payload_key(&import_args(2, None, Some(file.clone()))).unwrap_err();
+        assert!(err.to_string().contains("holds payload key #1, not #2"), "{err}");
+        fs::remove_file(file).unwrap();
+
+        let file = export(3, &signer.get_view_key().pub_key);
+        let err = read_payload_key(&import_args(3, None, Some(file.clone()))).unwrap_err();
+        assert!(err.to_string().contains("does not match"), "{err}");
+        fs::remove_file(file).unwrap();
+
+        assert_eq!(
+            read_payload_key(&import_args(1, Some(&private_key.to_hex()), None)).unwrap(),
+            (private_key, public_key)
+        );
+    }
+
+    #[test]
+    fn import_payload_key_refuses_a_bad_key() {
+        let zero = PrivateKey::default().to_hex();
+        assert!(read_payload_key(&import_args(1, Some(&zero), None)).is_err());
+        // The group order, which is not a canonical scalar
+        let order = "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010";
+        assert!(read_payload_key(&import_args(1, Some(order), None)).is_err());
+        assert!(read_payload_key(&import_args(1, Some("not hex"), None)).is_err());
+    }
+
+    #[test]
+    fn import_payload_key_args_do_not_print_the_key() {
+        let printed = format!("{:?}", import_args(1, Some("deadbeef"), None));
+        assert!(!printed.contains("deadbeef"), "{printed}");
+    }
+
     fn payload_with_memo(memo: &[u8]) -> PrepareOneSidedTransactionForSigningResult {
         use tari_transaction_components::offline_signing::models::{
             OneSidedTransactionInfo,
@@ -4099,6 +4219,8 @@ mod test {
             payload_signature: PayloadIntegritySignature {
                 signature: Default::default(),
             },
+            payload_key_id: None,
+            expires_at: u64::MAX,
         }
     }
 

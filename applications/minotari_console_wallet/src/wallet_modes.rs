@@ -613,6 +613,8 @@ mod test {
                 CliCommands::PrepareOneSidedTransactionForSigning(_) => {},
                 CliCommands::SignOneSidedTransaction(_) => {},
                 CliCommands::BroadcastSignedOneSidedTransaction(_) => {},
+                CliCommands::ImportPayloadKey(_) => {},
+                CliCommands::ClearPayloadKey => {},
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true
