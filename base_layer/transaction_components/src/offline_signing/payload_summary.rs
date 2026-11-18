@@ -306,7 +306,14 @@ impl PayloadDetails {
     fn write_signing_key_and_expiry(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.payload_key_index {
             Some(index) => writeln!(f, "Signed with    : payload key #{index}")?,
-            None => writeln!(f, "Signed with    : view key (shared key)")?,
+            None => {
+                writeln!(f, "Signed with    : view key (shared key)")?;
+                writeln!(
+                    f,
+                    "WARNING        : signed with the shared view key - anyone holding the view key could have \
+                     prepared this payload"
+                )?;
+            },
         }
         let Some(expires_at) = self.expires_at else {
             return writeln!(f, "Expires        : never (version 5 payload)");
@@ -1169,7 +1176,7 @@ mod test {
                 signature: Default::default(),
             },
             payload_key_id: None,
-            expires_at: u64::MAX,
+            expires_at: unix_now().saturating_add(3600),
         }
     }
 
@@ -1180,6 +1187,7 @@ mod test {
         payload.expires_at = unix_now().saturating_add(3600);
         let rendered = PayloadSummary::from_one_sided(payload.clone()).to_string();
         assert!(rendered.contains("Signed with    : payload key #3"), "{rendered}");
+        assert!(!rendered.contains("shared view key"), "{rendered}");
         assert!(
             rendered.contains(&format!(
                 "Expires        : {} (0h 59m",
@@ -1196,6 +1204,10 @@ mod test {
         let rendered = PayloadSummary::from_one_sided(payload).to_string();
         assert!(
             rendered.contains("Signed with    : view key (shared key)"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("WARNING        : signed with the shared view key"),
             "{rendered}"
         );
     }
@@ -1459,7 +1471,7 @@ mod test {
                     signature: Default::default(),
                 },
                 payload_key_id: None,
-                expires_at: u64::MAX,
+                expires_at: unix_now().saturating_add(3600),
             });
             let withdraw = PayloadSummary::from_withdraw_multisig(PrepareWithdrawMultisigTransactionResult {
                 version: get_latest_version(),
@@ -1469,7 +1481,7 @@ mod test {
                     signature: Default::default(),
                 },
                 payload_key_id: None,
-                expires_at: u64::MAX,
+                expires_at: unix_now().saturating_add(3600),
             });
             [deposit.to_string(), withdraw.to_string()]
         };
@@ -1493,7 +1505,7 @@ mod test {
             );
         }
         for rendered in renderings("output memo") {
-            assert!(!rendered.contains("WARNING"), "{rendered}");
+            assert!(!rendered.contains("memo differs"), "{rendered}");
         }
     }
 
@@ -1516,7 +1528,7 @@ mod test {
                 signature: Default::default(),
             },
             payload_key_id: None,
-            expires_at: u64::MAX,
+            expires_at: unix_now().saturating_add(3600),
         };
 
         let summary = PayloadSummary::from_multisig(request);

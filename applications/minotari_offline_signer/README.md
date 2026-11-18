@@ -89,7 +89,8 @@ it signs with the wallet's view key, which is also held by view-only wallets, au
 the view key could produce a payload the signer accepts. A payload key closes that gap: it is derived from the spend
 key on the signer, so only the signer can create it, and only the wallet it is given to can sign with it.
 
-Nothing changes unless you set it up; payloads signed with the view key, and older version 5 payloads, keep working.
+Nothing changes unless you set it up; payloads signed with the view key, and older version 5 payloads, keep working
+until the signer exports its first payload key.
 Upgrade the signer before the online wallet: an older signer cannot read the version 6 payloads a new online wallet
 prepares, while a new signer signs version 5 payloads and returns the result as version 5, which an older online
 wallet can broadcast.
@@ -101,8 +102,12 @@ To set it up:
    minotari_offline_signer export-payload-key --index 1 --output payload_key.json
    ```
 
-   The file holds the private payload key and is created readable by the owner only. Without `--output` the key is
-   printed. Move it to the online wallet the same way you move payloads, and delete it once imported.
+   The file holds the private payload key and is created readable by the owner only; `--stdout` prints the key
+   instead (one of the two is required). Move it to the online wallet the same way you move payloads, and delete it
+   once imported.
+
+   The signer records each index it exports. From then on `sign` requires a payload key with one of those indices,
+   so it refuses version 5 payloads and payloads signed with the view key.
 
 2. On the online (view) wallet, import it:
 
@@ -112,33 +117,40 @@ To set it up:
 
    or `import-payload-key --index 1 --key <hex>` (the key is then visible in shell history and `ps`, so prefer
    `--file`). The key is stored in the wallet's database, encrypted with the wallet passphrase. Importing again
-   replaces it; `clear-payload-key` removes it. From then on every prepared payload is signed with it.
+   replaces it; `clear-payload-key` removes it. From then on every prepared payload is signed with it. The import
+   prints a reminder to delete the file, and warns if other users can read it.
+
+   The online wallet's database now holds a credential for preparing payloads, not just the view key. Do not copy the
+   database and passphrase to other view-only instances as if it were a view key. If the payload key may have
+   leaked, export a new index, import it, and stop accepting the old one (`--payload-key-index <new>`).
 
    The signer holds the spend key, so it derives the payload key itself and needs no import. A wallet that prepares
    payloads needs the import to know which index to sign with: a view wallet signs with the imported key, while a
    wallet holding the spend key ignores the imported key and signs with its own derived key for that index.
 
-3. On the signer, require it:
+3. Sign as before:
 
    ```bash
-   minotari_offline_signer sign --require-payload-key --payload-key-index 1 \
-       --input-file unsigned_transaction.json --output-file signed_transaction.json
+   minotari_offline_signer sign --input-file unsigned_transaction.json --output-file signed_transaction.json
    ```
 
-   With `--require-payload-key` the signer refuses version 5 payloads, payloads signed with the view key, and payloads
-   signed with a payload key whose index is not given with `--payload-key-index` (repeat it to accept more than one).
-   With no index given it refuses everything. A console wallet that signs offline payloads does the same with
-   `require_payload_key = true` and `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config.
+   The signer accepts only payloads signed with a payload key whose index it exported.
+   `--payload-key-index <n>` (repeatable) accepts the given indices instead, which is how an old key is retired.
+   `--require-payload-key` turns the same check on before any key has been exported (with no index, it refuses
+   everything). `--allow-view-key` accepts view key payloads again for one run, and cannot be combined with the other
+   two. A console wallet that signs offline payloads does the same with `require_payload_key = true` and
+   `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config; setting the indices alone turns it on.
 
 Before showing the summary the signer checks the payload's expiry, checks its signing key against these settings,
 and verifies its signature, so a payload it would refuse is never shown for approval. The summary then says which key
-signed the payload: `payload key #<index>` or `view key (shared key)`.
+signed the payload: `payload key #<index>`, or `view key (shared key)` followed by a warning that anyone holding the
+view key could have prepared it.
 
 ### Payload Expiry
 
 A payload prepared by this version expires 24 hours after it was prepared, or after `--payload-expiry-hours <n>` on
-the console wallet's `prepare-*` commands (`payload_expiry_hours` over gRPC). The signer refuses an expired payload
-before showing its summary, and the summary shows the expiry in UTC and the time left. The signer's own clock is used,
+the console wallet's `prepare-*` commands (`payload_expiry_hours` over gRPC), at most 168 hours (7 days). The signer
+refuses an expired payload, and one that claims to stay valid for more than 7 days, before showing its summary, and the summary shows the expiry in UTC and the time left. The signer's own clock is used,
 so keep it roughly right. Version 5 payloads have no expiry.
 
 ### Clear Stored Keys
@@ -180,13 +192,17 @@ minotari_offline_signer clear
 - `--output-file, -o`: Path where the signed transaction will be written
 - `--passphrase`: Passphrase to decrypt the keys (will prompt if not provided, can also be set via `TARI_PASSPHRASE` env var)
 - `--network, -n`: Network to use (mainnet, nextnet, esmeralda, localnet). Default: mainnet
-- `--require-payload-key`: Refuse any payload not signed with an accepted payload key
-- `--payload-key-index`: A payload key index to accept with `--require-payload-key`; repeat for more
+- `--require-payload-key`: Refuse any payload not signed with an accepted payload key (the default once a payload key
+  has been exported)
+- `--payload-key-index`: A payload key index to accept, in place of the exported ones; repeat for more. Implies
+  `--require-payload-key`
+- `--allow-view-key`: Accept payloads signed with the view key even after a payload key has been exported
 
 ### `export-payload-key` Command
 
 - `--index`: The payload key index
-- `--output, -o`: Write the key to this new file (owner-only) instead of stdout
+- `--output, -o`: Write the key to this new file (owner-only)
+- `--stdout`: Print the key instead (one of `--output` and `--stdout` is required)
 - `--passphrase`: Passphrase to decrypt the keys (can also be set via `TARI_PASSPHRASE` env var)
 
 ## Security

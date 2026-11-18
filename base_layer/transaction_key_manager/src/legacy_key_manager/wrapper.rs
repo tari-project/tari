@@ -222,6 +222,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner.key_manager().get_payload_auth_key()
     }
 
+    fn derive_payload_auth_public_key(&self, index: u64) -> Result<CompressedPublicKey, KeyManagerError> {
+        self.transaction_key_manager_inner
+            .key_manager()
+            .derive_payload_auth_public_key(index)
+    }
+
     fn is_ledger(&self) -> bool {
         self.transaction_key_manager_inner.get_wallet_type().is_ledger()
     }

@@ -346,23 +346,29 @@ impl KeyManager {
         *self.payload_auth_key.lock().unwrap_or_else(PoisonError::into_inner) = key;
     }
 
-    /// `H("payload_auth", spend_key || index)` when this wallet holds the spend key. Only a wallet that cannot derive
-    /// it (view-only or Ledger) uses an imported key, and only at the imported index: a wallet that can derive never
-    /// trusts an import, so a wrong one cannot make it accept payloads signed by another key.
-    fn payload_auth_private_key(&self, index: u64) -> Result<PrivateKey, KeyManagerError> {
-        let spend_key = if self.wallet_type.is_ledger() {
-            None
-        } else {
-            self.get_private_spend_key().ok()
+    /// `H("payload_auth", spend_key || index)`, or `None` when this wallet cannot derive it (view-only or Ledger).
+    fn derive_payload_auth_key(&self, index: u64) -> Result<Option<PrivateKey>, KeyManagerError> {
+        if self.wallet_type.is_ledger() {
+            return Ok(None);
+        }
+        let Ok(spend_key) = self.get_private_spend_key() else {
+            return Ok(None);
         };
-        if let Some(spend_key) = spend_key {
-            let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-                HASHER_LABEL_PAYLOAD_AUTH,
-            )
-            .chain(spend_key.as_bytes())
-            .chain(index.to_le_bytes())
-            .finalize_zeroizing();
-            return Ok(PrivateKey::from_uniform_bytes(hash.as_slice())?);
+        let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+            HASHER_LABEL_PAYLOAD_AUTH,
+        )
+        .chain(spend_key.as_bytes())
+        .chain(index.to_le_bytes())
+        .finalize_zeroizing();
+        Ok(Some(PrivateKey::from_uniform_bytes(hash.as_slice())?))
+    }
+
+    /// The derived payload key when this wallet can derive it. Only a wallet that cannot (view-only or Ledger) uses an
+    /// imported key, and only at the imported index: a wallet that can derive never trusts an import, so a wrong one
+    /// cannot make it accept payloads signed by another key.
+    fn payload_auth_private_key(&self, index: u64) -> Result<PrivateKey, KeyManagerError> {
+        if let Some(key) = self.derive_payload_auth_key(index)? {
+            return Ok(key);
         }
         if let Some((_, key)) = self
             .payload_auth_key
@@ -1041,6 +1047,15 @@ impl TransactionKeyManagerInterface for KeyManager {
                 &self.payload_auth_private_key(*index)?,
             )),
         }
+    }
+
+    fn derive_payload_auth_public_key(&self, index: u64) -> Result<CompressedPublicKey, KeyManagerError> {
+        let key = self.derive_payload_auth_key(index)?.ok_or_else(|| {
+            KeyManagerError::InvalidWalletType(
+                "This wallet cannot verify payload keys: strict mode needs a software spend key".to_string(),
+            )
+        })?;
+        Ok(CompressedPublicKey::from_secret_key(&key))
     }
 
     fn get_payload_auth_key(&self) -> Option<u64> {

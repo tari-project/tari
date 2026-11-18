@@ -181,7 +181,7 @@ use tari_transaction_components::{
     MicroMinotari,
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
-    offline_signing::models::SignedOneSidedTransactionResult,
+    offline_signing::{MAX_PAYLOAD_LIFETIME, models::SignedOneSidedTransactionResult},
     rpc::MAX_ALLOWED_QUERY_SIZE,
     transaction_components::{
         OutputFeatures,
@@ -972,7 +972,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 OutputFeatures::default(),
                 recipient.fee_per_gram.into(),
                 payment_id,
-                payload_lifetime(message.payload_expiry_hours),
+                payload_lifetime(message.payload_expiry_hours)?,
             )
             .await
         {
@@ -1088,7 +1088,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 party_number_u8,
                 public_keys,
                 recipient.clone(),
-                payload_lifetime(message.payload_expiry_hours),
+                payload_lifetime(message.payload_expiry_hours)?,
             )
             .await
         {
@@ -1149,7 +1149,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 commitment,
                 signatures,
                 recipient.clone(),
-                payload_lifetime(message.payload_expiry_hours),
+                payload_lifetime(message.payload_expiry_hours)?,
             )
             .await
         {
@@ -4057,8 +4057,15 @@ fn db_wallet_output_to_info(
 
 // Helper function to update the latency history and compute the average latency
 /// The prepared payload's lifetime from a request's `payload_expiry_hours`, where 0 means the default.
-fn payload_lifetime(hours: u64) -> Option<Duration> {
-    (hours > 0).then(|| Duration::from_secs(hours.saturating_mul(3600)))
+fn payload_lifetime(hours: u64) -> Result<Option<Duration>, Status> {
+    let lifetime = Duration::from_secs(hours.saturating_mul(3600));
+    if lifetime > MAX_PAYLOAD_LIFETIME {
+        return Err(Status::invalid_argument(format!(
+            "payload_expiry_hours must be at most {}",
+            MAX_PAYLOAD_LIFETIME.as_secs() / 3600
+        )));
+    }
+    Ok((hours > 0).then_some(lifetime))
 }
 
 fn update_and_average_latency(latencies: &mut VecDeque<u64>, new_latency: u64) -> u64 {
@@ -4577,6 +4584,7 @@ mod tests {
         lookup_error,
         memo_from_raw_bytes,
         parse_excluded_commitments,
+        payload_lifetime,
         with_request_offset,
     };
 
@@ -4745,5 +4753,16 @@ mod tests {
         let parsed = parse_excluded_commitments(vec![bytes]).unwrap();
 
         assert_eq!(parsed, vec![commitment]);
+    }
+
+    #[test]
+    fn payload_expiry_hours_are_capped() {
+        assert_eq!(payload_lifetime(0).unwrap(), None);
+        assert_eq!(
+            payload_lifetime(168).unwrap(),
+            Some(std::time::Duration::from_secs(168 * 3600))
+        );
+        assert_eq!(payload_lifetime(169).unwrap_err().code(), tonic::Code::InvalidArgument);
+        assert!(payload_lifetime(u64::MAX).is_err());
     }
 }

@@ -44,6 +44,9 @@ use crate::error::OfflineSignerError;
 const SERVICE_NAME: &str = "minotari_offline_signer";
 const SPEND_KEY_ENTRY: &str = "spend_key";
 const VIEW_KEY_ENTRY: &str = "view_key";
+/// The payload key indices exported so far, as a JSON list encrypted like the keys. Once there are any, `sign` requires
+/// a payload key by default.
+const PAYLOAD_KEY_INDICES_ENTRY: &str = "payload_key_indices";
 
 #[cfg(feature = "test-keystore")]
 pub(crate) use test_keystore::set_test_keystore_file;
@@ -109,6 +112,30 @@ impl Keystore {
         Ok((spend_key, view_key))
     }
 
+    /// The payload key indices recorded by [`Self::record_payload_key_index`], empty if none were.
+    pub fn payload_key_indices(&self, passphrase: &str) -> Result<Vec<u64>, OfflineSignerError> {
+        let encrypted = match self.backend.retrieve(PAYLOAD_KEY_INDICES_ENTRY) {
+            Ok(encrypted) => encrypted,
+            Err(OfflineSignerError::NotInitialized(_)) => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
+        let json = decrypt_bytes(&encrypted, passphrase)?;
+        serde_json::from_slice(&json)
+            .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse payload key indices: {}", e)))
+    }
+
+    /// Adds `index` to the recorded payload key indices.
+    pub fn record_payload_key_index(&self, index: u64, passphrase: &str) -> Result<(), OfflineSignerError> {
+        let mut indices = self.payload_key_indices(passphrase)?;
+        if !indices.contains(&index) {
+            indices.push(index);
+        }
+        let json = serde_json::to_vec(&indices)
+            .map_err(|e| OfflineSignerError::SerializationError(format!("Failed to serialize indices: {}", e)))?;
+        self.backend
+            .store(PAYLOAD_KEY_INDICES_ENTRY, &encrypt_bytes(&json, passphrase)?)
+    }
+
     pub fn is_initialized(&self) -> bool {
         self.backend.retrieve(SPEND_KEY_ENTRY).is_ok()
     }
@@ -117,6 +144,7 @@ impl Keystore {
         // Try to delete both keys, ignoring errors if they do not exist.
         let _unused = self.backend.delete(SPEND_KEY_ENTRY);
         let _unused = self.backend.delete(VIEW_KEY_ENTRY);
+        let _unused = self.backend.delete(PAYLOAD_KEY_INDICES_ENTRY);
         Ok(())
     }
 
@@ -291,6 +319,11 @@ fn derive_encryption_key(passphrase: &str, salt: &Salt) -> Result<Zeroizing<[u8;
 
 /// Encrypts a private key using ChaCha20-Poly1305.
 fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
+    encrypt_bytes(&key.to_vec(), passphrase)
+}
+
+/// Encrypts `plaintext` using ChaCha20-Poly1305.
+fn encrypt_bytes(plaintext: &[u8], passphrase: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
     let salt = Salt::generate();
     let mut nonce_bytes = [0u8; 12];
     rand::rng().fill_bytes(&mut nonce_bytes);
@@ -301,9 +334,8 @@ fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, O
     let cipher = ChaCha20Poly1305::new_from_slice(&*encryption_key)
         .map_err(|e| OfflineSignerError::EncryptionError(format!("Failed to create cipher: {}", e)))?;
 
-    let plaintext = key.to_vec();
     let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_ref())
+        .encrypt(nonce, plaintext)
         .map_err(|e| OfflineSignerError::EncryptionError(format!("Failed to encrypt: {}", e)))?;
 
     Ok(EncryptedKeyData {
@@ -315,6 +347,13 @@ fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, O
 
 /// Decrypts a private key using ChaCha20-Poly1305.
 fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, OfflineSignerError> {
+    let plaintext = decrypt_bytes(data, passphrase)?;
+    PrivateKey::from_vec(&plaintext)
+        .map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid key data: {}", e)))
+}
+
+/// Decrypts data encrypted by [`encrypt_bytes`].
+fn decrypt_bytes(data: &EncryptedKeyData, passphrase: &str) -> Result<Zeroizing<Vec<u8>>, OfflineSignerError> {
     let salt =
         Salt::from_b64(&data.salt).map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid salt: {}", e)))?;
 
@@ -333,9 +372,7 @@ fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, 
     let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| {
         OfflineSignerError::DecryptionError("Failed to decrypt: invalid passphrase or corrupted data".to_string())
     })?;
-
-    PrivateKey::from_vec(&plaintext)
-        .map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid key data: {}", e)))
+    Ok(Zeroizing::new(plaintext))
 }
 
 /// Initializes the keystore with spend and view keys.
@@ -350,6 +387,16 @@ pub fn init_keystore(
 /// Retrieves the spend and view keys from the keystore.
 pub fn get_keys(passphrase: &str) -> Result<(PrivateKey, PrivateKey), OfflineSignerError> {
     Keystore::new().get_keys(passphrase)
+}
+
+/// The payload key indices exported so far.
+pub fn get_payload_key_indices(passphrase: &str) -> Result<Vec<u64>, OfflineSignerError> {
+    Keystore::new().payload_key_indices(passphrase)
+}
+
+/// Records an exported payload key index, which makes `sign` require a payload key by default.
+pub fn record_payload_key_index(index: u64, passphrase: &str) -> Result<(), OfflineSignerError> {
+    Keystore::new().record_payload_key_index(index, passphrase)
 }
 
 /// Checks if the keystore has been initialized.

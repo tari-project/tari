@@ -118,7 +118,7 @@ use tari_transaction_components::{
     },
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
-use tari_utilities::{ByteArray, SafePassword, encoding::MBase58, hex::Hex};
+use tari_utilities::{ByteArray, Hidden, SafePassword, encoding::MBase58, hex::Hex};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -725,23 +725,25 @@ fn payload_lifetime(hours: Option<u64>) -> Option<Duration> {
 /// the file's index and public key), with its public key.
 fn read_payload_key(args: &ImportPayloadKeyArgs) -> Result<(PrivateKey, CompressedPublicKey), CommandError> {
     let invalid = |reason: &str| CommandError::InvalidArgument(format!("Invalid payload key: {reason}"));
+    // Hidden: wiped when dropped
     let (private_key_hex, expected_public_key) = match (&args.key, &args.file) {
-        (Some(key), _) => (key.clone(), None),
+        (Some(key), _) => (Hidden::hide(key.clone()), None),
         (None, Some(path)) => {
-            let file: ExportedPayloadKey = serde_json::from_str(&read_payload_file(path)?)
-                .map_err(|_| invalid("the file is not a payload key file"))?;
+            let contents = Hidden::hide(read_payload_file(path)?);
+            let file: ExportedPayloadKey =
+                serde_json::from_str(contents.reveal()).map_err(|_| invalid("the file is not a payload key file"))?;
             if file.index != args.index {
                 return Err(invalid(&format!(
                     "the file holds payload key #{}, not #{}",
                     file.index, args.index
                 )));
             }
-            (file.private_key, Some(file.public_key))
+            (Hidden::hide(file.private_key.clone()), Some(file.public_key.clone()))
         },
         (None, None) => return Err(invalid("give --key or --file")),
     };
     let private_key =
-        PrivateKey::from_hex(private_key_hex.trim()).map_err(|_| invalid("not a canonical private key"))?;
+        PrivateKey::from_hex(private_key_hex.reveal().trim()).map_err(|_| invalid("not a canonical private key"))?;
     if private_key == PrivateKey::default() {
         return Err(invalid("the key is zero"));
     }
@@ -3083,6 +3085,19 @@ pub async fn command_runner(
                 let (private_key, public_key) = read_payload_key(&args)?;
                 wallet.import_payload_auth_key(args.index, private_key)?;
                 println!("Payload key #{} imported (public key {public_key}).", args.index);
+                if let Some(path) = &args.file {
+                    println!("Delete {} now: it holds the payload private key.", path.display());
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        if fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o077 != 0) {
+                            println!(
+                                "WARNING: {} can be read by other users of this machine.",
+                                path.display()
+                            );
+                        }
+                    }
+                }
             },
             ClearPayloadKey => {
                 if wallet.clear_payload_auth_key()? {
@@ -4207,6 +4222,14 @@ mod test {
         assert!(!printed.contains("deadbeef"), "{printed}");
     }
 
+    fn an_hour_from_now() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_add(3600)
+    }
+
     fn payload_with_memo(memo: &[u8]) -> PrepareOneSidedTransactionForSigningResult {
         use tari_transaction_components::offline_signing::models::{
             OneSidedTransactionInfo,
@@ -4237,7 +4260,7 @@ mod test {
                 signature: Default::default(),
             },
             payload_key_id: None,
-            expires_at: u64::MAX,
+            expires_at: an_hour_from_now(),
         }
     }
 

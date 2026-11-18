@@ -245,8 +245,8 @@ pub struct PrepareDepositMultisigTransactionArgs {
     #[clap(long)]
     /// The recipient address of the multisig UTXO
     pub recipient_address: TariAddress,
-    /// Hours the offline signer accepts the prepared payload for (default 24)
-    #[clap(long, value_parser = clap::value_parser!(u64).range(1..))]
+    /// Hours the offline signer accepts the prepared payload for (default 24, at most 168, `MAX_PAYLOAD_LIFETIME`)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..=168))]
     pub payload_expiry_hours: Option<u64>,
 }
 
@@ -259,8 +259,8 @@ pub struct PrepareWithdrawMultisigTransactionArgs {
     #[clap(long)]
     /// The recipient address that will receive the funds
     pub recipient_address: TariAddress,
-    /// Hours the offline signer accepts the prepared payload for (default 24)
-    #[clap(long, value_parser = clap::value_parser!(u64).range(1..))]
+    /// Hours the offline signer accepts the prepared payload for (default 24, at most 168, `MAX_PAYLOAD_LIFETIME`)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..=168))]
     pub payload_expiry_hours: Option<u64>,
 }
 
@@ -272,8 +272,8 @@ pub struct PrepareOneSidedTransactionForSigningArgs {
     pub payment_id: String,
     #[clap(short, long)]
     pub output_file: PathBuf,
-    /// Hours the offline signer accepts the prepared payload for (default 24)
-    #[clap(long, value_parser = clap::value_parser!(u64).range(1..))]
+    /// Hours the offline signer accepts the prepared payload for (default 24, at most 168, `MAX_PAYLOAD_LIFETIME`)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..=168))]
     pub payload_expiry_hours: Option<u64>,
 }
 

@@ -55,6 +55,7 @@ use tari_transaction_components::{
     },
 };
 use tari_utilities::{SafePassword, hex::Hex};
+use zeroize::Zeroizing;
 
 use crate::{error::OfflineSignerError, keystore};
 
@@ -168,25 +169,35 @@ pub struct SignArgs {
     #[clap(long, alias = "assume-yes", hide = true)]
     pub yes: bool,
 
-    /// Refuse any payload not signed with a payload key whose index is given with --payload-key-index, including
-    /// version 5 payloads and payloads signed with the shared view key
+    /// Refuse any payload not signed with an accepted payload key, including version 5 payloads and payloads signed
+    /// with the shared view key. This is the default once a payload key has been exported
     #[clap(long)]
     pub require_payload_key: bool,
 
-    /// A payload key index to accept with --require-payload-key. Repeat for more than one
-    #[clap(long = "payload-key-index", requires = "require_payload_key")]
+    /// A payload key index to accept, in place of the indices exported from this signer. Repeat for more than one.
+    /// Implies --require-payload-key
+    #[clap(long = "payload-key-index")]
     pub payload_key_indices: Vec<u64>,
+
+    /// Accept payloads signed with the shared view key, even after a payload key has been exported
+    #[clap(long, conflicts_with_all = ["require_payload_key", "payload_key_indices"])]
+    pub allow_view_key: bool,
 }
 
 #[derive(Debug, Args, Clone)]
+#[clap(group(clap::ArgGroup::new("destination").required(true).args(["output", "stdout"])))]
 pub struct ExportPayloadKeyArgs {
     /// The payload key index. A key is retired by no longer accepting its index when signing
     #[clap(long)]
     pub index: u64,
 
-    /// Write the key to this new file, readable by the owner only, instead of stdout
+    /// Write the key to this new file, readable by the owner only
     #[clap(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Print the key instead of writing it to a file
+    #[clap(long)]
+    pub stdout: bool,
 
     /// Passphrase to decrypt the keys
     #[clap(long, env = "TARI_PASSPHRASE")]
@@ -419,13 +430,12 @@ fn sign_transaction_with_io(
         .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse transaction: {}", e)))?;
 
     let key_manager = open_key_manager(&passphrase)?;
-    let policy = if args.require_payload_key {
-        PayloadKeyPolicy::RequirePayloadKey {
-            accepted_indices: args.payload_key_indices,
-        }
-    } else {
-        PayloadKeyPolicy::AcceptViewKey
-    };
+    let policy = sign_policy(
+        args.allow_view_key,
+        args.require_payload_key,
+        args.payload_key_indices,
+        &passphrase,
+    )?;
     // A payload the signer would refuse is never shown for approval, and "Signed with" in the summary is verified
     verify_offline_payload(&key_manager, &policy, &request)
         .map_err(|e| OfflineSignerError::SigningError(format!("Payload not accepted: {}", e)))?;
@@ -464,6 +474,29 @@ fn open_key_manager(passphrase: &str) -> Result<KeyManager> {
         .map_err(|e| OfflineSignerError::KeyManagerError(format!("Failed to create key manager: {}", e)))?)
 }
 
+/// Strict once a payload key has been exported, so a signer set up for payload keys cannot quietly go back to
+/// accepting the shared view key; `--allow-view-key` does that on purpose.
+fn sign_policy(
+    allow_view_key: bool,
+    require_payload_key: bool,
+    payload_key_indices: Vec<u64>,
+    passphrase: &str,
+) -> Result<PayloadKeyPolicy> {
+    if allow_view_key {
+        return Ok(PayloadKeyPolicy::AcceptViewKey);
+    }
+    let accepted_indices = if payload_key_indices.is_empty() {
+        keystore::get_payload_key_indices(passphrase)?
+    } else {
+        payload_key_indices
+    };
+    if require_payload_key || !accepted_indices.is_empty() {
+        Ok(PayloadKeyPolicy::RequirePayloadKey { accepted_indices })
+    } else {
+        Ok(PayloadKeyPolicy::AcceptViewKey)
+    }
+}
+
 fn export_payload_key(args: ExportPayloadKeyArgs, out: &mut dyn Write) -> Result<()> {
     if !keystore::is_initialized() {
         return Err(anyhow!("Offline signer not initialized. Run 'init' command first."));
@@ -477,7 +510,7 @@ fn export_payload_key(args: ExportPayloadKeyArgs, out: &mut dyn Write) -> Result
         private_key: private_key.to_hex(),
         public_key: CompressedPublicKey::from_secret_key(&private_key).to_hex(),
     };
-    let json = serde_json::to_string_pretty(&export)?;
+    let json = Zeroizing::new(serde_json::to_string_pretty(&export)?);
     match args.output {
         Some(path) => {
             // A new file only: an existing one could already be readable by others
@@ -491,11 +524,17 @@ fn export_payload_key(args: ExportPayloadKeyArgs, out: &mut dyn Write) -> Result
             let mut file = options
                 .open(&path)
                 .with_context(|| format!("Failed to create output file: {:?}", path))?;
-            writeln!(file, "{json}")?;
+            writeln!(file, "{}", *json)?;
             writeln!(out, "✓ Payload key #{} written to {:?}", args.index, path)?;
         },
-        None => writeln!(out, "{json}")?,
+        None => writeln!(out, "{}", *json)?,
     }
+    keystore::record_payload_key_index(args.index, &args.passphrase)?;
+    writeln!(
+        out,
+        "Payload key #{} recorded: `sign` now requires a payload key unless --allow-view-key is given",
+        args.index
+    )?;
     Ok(())
 }
 
@@ -551,6 +590,14 @@ mod test {
 
     use super::*;
 
+    fn an_hour_from_now() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_add(3600)
+    }
+
     fn payload_with_memo(memo: &[u8]) -> PrepareOneSidedTransactionForSigningResult {
         let memo = MemoField::new_open(memo.to_vec(), TxType::PaymentToOther).unwrap();
         PrepareOneSidedTransactionForSigningResult {
@@ -574,7 +621,7 @@ mod test {
                 signature: Default::default(),
             },
             payload_key_id: None,
-            expires_at: u64::MAX,
+            expires_at: an_hour_from_now(),
         }
     }
 
@@ -658,7 +705,7 @@ mod test {
     }
 
     #[test]
-    fn payload_key_index_requires_require_payload_key() {
+    fn sign_policy_flags_parse() {
         let args = |extra: &[&str]| {
             let mut args = vec![
                 "minotari_offline_signer",
@@ -673,7 +720,10 @@ mod test {
             args.extend_from_slice(extra);
             Cli::try_parse_from(args)
         };
-        assert!(args(&["--payload-key-index", "1"]).is_err());
+        assert!(args(&["--payload-key-index", "1"]).is_ok());
+        assert!(args(&["--allow-view-key", "--require-payload-key"]).is_err());
+        assert!(args(&["--allow-view-key", "--payload-key-index", "1"]).is_err());
+        assert!(args(&["--allow-view-key"]).is_ok());
         let Commands::Sign(sign) = args(&[
             "--require-payload-key",
             "--payload-key-index",
@@ -688,6 +738,26 @@ mod test {
         };
         assert!(sign.require_payload_key);
         assert_eq!(sign.payload_key_indices, vec![1, 3]);
+    }
+
+    #[test]
+    fn export_payload_key_needs_exactly_one_destination() {
+        let args = |extra: &[&str]| {
+            let mut args = vec![
+                "minotari_offline_signer",
+                "export-payload-key",
+                "--index",
+                "1",
+                "--passphrase",
+                "p",
+            ];
+            args.extend_from_slice(extra);
+            Cli::try_parse_from(args)
+        };
+        assert!(args(&[]).is_err());
+        assert!(args(&["--stdout", "--output", "f"]).is_err());
+        assert!(args(&["--stdout"]).is_ok());
+        assert!(args(&["--output", "f"]).is_ok());
     }
 
     #[cfg(feature = "test-keystore")]
@@ -878,9 +948,20 @@ mod test {
                 .is_err()
             );
 
-            // Without --output it goes to stdout
-            let out = run(&keystore, &["export-payload-key", "--index", "1", "--passphrase", "p"]).unwrap();
-            let printed: ExportedPayloadKey = serde_json::from_str(&out).unwrap();
+            let out = run(&keystore, &[
+                "export-payload-key",
+                "--index",
+                "1",
+                "--stdout",
+                "--passphrase",
+                "p",
+            ])
+            .unwrap();
+            let printed: ExportedPayloadKey = serde_json::Deserializer::from_str(&out)
+                .into_iter()
+                .next()
+                .unwrap()
+                .unwrap();
             assert_eq!(printed.private_key, export.private_key);
             fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
         }
@@ -925,6 +1006,47 @@ mod test {
             let err = sign(&payload, &["--require-payload-key", "--payload-key-index", "1"]);
             assert!(err.contains("integrity check failed"), "{err}");
             assert!(!output.exists());
+            fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
+        }
+
+        /// Once a payload key has been exported, `sign` refuses view key payloads unless told otherwise.
+        #[test]
+        fn exporting_a_payload_key_makes_signing_strict() {
+            let (keystore, _) = init_keystore("sticky");
+            let input = keystore.with_file_name("payload.json");
+            let output = keystore.with_file_name("signed.json");
+            let network = Network::get_current().to_string();
+            fs::write(&input, payload_with_memo(b"memo").to_json().unwrap()).unwrap();
+            let sign = |extra: &[&str]| {
+                let mut args = vec![
+                    "sign",
+                    "-i",
+                    input.to_str().unwrap(),
+                    "-o",
+                    output.to_str().unwrap(),
+                    "--passphrase",
+                    "p",
+                    "-n",
+                    &network,
+                ];
+                args.extend_from_slice(extra);
+                run(&keystore, &args).unwrap_err().to_string()
+            };
+            // Nothing exported: the view key is accepted, and the dummy signature is what fails
+            assert!(sign(&[]).contains("integrity check failed"));
+
+            run(&keystore, &[
+                "export-payload-key",
+                "--index",
+                "4",
+                "--stdout",
+                "--passphrase",
+                "p",
+            ])
+            .unwrap();
+            let err = sign(&[]);
+            assert!(err.contains("signed with the view key (shared key)"), "{err}");
+            assert!(sign(&["--allow-view-key"]).contains("integrity check failed"));
             fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
         }
     }

@@ -152,7 +152,8 @@ transaction_event_channel_size = 25000
 # When signing offline-signing payloads, refuse any payload that is not signed with a payload key: version 5 payloads
 # and payloads signed with the shared view key. See the minotari_offline_signer README. (default = false)
 #require_payload_key = false
-# The payload key indices accepted when `require_payload_key` is on. An empty list refuses every payload.
+# The payload key indices accepted when `require_payload_key` is on. An empty list refuses every payload. Setting any
+# index turns `require_payload_key` on.
 # (default = [])
 #accepted_payload_key_indices = [1]
 

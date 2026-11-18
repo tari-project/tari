@@ -78,6 +78,7 @@ use tari_transaction_key_manager::legacy_key_manager::{
 };
 use tari_utilities::{ByteArray, hex::Hex};
 use url::Url;
+use zeroize::Zeroizing;
 
 use crate::{
     base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
@@ -118,10 +119,15 @@ fn store_payload_auth_key<T: WalletBackend + 'static>(
     index: u64,
     private_key: PrivateKey,
 ) -> Result<(), WalletError> {
-    db.set_client_key_value(
-        PAYLOAD_AUTH_KEY.to_string(),
-        format!("{index}:{}", private_key.to_hex()),
-    )?;
+    let hex = Zeroizing::new(private_key.to_hex());
+    // shortcut: the value is handed to the database by value and is not zeroized after it is encrypted there; wiping
+    // it needs a client-value API that takes a zeroizing buffer.
+    db.set_client_key_value(PAYLOAD_AUTH_KEY.to_string(), format!("{index}:{}", *hex))?;
+    info!(
+        target: LOG_TARGET,
+        "Imported offline-signing payload key #{index} (public key {})",
+        CompressedPublicKey::from_secret_key(&private_key).to_hex()
+    );
     key_manager.set_payload_auth_key(Some((index, private_key)));
     Ok(())
 }
@@ -133,6 +139,10 @@ fn clear_payload_auth_key<T: WalletBackend + 'static>(
 ) -> Result<bool, WalletError> {
     let cleared = db.clear_client_value(PAYLOAD_AUTH_KEY.to_string())?;
     key_manager.set_payload_auth_key(None);
+    info!(
+        target: LOG_TARGET,
+        "Cleared the offline-signing payload key (one was stored: {cleared})"
+    );
     Ok(cleared)
 }
 
@@ -142,7 +152,10 @@ fn load_payload_auth_key<T: WalletBackend + 'static>(
     db: &WalletDatabase<T>,
     key_manager: &KeyManager,
 ) -> Result<(), WalletError> {
-    let Some(stored) = db.get_client_key_value(PAYLOAD_AUTH_KEY.to_string())? else {
+    let Some(stored) = db
+        .get_client_key_value(PAYLOAD_AUTH_KEY.to_string())?
+        .map(Zeroizing::new)
+    else {
         return Ok(());
     };
     let parsed = stored

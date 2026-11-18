@@ -192,7 +192,7 @@ fn deserialize_payload_key_id<'de, D: Deserializer<'de>>(deserializer: D) -> Res
 }
 
 /// The payload key file `minotari_offline_signer export-payload-key` writes and the console wallet's
-/// `import-payload-key` reads. Holds a private key, so it has no `Debug`.
+/// `import-payload-key` reads. Holds a private key, so it has no `Debug` and wipes the key when dropped.
 #[derive(Serialize, Deserialize)]
 pub struct ExportedPayloadKey {
     pub index: u64,
@@ -200,6 +200,12 @@ pub struct ExportedPayloadKey {
     pub private_key: String,
     /// Hex
     pub public_key: String,
+}
+
+impl Drop for ExportedPayloadKey {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.private_key);
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]

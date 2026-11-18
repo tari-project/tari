@@ -27,6 +27,7 @@ pub mod payload_summary;
 pub use models::PaymentRecipient;
 pub use offline_signer::{
     DEFAULT_PAYLOAD_LIFETIME,
+    MAX_PAYLOAD_LIFETIME,
     PayloadKeyPolicy,
     prepare_deposit_multisig_transaction,
     prepare_one_sided_transaction_for_signing,
@@ -3160,6 +3161,39 @@ mod test {
         )
         .unwrap_err();
         assert!(err.to_string().contains("expired"), "{err}");
+    }
+
+    #[test]
+    fn a_payload_valid_for_longer_than_the_maximum_is_refused() {
+        let (spend, view) = wallets(Some(1));
+        let payload = prepare(&spend, &view);
+        let max = crate::offline_signing::MAX_PAYLOAD_LIFETIME.as_secs();
+        for policy in [PayloadKeyPolicy::AcceptViewKey, require(&[1])] {
+            // As if the signer's clock were further back than the payload's lifetime allows
+            let now = payload.expires_at.saturating_sub(max);
+            verify_payload(&spend, &policy, &payload, now).unwrap();
+            let err = verify_payload(&spend, &policy, &payload, now.saturating_sub(1))
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("more than 168 hours from now"), "{err}");
+        }
+    }
+
+    /// Only a key derived from the spend key can vouch for a payload key claim, so a wallet that cannot derive one
+    /// (here view-only, as on a Ledger wallet) refuses every claim, even with the matching key imported, and still
+    /// verifies view key payloads.
+    #[test]
+    fn a_wallet_that_cannot_derive_refuses_payload_key_claims() {
+        let (spend, view) = wallets(Some(1));
+        let payload = prepare(&spend, &view);
+        let err = verify_payload(&view, &PayloadKeyPolicy::AcceptViewKey, &payload, unix_now())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot verify payload keys"), "{err}");
+
+        view.set_payload_auth_key(None);
+        let view_key_payload = prepare(&spend, &view);
+        verify_payload(&view, &PayloadKeyPolicy::AcceptViewKey, &view_key_payload, unix_now()).unwrap();
     }
 
     #[test]

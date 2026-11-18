@@ -68,6 +68,9 @@ use crate::{
 
 /// How long a prepared payload can be signed for when the caller does not say.
 pub const DEFAULT_PAYLOAD_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
+/// The longest a prepared payload can be signed for. The signer also refuses a payload that claims to stay valid for
+/// longer than this, so an abandoned payload cannot be kept signable indefinitely.
+pub const MAX_PAYLOAD_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 /// Which payload signatures the offline signer accepts.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -133,7 +136,14 @@ fn authenticate_payload<KM: TransactionKeyManagerInterface>(
     let payload_key_id = key_manager
         .get_payload_auth_key()
         .map(|index| TariKeyId::PayloadAuth { index });
-    let expires_at = unix_now().saturating_add(lifetime.unwrap_or(DEFAULT_PAYLOAD_LIFETIME).as_secs());
+    let lifetime = lifetime.unwrap_or(DEFAULT_PAYLOAD_LIFETIME);
+    if lifetime > MAX_PAYLOAD_LIFETIME {
+        return Err(TransactionBuilderError::Other(format!(
+            "A payload lifetime of more than {} hours is not allowed",
+            MAX_PAYLOAD_LIFETIME.as_secs() / 3600
+        )));
+    }
+    let expires_at = unix_now().saturating_add(lifetime.as_secs());
     let canonical = canonical(payload_key_id.as_ref(), expires_at)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
     let signing_key_id = payload_key_id.clone().unwrap_or(TariKeyId::ViewKey);
@@ -141,12 +151,23 @@ fn authenticate_payload<KM: TransactionKeyManagerInterface>(
     Ok((payload_key_id, expires_at, payload_signature))
 }
 
-/// Refuses a payload once `now` is past its `expires_at`, which is `None` for a version 5 payload (no expiry).
+/// Refuses a payload once `now` is past its `expires_at`, or when `expires_at` is further off than
+/// [`MAX_PAYLOAD_LIFETIME`]. `expires_at` is `None` for a version 5 payload (no expiry).
 pub(crate) fn check_payload_expiry(expires_at: Option<u64>, now: u64) -> Result<(), TransactionBuilderError> {
-    if let Some(expires_at) = expires_at.filter(|expires_at| now > *expires_at) {
+    let Some(expires_at) = expires_at else {
+        return Ok(());
+    };
+    if now > expires_at {
         return Err(TransactionBuilderError::Other(format!(
             "Payload refused: it expired at {}. Prepare it again.",
             format_unix_time(expires_at)
+        )));
+    }
+    if expires_at > now.saturating_add(MAX_PAYLOAD_LIFETIME.as_secs()) {
+        return Err(TransactionBuilderError::Other(format!(
+            "Payload refused: it expires at {}, more than {} hours from now, which no wallet sets.",
+            format_unix_time(expires_at),
+            MAX_PAYLOAD_LIFETIME.as_secs() / 3600
         )));
     }
     Ok(())
@@ -222,7 +243,8 @@ pub(crate) fn verify_payload<KM: TransactionKeyManagerInterface, P: OfflinePaylo
     check_payload_key_policy(policy, version, payload_key_id)?;
     let signing_pub = match payload_key_id {
         None => key_manager.get_view_key().pub_key,
-        Some(key_id @ TariKeyId::PayloadAuth { .. }) => key_manager.get_public_key_at_key_id(key_id)?,
+        // Derived from the spend key only: an imported key says nothing about who prepared the payload
+        Some(TariKeyId::PayloadAuth { index }) => key_manager.derive_payload_auth_public_key(*index)?,
         Some(_) => {
             return Err(TransactionBuilderError::Other(
                 "Payload refused: payload_key_id is not a payload key".to_string(),
@@ -434,14 +456,28 @@ pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKe
 // Sign functions (offline signer side) — verify payload integrity first
 // ---------------------------------------------------------------------------
 
+/// What the signing log line says about a payload besides its id: the key it claims to be signed with, its expiry and
+/// the policy. No key material.
+fn payload_log_context<P: OfflinePayload>(request: &P, policy: &PayloadKeyPolicy) -> String {
+    let signing_key = match request.payload_key_id() {
+        Some(TariKeyId::PayloadAuth { index }) => format!("payload key #{index}"),
+        _ => "view key".to_string(),
+    };
+    format!(
+        "signed with {signing_key}, expires at {}, policy {policy:?}",
+        request.expires_at()
+    )
+}
+
 /// Records whether an offline payload was signed, after the integrity and key-id checks have run.
 fn log_signing_outcome<T>(
     tx_id: TxId,
+    context: &str,
     result: Result<T, TransactionBuilderError>,
 ) -> Result<T, TransactionBuilderError> {
     match &result {
-        Ok(_) => info!(target: LOG_TARGET, "Offline payload {tx_id} signed"),
-        Err(e) => warn!(target: LOG_TARGET, "Offline payload {tx_id} not signed: {e}"),
+        Ok(_) => info!(target: LOG_TARGET, "Offline payload {tx_id} ({context}) signed"),
+        Err(e) => warn!(target: LOG_TARGET, "Offline payload {tx_id} ({context}) not signed: {e}"),
     }
     result
 }
@@ -455,8 +491,10 @@ pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
 ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
     let request = confirmed.into_payload();
     let tx_id = request.tx_id;
+    let context = payload_log_context(&request, policy);
     log_signing_outcome(
         tx_id,
+        &context,
         verify_and_sign_one_sided(key_manager, consensus_constants, network, request, policy),
     )
 }
@@ -490,8 +528,10 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
     let request = confirmed.into_payload();
     let tx_id = request.tx_id;
+    let context = payload_log_context(&request, policy);
     log_signing_outcome(
         tx_id,
+        &context,
         verify_and_sign_deposit_multisig(key_manager, consensus_constants, network, request, policy),
     )
 }
@@ -525,8 +565,10 @@ pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterf
 ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
     let request = confirmed.into_payload();
     let tx_id = request.tx_id;
+    let context = payload_log_context(&request, policy);
     log_signing_outcome(
         tx_id,
+        &context,
         verify_and_sign_withdraw_multisig(key_manager, consensus_constants, network, request, policy),
     )
 }
@@ -549,4 +591,28 @@ fn verify_and_sign_withdraw_multisig<KM: TransactionKeyManagerInterface>(
         request,
         signed_transaction,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::key_manager::KeyManager;
+
+    #[test]
+    fn a_lifetime_over_the_maximum_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let too_long = MAX_PAYLOAD_LIFETIME.saturating_add(Duration::from_secs(1));
+        let err = authenticate_payload(&key_manager, Some(too_long), |_, _| Ok(vec![1]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("more than 168 hours"), "{err}");
+        let (_, expires_at, _) =
+            authenticate_payload(&key_manager, Some(MAX_PAYLOAD_LIFETIME), |_, _| Ok(vec![1])).unwrap();
+        assert!(
+            expires_at >=
+                unix_now()
+                    .saturating_add(MAX_PAYLOAD_LIFETIME.as_secs())
+                    .saturating_sub(5)
+        );
+    }
 }
