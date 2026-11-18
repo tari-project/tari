@@ -688,26 +688,56 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     local: best_block_header.accumulated_data().total_accumulated_difficulty,
                 });
             }
-            // Our headers are ahead of our blocks, so the claim must be covered by our header chain
+            // Our headers are ahead of our blocks. No headers after the split hash means the split header is the
+            // peer's header tip, so the claim must be covered by the split header.
+            let Some(split_header) = self
+                .db
+                .fetch_chain_header_by_block_hash(chain_split_result.chain_split_hash)
+                .await?
+            else {
+                // The split hash is one of ours, so if it is gone our header chain rewound after we sent it
+                return Err(BlockHeaderSyncError::ChainChangedDuringSync);
+            };
+            let split_difficulty = split_header.accumulated_data().total_accumulated_difficulty;
             let claimed = sync_peer.claimed_chain_metadata().accumulated_difficulty();
-            if claimed > best_header.accumulated_data().total_accumulated_difficulty {
-                let header_tip = self.db.fetch_last_chain_header().await?;
-                let local = header_tip.accumulated_data().total_accumulated_difficulty;
-                if claimed > local {
-                    warn!(
+            if claimed > split_difficulty {
+                let local_metadata = self.db.get_chain_metadata().await?;
+                if claimed <= local_metadata.accumulated_difficulty() {
+                    debug!(
                         target: LOG_TARGET,
-                        "Peer `{}` did not provide any headers although they claim more work ({}) than our header \
-                         chain ({}). Peer will be banned.",
-                        sync_peer.node_id(),
-                        claimed,
-                        local,
+                        "Peer `{}` sent no headers, but our chain has reached their claim since sync started",
+                        sync_peer.node_id()
                     );
-                    return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                        claimed,
-                        actual: None,
-                        local,
-                    });
+                    return Err(BlockHeaderSyncError::ChainChangedDuringSync);
                 }
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer `{}` did not provide any headers although they claim more work ({}) than their header \
+                     tip at our fork hash index {} ({}). Peer will be banned.",
+                    sync_peer.node_id(),
+                    claimed,
+                    chain_split_result.peer_fork_hash_index,
+                    split_difficulty,
+                );
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                    claimed,
+                    actual: Some(split_difficulty),
+                    local: best_header.accumulated_data().total_accumulated_difficulty,
+                });
+            }
+            let claimed_height = sync_peer.claimed_chain_metadata().best_block_height();
+            if claimed_height > split_header.height() && split_difficulty <= claimed {
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainHeight {
+                    claimed: claimed_height,
+                    actual: split_header.height(),
+                });
+            }
+            if split_header.hash() != best_header.hash() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` sent no headers and their header tip is below ours", sync_peer.node_id()
+                );
+                return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
             }
             debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.node_id());
             return Ok((HeaderSyncStatus::InSyncOrAhead, chain_split_result));

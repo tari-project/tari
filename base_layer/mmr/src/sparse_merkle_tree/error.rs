@@ -9,6 +9,8 @@ use crate::sparse_merkle_tree::NodeKey;
 pub enum SMTError {
     #[error("Source data too short ({0})")]
     ArrayTooShort(usize),
+    #[error("Source data must be exactly 32 bytes (got {0})")]
+    ArrayWrongLength(usize),
     #[error("Invalid branch: {0}")]
     InvalidBranch(String),
     #[error("Tried to traverse to an invalid child key ({child_key}) at height {height} from parent {parent_key}.")]

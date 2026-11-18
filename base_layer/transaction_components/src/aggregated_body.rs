@@ -380,16 +380,26 @@ impl AggregateBody {
 
     pub fn check_output_features(&self, max_coinbase_metadata_size: u32) -> Result<(), TransactionError> {
         for output in self.outputs() {
-            if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
-                return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
-            }
+            Self::check_output_coinbase_extra(output, max_coinbase_metadata_size)?;
+        }
 
-            if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_metadata_size as usize {
-                return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
-                    len: output.features.coinbase_extra.len(),
-                    max: max_coinbase_metadata_size,
-                });
-            }
+        Ok(())
+    }
+
+    /// Only coinbase outputs may carry `coinbase_extra`, and at most `max_coinbase_extra_len` bytes of it.
+    pub fn check_output_coinbase_extra(
+        output: &TransactionOutput,
+        max_coinbase_extra_len: u32,
+    ) -> Result<(), TransactionError> {
+        if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
+            return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
+        }
+
+        if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_extra_len as usize {
+            return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
+                len: output.features.coinbase_extra.len(),
+                max: max_coinbase_extra_len,
+            });
         }
 
         Ok(())
