@@ -35,6 +35,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, UncompressedCommsPublicKey},
+    utils::text::sanitize_for_display,
 };
 use tari_utilities::hex::Hex;
 
@@ -42,6 +43,10 @@ use super::dns::DnsClientError;
 use crate::dns::DnsClient;
 
 const LOG_TARGET: &str = "tari::p2p::dns::client";
+
+/// The longest part of an unparsable seed record that is logged, in bytes. Unless DNSSEC is enabled, which it is not by
+/// default, the record is whatever the name server answered.
+const MAX_LOGGED_SEED_RECORD_BYTES: usize = 512;
 
 #[derive(Clone)]
 pub struct DnsSeedResolver {
@@ -84,10 +89,7 @@ impl DnsSeedResolver {
             .filter_map(|txt| {
                 txt.parse()
                     .inspect_err(|err| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Failed to parse DNS seed peer string: {txt}. Error: {err}"
-                        );
+                        warn!(target: LOG_TARGET, "{}", unparsable_seed_record_message(&txt, err));
                     })
                     .ok()
             })
@@ -97,8 +99,18 @@ impl DnsSeedResolver {
     }
 }
 
+/// The log text for a TXT record that is not a seed peer. The parse error is sanitised as well as the record, because
+/// it can quote part of the record (an unknown multiaddr protocol name, for example).
+fn unparsable_seed_record_message(txt: &str, err: &anyhow::Error) -> String {
+    format!(
+        "Failed to parse DNS seed peer string: {}. Error: {}",
+        sanitize_for_display(txt, MAX_LOGGED_SEED_RECORD_BYTES),
+        sanitize_for_display(&err.to_string(), MAX_LOGGED_SEED_RECORD_BYTES)
+    )
+}
+
 /// Parsed information from a DNS seed record
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct SeedPeer {
     pub public_key: CommsPublicKey,
@@ -124,17 +136,81 @@ impl TryFrom<String> for SeedPeer {
     }
 }
 
+const MAX_SEED_PEER_STR_LEN: usize = 1024;
+const MAX_SEED_ADDRESSES: usize = 10;
+const MAX_SEED_SPLIT_ATTEMPTS: usize = 20;
+
+fn parse_seed_addresses(mut rest: &str) -> Result<Vec<Multiaddr>, anyhow::Error> {
+    if rest.is_empty() {
+        return Err(anyhow!("Invalid address string: empty address"));
+    }
+    if rest.len() > MAX_SEED_PEER_STR_LEN {
+        return Err(anyhow!(
+            "Invalid address string: exceeds maximum length of {MAX_SEED_PEER_STR_LEN} bytes"
+        ));
+    }
+    if rest.ends_with("::") {
+        return Err(anyhow!("Invalid address string: trailing '::' delimiter"));
+    }
+    let mut addresses = Vec::new();
+    let mut split_attempts: usize = 0;
+    loop {
+        if addresses.len() >= MAX_SEED_ADDRESSES {
+            return Err(anyhow!(
+                "Invalid address string: exceeds maximum of {MAX_SEED_ADDRESSES} addresses"
+            ));
+        }
+        let mut split_at = None;
+        for (idx, _) in rest.char_indices() {
+            if let Some(remainder) = rest[idx..].strip_prefix("::") &&
+                remainder.starts_with('/')
+            {
+                let candidate = &rest[..idx];
+                if !candidate.is_empty() {
+                    split_attempts = split_attempts.saturating_add(1);
+                    if split_attempts > MAX_SEED_SPLIT_ATTEMPTS {
+                        return Err(anyhow!("Invalid address string: too many '::' split attempts"));
+                    }
+                    if let Ok(addr) = Multiaddr::from_str(candidate) &&
+                        !addr.is_empty()
+                    {
+                        split_at = Some((addr, remainder));
+                        break;
+                    }
+                }
+            }
+        }
+        if let Some((addr, remainder)) = split_at {
+            addresses.push(addr);
+            rest = remainder;
+        } else {
+            let addr = Multiaddr::from_str(rest).map_err(|e| anyhow!("Invalid address string:{e}"))?;
+            if addr.is_empty() {
+                return Err(anyhow!("Invalid address string: empty address"));
+            }
+            addresses.push(addr);
+            break;
+        }
+    }
+    Ok(addresses)
+}
+
 impl FromStr for SeedPeer {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() > MAX_SEED_PEER_STR_LEN {
+            return Err(anyhow!(
+                "Invalid seed peer string: exceeds maximum length of {MAX_SEED_PEER_STR_LEN} bytes"
+            ));
+        }
         let (part_a, part_b) = s
             .split_once("::")
             .ok_or_else(|| anyhow!("Invalid seed peer string, missing '::' delimiter"))?;
         let public_key = UncompressedCommsPublicKey::from_hex(part_a)
             .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{e}"))?];
+        let addresses = parse_seed_addresses(part_b)?;
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,
@@ -184,6 +260,8 @@ mod test {
     use super::*;
 
     mod peer_seed {
+        use std::time::{Duration, Instant};
+
         use super::*;
 
         #[test]
@@ -196,6 +274,25 @@ mod test {
             );
             assert_eq!(seed.addresses.len(), 1);
             assert_eq!(seed.addresses[0].to_string(), "/ip4/127.0.0.1/tcp/8000");
+        }
+
+        #[test]
+        fn it_parses_multiple_addresses_and_roundtrips_display() {
+            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
+                          ip6/::1/tcp/8001::/ip6/2001:db8::/tcp/8002::/onion3/\
+                          bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234";
+            let seed = SeedPeer::from_str(sample).unwrap();
+            assert_eq!(seed.addresses.len(), 4);
+            assert_eq!(seed.addresses[0].to_string(), "/ip4/127.0.0.1/tcp/8000");
+            assert_eq!(seed.addresses[1].to_string(), "/ip6/::1/tcp/8001");
+            assert_eq!(seed.addresses[2].to_string(), "/ip6/2001:db8::/tcp/8002");
+            assert_eq!(
+                seed.addresses[3].to_string(),
+                "/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234"
+            );
+            let formatted = seed.to_string();
+            assert_eq!(formatted, sample);
+            assert_eq!(SeedPeer::from_str(&formatted).unwrap(), seed);
         }
 
         #[test]
@@ -219,6 +316,101 @@ mod test {
         fn it_errors_invalid_address() {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/invalid/tcp/8000";
             SeedPeer::from_str(sample).unwrap_err();
+            let empty_addr = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::";
+            SeedPeer::from_str(empty_addr).unwrap_err();
+            let trailing_delim =
+                "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::";
+            SeedPeer::from_str(trailing_delim).unwrap_err();
+        }
+
+        #[test]
+        fn it_rejects_overlong_and_crafted_p2p_colon_payloads_quickly() {
+            let pk = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a";
+
+            let start = Instant::now();
+            let overlong_colons = format!("{pk}::/p2p/{}{}", "2".repeat(3000), "::".repeat(1500));
+            SeedPeer::from_str(&overlong_colons).unwrap_err();
+
+            let under_cap_colons = format!("{pk}::/p2p/{}{}", "2".repeat(400), "::".repeat(200));
+            assert!(under_cap_colons.len() <= MAX_SEED_PEER_STR_LEN);
+            SeedPeer::from_str(&under_cap_colons).unwrap_err();
+
+            let under_cap_slash_colons = format!("{pk}::/p2p/{}{}", "2".repeat(400), "::/".repeat(150));
+            assert!(under_cap_slash_colons.len() <= MAX_SEED_PEER_STR_LEN);
+            SeedPeer::from_str(&under_cap_slash_colons).unwrap_err();
+
+            let too_many_addrs = format!(
+                "{pk}::{}",
+                (0..=MAX_SEED_ADDRESSES)
+                    .map(|i| format!("/ip4/127.0.0.1/tcp/{}", 8000 + i))
+                    .collect::<Vec<_>>()
+                    .join("::")
+            );
+            SeedPeer::from_str(&too_many_addrs).unwrap_err();
+            assert!(start.elapsed() < Duration::from_millis(100));
+        }
+    }
+
+    mod unparsable_seed_record_message {
+        use super::*;
+
+        const KEY: &str = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a";
+
+        fn assert_display_safe(message: &str) {
+            for c in ['\u{1b}', '\r', '\n', '\u{0}', '\u{2028}'] {
+                assert!(!message.contains(c), "{c:?} reached the log: {message:?}");
+            }
+        }
+
+        /// A TXT record that is not a seed peer is logged, and it is whatever the name server answered.
+        #[test]
+        fn record_is_sanitised_before_it_is_logged() {
+            let record = "\r\u{1b}[2K\u{1b}[32m12:00 INFO  Seed peers verified\u{1b}[8m\n\u{0}\u{2028}";
+            let err = SeedPeer::from_str(record).unwrap_err();
+
+            let message = unparsable_seed_record_message(record, &err);
+
+            assert_display_safe(&message);
+            assert!(
+                message.contains("[2K[32m12:00 INFO  Seed peers verified[8m"),
+                "{message}"
+            );
+        }
+
+        /// The parse error quotes an unknown multiaddr protocol name, so it carries the record's bytes too.
+        #[test]
+        fn parse_error_is_sanitised_before_it_is_logged() {
+            let record = format!("{KEY}::/\u{1b}[2J\rforged/tcp/18189");
+            let err = SeedPeer::from_str(&record).unwrap_err();
+            assert!(err.to_string().contains('\u{1b}'), "{err}");
+
+            let message = unparsable_seed_record_message(&record, &err);
+
+            assert_display_safe(&message);
+        }
+
+        #[test]
+        fn long_record_is_cut() {
+            let record = "x".repeat(4 * MAX_LOGGED_SEED_RECORD_BYTES);
+            let err = SeedPeer::from_str(&record).unwrap_err();
+
+            let message = unparsable_seed_record_message(&record, &err);
+
+            assert!(message.len() < 2 * MAX_LOGGED_SEED_RECORD_BYTES, "{}", message.len());
+        }
+
+        /// An ordinary bad record reads exactly as before.
+        #[test]
+        fn ordinary_record_is_unchanged() {
+            let record = format!("{KEY}::/ip4/invalid/tcp/8000");
+            let err = SeedPeer::from_str(&record).unwrap_err();
+
+            let message = unparsable_seed_record_message(&record, &err);
+
+            assert_eq!(
+                message,
+                format!("Failed to parse DNS seed peer string: {record}. Error: {err}")
+            );
         }
     }
 

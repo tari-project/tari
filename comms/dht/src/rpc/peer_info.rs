@@ -41,37 +41,37 @@ pub struct UnvalidatedPeerInfo {
 
 impl UnvalidatedPeerInfo {
     pub fn from_peer_limited_claims(peer: Peer, max_claims: usize, max_addresses_per_claim: usize) -> Self {
-        let claims = peer
-            .addresses
-            .addresses()
-            .iter()
-            .filter_map(|addr| {
-                if addr.address().is_empty() {
-                    return None;
-                }
-
-                let claim = addr.source().peer_identity_claim()?;
-
-                if claim.addresses.len() > max_addresses_per_claim {
-                    return None;
-                }
-
-                // A stored claim may hold an address that we filtered out when we accepted it, or that an older
-                // version stored before addresses were checked. The claim is signed as a whole, so it cannot be
-                // trimmed: it is not relayed at all, as a receiving node may drop it or count it against us.
-                if claim
-                    .addresses
-                    .iter()
-                    .any(|address| validate_address_shape(address).is_err())
-                {
-                    return None;
-                }
-
-                Some(claim)
-            })
-            .take(max_claims)
-            .cloned()
-            .collect::<Vec<_>>();
+        // Not pre-sized: max_claims comes from the requester.
+        let mut claims: Vec<PeerIdentityClaim> = Vec::new();
+        // Every address taken from one claim stores its own copy of it, so each distinct claim is served once.
+        for addr in peer.addresses.addresses() {
+            if claims.len() >= max_claims {
+                break;
+            }
+            if addr.address().is_empty() {
+                continue;
+            }
+            let Some(claim) = addr.source().peer_identity_claim() else {
+                continue;
+            };
+            if claim.addresses.len() > max_addresses_per_claim {
+                continue;
+            }
+            // A stored claim may hold an address that we filtered out when we accepted it, or that an older
+            // version stored before addresses were checked. The claim is signed as a whole, so it cannot be
+            // trimmed: it is not relayed at all, as a receiving node may drop it or count it against us.
+            if claim
+                .addresses
+                .iter()
+                .any(|address| validate_address_shape(address).is_err())
+            {
+                continue;
+            }
+            if claims.contains(claim) {
+                continue;
+            }
+            claims.push(claim.clone());
+        }
 
         Self {
             public_key: peer.public_key,
@@ -179,7 +179,7 @@ impl TryFrom<JoinMessage> for UnvalidatedPeerInfo {
 mod test {
     #![allow(clippy::indexing_slicing)]
     use tari_comms::{
-        net_address::{MultiaddressesWithStats, PeerAddressSource},
+        net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{NodeIdentity, PeerFlags},
     };
 
@@ -243,5 +243,85 @@ mod test {
         let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5);
         assert_eq!(served.claims.len(), 1);
         assert_eq!(served.claims[0].addresses, vec![other]);
+    }
+
+    fn ip4_addresses(prefix: u8, count: u8) -> Vec<Multiaddr> {
+        (1..=count)
+            .map(|i| format!("/ip4/23.23.{prefix}.{i}/tcp/18189").parse().unwrap())
+            .collect()
+    }
+
+    /// Builds the stored address list directly, so each address keeps the claim it was given.
+    fn peer_with_claims(claims: &[Vec<Multiaddr>]) -> (Peer, Vec<PeerIdentityClaim>) {
+        let node_identity =
+            NodeIdentity::random(&mut rand::rng(), claims[0][0].clone(), PeerFeatures::COMMUNICATION_NODE);
+        let mut stored = Vec::new();
+        let mut sources = Vec::new();
+        for addresses in claims {
+            let source = claim_source(addresses.clone());
+            sources.push(source.peer_identity_claim().unwrap().clone());
+            stored.extend(
+                addresses
+                    .iter()
+                    .map(|address| MultiaddrWithStats::new(address.clone(), source.clone())),
+            );
+        }
+        let peer = Peer::new(
+            node_identity.public_key().clone(),
+            node_identity.node_id().clone(),
+            MultiaddressesWithStats::new(stored),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            vec![],
+            String::new(),
+        );
+        (peer, sources)
+    }
+
+    #[test]
+    fn serving_sends_a_claim_covering_several_addresses_once() {
+        let node_identity = NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            ip4_addresses(1, 5),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        let peer = node_identity.to_peer();
+        let stored = peer.addresses.addresses()[0]
+            .source()
+            .peer_identity_claim()
+            .unwrap()
+            .clone();
+
+        let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5);
+
+        assert_eq!(served.claims, vec![stored]);
+        assert_eq!(served.claims[0].addresses.len(), 5);
+    }
+
+    #[test]
+    fn serving_accepts_the_largest_claim_limit() {
+        let (peer, claims) = peer_with_claims(&[ip4_addresses(1, 1)]);
+
+        let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, usize::MAX, 5);
+
+        assert_eq!(served.claims, claims);
+    }
+
+    #[test]
+    fn serving_does_not_push_out_a_second_claim_with_copies_of_the_first() {
+        let (peer, claims) = peer_with_claims(&[ip4_addresses(1, 3), ip4_addresses(2, 1)]);
+
+        let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, 2, 5);
+
+        assert_eq!(served.claims, claims);
+    }
+
+    #[test]
+    fn serving_limits_the_number_of_distinct_claims() {
+        let (peer, claims) = peer_with_claims(&[ip4_addresses(1, 2), ip4_addresses(2, 2), ip4_addresses(3, 2)]);
+
+        let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, 2, 5);
+
+        assert_eq!(served.claims, claims[..2]);
     }
 }

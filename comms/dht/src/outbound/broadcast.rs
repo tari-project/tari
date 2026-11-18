@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, task::Poll, time::Duration};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
+    task::Poll,
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 use futures::{
@@ -39,7 +44,7 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey},
 };
 use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, time::Instant};
 use tower::{Service, ServiceExt, layer::Layer};
 
 use super::{error::DhtOutboundError, message::DhtOutboundRequest};
@@ -47,6 +52,7 @@ use crate::{
     DhtConfig,
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
+    config::{FORWARD_BUDGET_FACTOR, FORWARD_SOURCE_BUDGET_FACTOR},
     crypt,
     dedup,
     discovery::DhtDiscoveryRequester,
@@ -68,12 +74,163 @@ const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
 /// How long a message this node sends stays valid (its `expires`).
 pub(crate) const MESSAGE_VALIDITY_WINDOW: Duration = Duration::from_secs(3 * 60 * 60);
 
+/// Caps how many messages of other peers this node forwards (sends under their original header), so that relaying for
+/// others never takes it over a neighbour's forwarded-traffic flood limit, and so that a few sources cannot use up the
+/// forwarding that other sources need. Per `flood_ban_timespan`:
+/// - each source (the peer that delivered the messages to this node) gets `FORWARD_SOURCE_BUDGET_FACTOR` x
+///   `flood_ban_max_msg_count` forwarded messages, each counted once however many peers it goes to;
+/// - each peer gets at most `FORWARD_BUDGET_FACTOR` x `flood_ban_max_msg_count` forwarded messages. Until it has had
+///   `CONTENDED_PERCENT` of that, any source may use it. From then on it is shared fairly: a source is let through only
+///   while it has sent the peer fewer than the budget / (active sources + 1). The heaviest sources stop first, and the
+///   extra share stays free for a source that has sent little or nothing, so low-rate sources still get through while a
+///   few others flood the same peer. The first `CONTENDED_PERCENT` is first come, first served, so this protects
+///   low-rate sources against at most `FORWARD_BUDGET_FACTOR` flooding sources: `FORWARD_BUDGET_FACTOR` + 1 directly
+///   connected sources flooding the same peer can still use up its budget.
+///
+/// Messages this node originates are not capped.
+pub(crate) struct ForwardBudget {
+    max_count: usize,
+    window: Duration,
+    state: Mutex<ForwardBudgetState>,
+}
+
+/// The share of a peer's forwarding budget after which it is split fairly between sources
+const CONTENDED_PERCENT: usize = 80;
+
+#[derive(Default)]
+struct ForwardBudgetState {
+    /// When forwarded messages were sent to each peer within the window, oldest first, in total and by source
+    to_peer: HashMap<NodeId, PeerForwards>,
+    /// When each source's forwarded messages were sent within the window, oldest first
+    from_source: HashMap<NodeId, VecDeque<Instant>>,
+    pruned_at: Option<Instant>,
+    /// Forwarded messages dropped since the last log line, by source
+    dropped: HashMap<NodeId, usize>,
+    logged_at: Option<Instant>,
+}
+
+#[derive(Default)]
+struct PeerForwards {
+    sent: VecDeque<Instant>,
+    by_source: HashMap<NodeId, VecDeque<Instant>>,
+}
+
+/// Drops the times before `since`. `None` (the clock started less than a window ago, as it does at boot on Windows)
+/// keeps them all.
+fn trim(sent: &mut VecDeque<Instant>, since: Option<Instant>) {
+    while sent.front().is_some_and(|t| since.is_some_and(|since| *t < since)) {
+        sent.pop_front();
+    }
+}
+
+impl ForwardBudget {
+    pub(crate) fn new(config: &DhtConfig) -> Self {
+        Self {
+            max_count: config.flood_ban_max_msg_count,
+            window: config.flood_ban_timespan,
+            state: Mutex::default(),
+        }
+    }
+
+    /// Keeps the peers that a message from `source` can still be forwarded to in this window, and uses up its budget
+    fn take(&self, source: &NodeId, peers: &mut Vec<NodeId>) {
+        let max_per_peer = self.max_count.saturating_mul(FORWARD_BUDGET_FACTOR);
+        let contended_at = max_per_peer.saturating_mul(CONTENDED_PERCENT) / 100;
+        let now = Instant::now();
+        let since = now.checked_sub(self.window);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let state = &mut *state;
+        if state
+            .pruned_at
+            .is_none_or(|at| now.saturating_duration_since(at) >= self.window)
+        {
+            state.to_peer.retain(|_, forwards| {
+                forwards.by_source.retain(|_, sent| {
+                    trim(sent, since);
+                    !sent.is_empty()
+                });
+                trim(&mut forwards.sent, since);
+                !forwards.sent.is_empty()
+            });
+            state.from_source.retain(|_, sent| {
+                trim(sent, since);
+                !sent.is_empty()
+            });
+            state.pruned_at = Some(now);
+        }
+        let num_before = peers.len();
+        let from_source = state.from_source.entry(source.clone()).or_default();
+        trim(from_source, since);
+        if from_source.len() >= self.max_count.saturating_mul(FORWARD_SOURCE_BUDGET_FACTOR) {
+            peers.clear();
+        } else {
+            peers.retain(|peer| {
+                let forwards = state.to_peer.entry(peer.clone()).or_default();
+                trim(&mut forwards.sent, since);
+                if forwards.sent.len() >= max_per_peer {
+                    return false;
+                }
+                if forwards.sent.len() >= contended_at {
+                    forwards.by_source.retain(|_, sent| {
+                        trim(sent, since);
+                        !sent.is_empty()
+                    });
+                    let num_active = forwards
+                        .by_source
+                        .len()
+                        .saturating_add(usize::from(!forwards.by_source.contains_key(source)));
+                    // At least 1, so that a small budget split many ways still lets each source through
+                    let fair_share = max_per_peer
+                        .checked_div(num_active.saturating_add(1))
+                        .unwrap_or(0)
+                        .max(1);
+                    if forwards.by_source.get(source).map_or(0, VecDeque::len) >= fair_share {
+                        return false;
+                    }
+                }
+                forwards.sent.push_back(now);
+                forwards.by_source.entry(source.clone()).or_default().push_back(now);
+                true
+            });
+            if !peers.is_empty() {
+                state.from_source.entry(source.clone()).or_default().push_back(now);
+            }
+        }
+        let num_dropped = num_before.saturating_sub(peers.len());
+        if num_dropped > 0 {
+            let dropped = state.dropped.entry(source.clone()).or_default();
+            *dropped = dropped.saturating_add(num_dropped);
+        }
+        if !state.dropped.is_empty() &&
+            state
+                .logged_at
+                .is_none_or(|at| now.saturating_duration_since(at) >= self.window)
+        {
+            let total = state.dropped.values().fold(0usize, |acc, n| acc.saturating_add(*n));
+            if let Some((top_source, top_dropped)) = state.dropped.iter().max_by_key(|(_, n)| **n) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Dropped {} forwarded message(s) over the forwarding budget in the last {:.0?}, {} of them from \
+                     source `{}`",
+                    total,
+                    self.window,
+                    top_dropped,
+                    top_source
+                );
+            }
+            state.dropped.clear();
+            state.logged_at = Some(now);
+        }
+    }
+}
+
 pub struct BroadcastLayer {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
     message_validity_window: chrono::Duration,
     protocol_version: DhtProtocolVersion,
+    forward_budget: Arc<ForwardBudget>,
 }
 
 impl BroadcastLayer {
@@ -90,6 +247,7 @@ impl BroadcastLayer {
             message_validity_window: chrono::Duration::from_std(MESSAGE_VALIDITY_WINDOW)
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
+            forward_budget: Arc::new(ForwardBudget::new(config)),
         }
     }
 }
@@ -105,6 +263,7 @@ impl<S> Layer<S> for BroadcastLayer {
             self.dht_discovery_requester.clone(),
             self.message_validity_window,
             self.protocol_version,
+            self.forward_budget.clone(),
         )
     }
 }
@@ -119,16 +278,18 @@ pub struct BroadcastMiddleware<S> {
     node_identity: Arc<NodeIdentity>,
     message_validity_window: chrono::Duration,
     protocol_version: DhtProtocolVersion,
+    forward_budget: Arc<ForwardBudget>,
 }
 
 impl<S> BroadcastMiddleware<S> {
-    pub fn new(
+    pub(crate) fn new(
         service: S,
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
         message_validity_window: chrono::Duration,
         protocol_version: DhtProtocolVersion,
+        forward_budget: Arc<ForwardBudget>,
     ) -> Self {
         Self {
             next_service: service,
@@ -137,6 +298,7 @@ impl<S> BroadcastMiddleware<S> {
             node_identity,
             message_validity_window,
             protocol_version,
+            forward_budget,
         }
     }
 }
@@ -164,6 +326,7 @@ where
                 msg,
                 self.message_validity_window,
                 self.protocol_version,
+                self.forward_budget.clone(),
             )
             .handle(),
         )
@@ -178,6 +341,7 @@ struct BroadcastTask<S> {
     request: Option<DhtOutboundRequest>,
     message_validity_window: chrono::Duration,
     protocol_version: DhtProtocolVersion,
+    forward_budget: Arc<ForwardBudget>,
 }
 type FinalMessageParts = (Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes);
 
@@ -192,6 +356,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         request: DhtOutboundRequest,
         message_validity_window: chrono::Duration,
         protocol_version: DhtProtocolVersion,
+        forward_budget: Arc<ForwardBudget>,
     ) -> Self {
         Self {
             service,
@@ -201,6 +366,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             request: Some(request),
             message_validity_window,
             protocol_version,
+            forward_budget,
         }
     }
 
@@ -265,6 +431,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             is_discovery_enabled,
             force_origin,
             dht_header,
+            forwarded_from,
             debug_info: _,
             tag,
         } = params;
@@ -325,6 +492,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         dht_message_type,
                         encryption,
                         dht_header,
+                        forwarded_from,
                         dht_message_flags,
                         force_origin,
                         is_broadcast,
@@ -402,11 +570,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     async fn generate_send_messages(
         &mut self,
-        selected_peers: Vec<NodeId>,
+        mut selected_peers: Vec<NodeId>,
         destination: NodeDestination,
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,
         custom_header: Option<DhtMessageHeader>,
+        forwarded_from: Option<NodeId>,
         extra_flags: DhtMessageFlags,
         force_origin: bool,
         is_broadcast: bool,
@@ -427,6 +596,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             body,
         )?;
 
+        // Another peer's message being forwarded: only peers with forwarding budget left for its source get it
+        if let Some(source) = &forwarded_from {
+            self.forward_budget.take(source, &mut selected_peers);
+        }
+
         // A message sent with an existing header is being forwarded: the inbound path already recorded its key, and
         // the signature that key needs is in that header, not in `message_signature`.
         if is_broadcast && custom_header.is_none() {
@@ -438,7 +612,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             } else {
                 None
             };
-            let hash = dedup::message_key(sig_canonical, dht_flags, &body, decoded_body.as_ref());
+            let hash = dedup::message_key(sig_canonical, dht_message_type, dht_flags, &body, decoded_body.as_ref());
             self.add_to_dedup_cache(hash, expires_epochtime, is_signed).await?;
         }
 
@@ -591,7 +765,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{iter::repeat_with, time::Duration};
 
     use tari_comms::{
         multiaddr::Multiaddr,
@@ -660,6 +834,7 @@ mod test {
             dht_discover_requester,
             chrono::Duration::seconds(10800),
             DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
         assert_send_static_service(&service);
         let (reply_tx, _reply_rx) = oneshot::channel();
@@ -681,6 +856,163 @@ mod test {
                 .any(|msg| msg.destination_node_id == example_peer.node_id)
         );
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
+    }
+
+    fn budget(max_count: usize) -> (DhtConfig, ForwardBudget) {
+        let config = DhtConfig {
+            flood_ban_max_msg_count: max_count,
+            ..Default::default()
+        };
+        let budget = ForwardBudget::new(&config);
+        (config, budget)
+    }
+
+    fn take(budget: &ForwardBudget, source: &NodeId, peers: &[&NodeId]) -> Vec<NodeId> {
+        let mut peers = peers.iter().map(|p| (*p).clone()).collect();
+        budget.take(source, &mut peers);
+        peers
+    }
+
+    /// Without a window start (the clock started less than a window ago, as at boot on Windows) nothing is trimmed
+    #[test]
+    fn trim_keeps_everything_without_a_window_start() {
+        let now = Instant::now();
+        let mut sent = VecDeque::from([now, now]);
+        trim(&mut sent, None);
+        assert_eq!(sent.len(), 2);
+        trim(&mut sent, now.checked_add(Duration::from_secs(1)));
+        assert!(sent.is_empty());
+    }
+
+    /// A source's budget is charged once per forwarded message, however many peers it goes to
+    #[tokio::test(start_paused = true)]
+    async fn forwarding_is_charged_once_per_message() {
+        let (config, budget) = budget(1);
+        let peers = repeat_with(|| make_peer().node_id).take(6).collect::<Vec<_>>();
+        let peer_refs = peers.iter().collect::<Vec<_>>();
+        let source = make_peer().node_id;
+
+        assert_eq!(take(&budget, &source, &peer_refs), peers);
+        // The source's one message for this window is used up
+        assert!(take(&budget, &source, &peer_refs).is_empty());
+
+        tokio::time::advance(config.flood_ban_timespan + Duration::from_secs(1)).await;
+        assert_eq!(take(&budget, &source, &peer_refs), peers);
+    }
+
+    /// While a peer has budget to spare, no source is held to a share of it
+    #[tokio::test(start_paused = true)]
+    async fn forwarding_is_not_throttled_without_contention() {
+        let max_count = 10;
+        let (_, budget) = budget(max_count);
+        let peer = make_peer().node_id;
+        for source in repeat_with(|| make_peer().node_id).take(9) {
+            assert_eq!(take(&budget, &source, &[&peer]), vec![peer.clone()]);
+        }
+        // Far more than a fair share of the 10 sources, but the peer's budget is not contended
+        let heavy = make_peer().node_id;
+        for _ in 0..max_count {
+            assert_eq!(take(&budget, &heavy, &[&peer]), vec![peer.clone()]);
+        }
+    }
+
+    /// Sources flooding one peer up to their limits are held to a fair share once its budget is contended, leaving
+    /// room for a low-rate source, and the peer's total is never exceeded
+    #[tokio::test(start_paused = true)]
+    async fn heavy_sources_do_not_starve_a_low_rate_source() {
+        let max_count = 10;
+        let (_, budget) = budget(max_count);
+        let peer = make_peer().node_id;
+        let heavy = repeat_with(|| make_peer().node_id)
+            .take(FORWARD_BUDGET_FACTOR)
+            .collect::<Vec<_>>();
+        let mut sent = 0usize;
+        for _ in 0..max_count {
+            for source in &heavy {
+                sent = sent.saturating_add(take(&budget, source, &[&peer]).len());
+            }
+        }
+        assert!(sent < max_count * FORWARD_BUDGET_FACTOR);
+
+        assert_eq!(take(&budget, &make_peer().node_id, &[&peer]), vec![peer]);
+    }
+
+    #[tokio::test]
+    async fn the_forwarding_budget_applies_only_to_forwarded_messages() {
+        let node_identity = Arc::new(NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        let peer = make_peer();
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
+        let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
+        dht_mock
+            .get_shared_state()
+            .set_select_peers_response(vec![peer.clone()]);
+        task::spawn(dht_mock.run());
+        let spy = service_spy();
+        let config = DhtConfig {
+            flood_ban_max_msg_count: 1,
+            ..Default::default()
+        };
+        let mut service = BroadcastMiddleware::new(
+            spy.to_service::<PipelineError>(),
+            node_identity.clone(),
+            dht_requester,
+            dht_discover_requester,
+            chrono::Duration::seconds(10800),
+            DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&config)),
+        );
+        let source = make_peer().node_id;
+        let header = DhtMessageHeader {
+            version: DhtProtocolVersion::latest(),
+            destination: NodeDestination::Unknown,
+            message_signature: Vec::new(),
+            ephemeral_public_key: None,
+            message_type: DhtMessageType::None,
+            flags: DhtMessageFlags::NONE,
+            message_tag: MessageTag::new(),
+            expires: None,
+        };
+
+        for _ in 0..=FORWARD_BUDGET_FACTOR {
+            let (reply_tx, _reply_rx) = oneshot::channel();
+            service
+                .call(DhtOutboundRequest::SendMessage(
+                    Box::new(
+                        SendMessageParams::new()
+                            .propagate(NodeDestination::Unknown, vec![])
+                            .with_dht_header(header.clone())
+                            .forwarded_from(source.clone())
+                            .finish(),
+                    ),
+                    b"forwarded".as_slice().into(),
+                    reply_tx,
+                ))
+                .await
+                .unwrap();
+        }
+        // One forwarded message from one source to one peer per window
+        assert_eq!(spy.call_count(), 1);
+
+        for _ in 0..=FORWARD_BUDGET_FACTOR {
+            let (reply_tx, _reply_rx) = oneshot::channel();
+            service
+                .call(DhtOutboundRequest::SendMessage(
+                    Box::new(
+                        SendMessageParams::new()
+                            .propagate(NodeDestination::Unknown, vec![])
+                            .finish(),
+                    ),
+                    b"own".as_slice().into(),
+                    reply_tx,
+                ))
+                .await
+                .unwrap();
+        }
+        assert_eq!(spy.call_count(), FORWARD_BUDGET_FACTOR + 2);
     }
 
     #[tokio::test]
@@ -705,6 +1037,7 @@ mod test {
             dht_discover_requester,
             chrono::Duration::seconds(10800),
             DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -753,6 +1086,7 @@ mod test {
             dht_discover_requester,
             chrono::Duration::seconds(10800),
             DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 

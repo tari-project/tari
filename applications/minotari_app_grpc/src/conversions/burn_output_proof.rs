@@ -1,7 +1,10 @@
 // Copyright 2026 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
+use tari_common_types::{
+    burn_proof::MAX_MMR_PROOF_HASHES,
+    types::{CompressedCommitment, CompressedPublicKey},
+};
 use tari_sidechain::{BurnOutputProof, FixedHash, MmrInclusionProof, OutputHashPreimage};
 use tari_utilities::ByteArray;
 
@@ -56,6 +59,14 @@ impl TryFrom<grpc::MmrInclusionProof> for MmrInclusionProof {
     type Error = String;
 
     fn try_from(proof: grpc::MmrInclusionProof) -> Result<Self, Self::Error> {
+        for (field, hashes) in [("path", &proof.path), ("peaks", &proof.peaks)] {
+            if hashes.len() > MAX_MMR_PROOF_HASHES {
+                return Err(format!(
+                    "MMR proof {field} has {} hashes, the maximum is {MAX_MMR_PROOF_HASHES}",
+                    hashes.len()
+                ));
+            }
+        }
         Ok(Self {
             leaf_index: proof.leaf_index,
             mmr_size: proof.mmr_size,
@@ -150,5 +161,25 @@ mod tests {
         };
         let grpc_proof = grpc::BurnOutputProof::from(proof.clone());
         assert_eq!(BurnOutputProof::try_from(grpc_proof).unwrap(), proof);
+    }
+
+    #[test]
+    fn it_caps_mmr_proof_hashes() {
+        let proof = |path_len: usize, peaks_len: usize| grpc::MmrInclusionProof {
+            leaf_index: 0,
+            mmr_size: 1,
+            path: vec![vec![1u8; 32]; path_len],
+            peaks: vec![vec![2u8; 32]; peaks_len],
+        };
+        let max = MAX_MMR_PROOF_HASHES;
+        MmrInclusionProof::try_from(proof(max, max)).unwrap();
+        assert_eq!(
+            MmrInclusionProof::try_from(proof(max + 1, 0)).unwrap_err(),
+            "MMR proof path has 65 hashes, the maximum is 64"
+        );
+        assert_eq!(
+            MmrInclusionProof::try_from(proof(0, max + 1)).unwrap_err(),
+            "MMR proof peaks has 65 hashes, the maximum is 64"
+        );
     }
 }

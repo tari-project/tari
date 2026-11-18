@@ -122,7 +122,7 @@ impl HeaderSyncState {
             shared.connectivity.clone(),
             &mut self.sync_peers,
             shared.randomx_factory.clone(),
-            &self.local_metadata,
+            self.local_metadata.clone(),
             &mut chain_changes,
         );
 

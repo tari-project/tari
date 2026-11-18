@@ -106,10 +106,29 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 1 hour
     #[serde(with = "serializers::seconds")]
     pub on_connect_resync_ttl: Duration,
+    /// The longest one OnConnect peer sync may take, however its peer paces the stream. A sync that runs out is
+    /// retried after the failed-sync backoff. Between 5 seconds and 5 minutes.
+    /// Default: 30 seconds
+    #[serde(with = "serializers::seconds")]
+    pub on_connect_sync_timeout: Duration,
     /// The maximum number of connected non-client peers to request peers from during a rebootstrap. Outbound
     /// connections are used first, inbound ones only for the remaining slots. At most 20.
     /// Default: 5
     pub rebootstrap_connected_peers: usize,
+    /// The most new peer records one directly connected peer may have stored within `source_budget_window` through
+    /// Join and Discovery gossip, and separately through OnConnect peer sync. New records past this are dropped (and
+    /// OnConnect stops syncing). Also the most peers stored from one source in a rebootstrap. At least 1.
+    /// Default: 50
+    pub max_stored_per_source: usize,
+    /// The sliding window over which `max_stored_per_source` applies. At least 1 minute.
+    /// Default: 1 hour
+    #[serde(with = "serializers::seconds")]
+    pub source_budget_window: Duration,
+    /// How long a peer synced from in a discovery round is left out of the following rounds' selection. These peers
+    /// are also forgotten after a rebootstrap, and at most 1000 are remembered.
+    /// Default: 1 hour
+    #[serde(with = "serializers::seconds")]
+    pub attempted_peers_ttl: Duration,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -132,7 +151,11 @@ impl Default for NetworkDiscoveryConfig {
             bootstrap_rpc_streaming_timeout: Duration::from_secs(5),
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
             on_connect_resync_ttl: Duration::from_secs(60 * 60),
+            on_connect_sync_timeout: Duration::from_secs(30),
             rebootstrap_connected_peers: 5,
+            max_stored_per_source: 50,
+            source_budget_window: Duration::from_secs(60 * 60),
+            attempted_peers_ttl: Duration::from_secs(60 * 60),
         }
     }
 }

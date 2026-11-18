@@ -268,14 +268,12 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
             },
         };
-        for peer in force_sync_peers {
-            comms
-                .peer_manager()
-                .add_or_update_peer(peer)
-                .await
-                .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
-        }
-        for peer in monitored_peers {
+        for peer in force_sync_peers.into_iter().chain(monitored_peers) {
+            // Shared configs often list every node, this one included, which peer storage refuses to store
+            if peer.public_key == *comms.node_identity().public_key() {
+                debug!(target: LOG_TARGET, "Ignoring this node [{peer}] in its configured sync/monitored peers");
+                continue;
+            }
             comms
                 .peer_manager()
                 .add_or_update_peer(peer)

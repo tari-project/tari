@@ -110,7 +110,7 @@ impl DiscoveryReady {
                 return Ok(StateEvent::Idle);
             }
 
-            let excluded_peers = self.context.all_attempted_peers.read().await.clone();
+            let excluded_peers = self.context.recently_attempted_peers().await;
             // Use helper to get peers
             let peers_for_discovery =
                 select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
@@ -134,10 +134,9 @@ impl DiscoveryReady {
                 "First active round (current_num_rounds = 0) and num_peers ({num_peers}) >= min_desired_peers ({min_desired_peers}). Forcing DHT discovery."
             );
 
-            let peers_for_discovery = {
-                let excluded_peers = self.context.all_attempted_peers.read().await;
-                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?
-            };
+            let excluded_peers = self.context.recently_attempted_peers().await;
+            let peers_for_discovery =
+                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
 
             if peers_for_discovery.is_empty() {
                 debug!(
@@ -213,7 +212,7 @@ impl DiscoveryReady {
         // - last_round_info_option showed new peers or failed (and the new SeedStrap success condition above wasn't
         //   met), AND
         // - idle_after_num_rounds not yet reached.
-        let excluded_peers = self.context.all_attempted_peers.read().await.clone();
+        let excluded_peers = self.context.recently_attempted_peers().await;
         let last_round_info_exists = last_round_info_option.is_some();
         debug!(
             target: LOG_TARGET,

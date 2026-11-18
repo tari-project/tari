@@ -55,8 +55,9 @@ impl<T> DomainMessage<T> {
         (pk, inner)
     }
 
-    /// Returns the public key that sent this message. If no origin is specified, then the source peer
-    /// sent this message.
+    /// Returns the public key that signed this message, or the direct source peer if it is unsigned. A signed
+    /// message is not bound to a recipient and may be replayed by anyone until it expires, so this is not necessarily
+    /// the peer that sent it now; consumers that dial or reply to the origin must tolerate replay.
     pub fn origin_public_key(&self) -> &CommsPublicKey {
         self.authenticated_origin
             .as_ref()

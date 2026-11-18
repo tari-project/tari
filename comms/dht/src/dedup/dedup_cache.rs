@@ -72,12 +72,13 @@ const DELETE_EXPIRED_SQL: &str = "DELETE FROM dedup_cache WHERE id IN (SELECT id
 const DELETE_OLDEST_SQL: &str = "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache WHERE is_signed = $1 \
                                  ORDER BY last_hit_at ASC LIMIT $2)";
 /// Inserts a hit for body hash `$1` from `$2` at `$3`, or counts another hit on the existing entry, keeping the later
-/// `keep_until` (`$4`). `$5` is whether the message is signed. Returns the hit count.
+/// `keep_until` (`$4`) and the first sender. `$5` is whether the message is signed. Returns the hit count and whether
+/// `$2` is the first sender.
 const UPSERT_HIT_SQL: &str = "INSERT INTO dedup_cache (body_hash, sender_public_key, number_of_hits, last_hit_at, \
                               keep_until, is_signed) VALUES ($1, $2, 1, $3, $4, $5) ON CONFLICT(body_hash) DO UPDATE \
-                              SET sender_public_key = excluded.sender_public_key, number_of_hits = number_of_hits + \
-                              1, last_hit_at = excluded.last_hit_at, keep_until = MAX(keep_until, \
-                              excluded.keep_until) RETURNING number_of_hits";
+                              SET number_of_hits = number_of_hits + 1, last_hit_at = excluded.last_hit_at, keep_until \
+                              = MAX(keep_until, excluded.keep_until) RETURNING number_of_hits, sender_public_key = $2 \
+                              AS from_first_sender";
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
@@ -123,16 +124,17 @@ impl DedupCacheDatabase {
     }
 
     /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
-    /// hash. `expires` is the message's expiry and `is_signed` whether it carries a signature.
+    /// hash, and whether `public_key` is the peer that first delivered it. `expires` is the message's expiry and
+    /// `is_signed` whether it carries a signature.
     pub fn add_msg_hash(
         &self,
         msg_hash: &[u8],
         public_key: &CommsPublicKey,
         expires: Option<EpochTime>,
         is_signed: bool,
-    ) -> Result<u32, StorageError> {
+    ) -> Result<(u32, bool), StorageError> {
         let keep_until = self.keep_until(Utc::now().naive_utc(), expires, is_signed);
-        let hit_count =
+        let (hit_count, from_first_sender) =
             self.insert_body_hash_or_update_stats(&to_hex(msg_hash), &public_key.to_hex(), keep_until, is_signed)?;
 
         if hit_count == 0 {
@@ -149,7 +151,7 @@ impl DedupCacheDatabase {
                 warn!(target: LOG_TARGET, "Unable to trim message dedup cache: {err:?}");
             }
         }
-        Ok(hit_count)
+        Ok((hit_count, from_first_sender))
     }
 
     /// How long to keep an entry hit at `now`: until the message expires plus clock slack, but no less than the
@@ -289,18 +291,21 @@ impl DedupCacheDatabase {
         }
     }
 
-    /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
+    /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash and
+    /// whether `public_key` is its first sender.
     fn insert_body_hash_or_update_stats(
         &self,
         body_hash: &str,
         public_key: &str,
         keep_until: NaiveDateTime,
         is_signed: bool,
-    ) -> Result<u32, StorageError> {
+    ) -> Result<(u32, bool), StorageError> {
         #[derive(QueryableByName)]
         struct Hits {
             #[diesel(sql_type = sql_types::Integer)]
             number_of_hits: i32,
+            #[diesel(sql_type = sql_types::Bool)]
+            from_first_sender: bool,
         }
 
         let mut conn = self.connection.get_pooled_connection()?;
@@ -313,8 +318,8 @@ impl DedupCacheDatabase {
             .bind::<sql_types::Timestamp, _>(keep_until)
             .bind::<sql_types::Bool, _>(is_signed)
             .load::<Hits>(&mut conn)?;
-        let hits = match rows.as_slice() {
-            [row] => row.number_of_hits,
+        let (hits, from_first_sender) = match rows.as_slice() {
+            [row] => (row.number_of_hits, row.from_first_sender),
             _ => {
                 return Err(StorageError::UnexpectedResult(format!(
                     "Expected exactly one dedup row to be upserted. Got {}",
@@ -323,7 +328,7 @@ impl DedupCacheDatabase {
             },
         };
         #[allow(clippy::cast_sign_loss)]
-        Ok(hits as u32)
+        Ok((hits as u32, from_first_sender))
     }
 }
 
@@ -361,6 +366,7 @@ mod test {
         cache
             .add_msg_hash(&i.to_le_bytes(), &CommsPublicKey::default(), expires, is_signed)
             .unwrap()
+            .0
     }
 
     fn insert(cache: &DedupCacheDatabase, range: std::ops::Range<usize>) {

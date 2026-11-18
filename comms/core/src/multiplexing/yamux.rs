@@ -2047,6 +2047,43 @@ mod test {
         flood.abort();
     }
 
+    #[tokio::test]
+    async fn a_new_stream_with_overflowing_credit_is_a_protocol_error() {
+        let (socket, mut raw) = tokio::io::duplex(1 << 20);
+        let mut yamux =
+            Yamux::upgrade_connection(socket, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
+
+        // WindowUpdate with SYN that opens stream 1 with a credit of 0xFFFC0000. Adding the 256 KiB starting window
+        // to that credit overflows a u32, which panicked yamux before 0.14 with overflow checks enabled.
+        let window_update_syn = [0u8, 1, 0, 1, 0, 0, 0, 1, 0xFF, 0xFC, 0, 0];
+        raw.write_all(&window_update_syn).await.unwrap();
+
+        // The connection is ended with a GoAway carrying the protocol error code, not dropped by a panic. Yamux may
+        // send a ping before it, which has no body, so headers are read until the GoAway.
+        const GO_AWAY: u8 = 3;
+        let go_away = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let mut header = [0u8; 12];
+                raw.read_exact(&mut header)
+                    .await
+                    .expect("connection dropped without a GoAway");
+                if header[1] == GO_AWAY {
+                    break header;
+                }
+            }
+        })
+        .await
+        .expect("no GoAway in reply to the frame");
+        assert_eq!(go_away, [0u8, GO_AWAY, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+
+        // The worker is still running and shuts down cleanly once the peer hangs up
+        drop(raw);
+        let next = tokio::time::timeout(Duration::from_secs(10), yamux.incoming.next())
+            .await
+            .expect("incoming did not end");
+        assert!(next.is_none());
+    }
+
     #[tokio::test(start_paused = true)]
     async fn close_completes_when_peer_stops_reading() {
         // The peer end is never read, so the connection's writes back up once this small buffer is full

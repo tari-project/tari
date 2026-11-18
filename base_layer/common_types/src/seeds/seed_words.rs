@@ -66,7 +66,10 @@ impl FromStr for SeedWords {
     type Err = MnemonicError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let words = s.split(' ').map(|s| Hidden::hide(String::from(s))).collect::<Vec<_>>();
+        let words = s
+            .split_whitespace()
+            .map(|s| Hidden::hide(String::from(s)))
+            .collect::<Vec<_>>();
         Ok(Self { words })
     }
 }
@@ -75,6 +78,15 @@ impl FromStr for SeedWords {
 mod tests {
     #![allow(clippy::indexing_slicing)]
     use super::*;
+
+    #[test]
+    fn from_str_splits_on_any_whitespace() {
+        let seed_words = SeedWords::from_str("  a b\tc\n d  ").unwrap();
+        let words = (0..seed_words.len())
+            .map(|i| seed_words.get_word(i).unwrap().clone())
+            .collect::<Vec<_>>();
+        assert_eq!(words, vec!["a", "b", "c", "d"]);
+    }
 
     #[test]
     pub fn test_seed_words_len() {
@@ -197,5 +209,38 @@ mod tests {
 
         // equality fails, in case of same len but distinct words
         assert_ne!(seed_words, other_seed_words);
+    }
+
+    #[test]
+    pub fn test_seed_words_from_str_whitespace() {
+        let parsed = SeedWords::from_str("  abandon   ability\nable\t").unwrap();
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed.get_word(0).unwrap(), "abandon");
+        assert_eq!(parsed.get_word(1).unwrap(), "ability");
+        assert_eq!(parsed.get_word(2).unwrap(), "able");
+
+        let empty = SeedWords::from_str("   \n\t ").unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    pub fn test_seed_words_from_str_whitespace_handling() {
+        let empty = SeedWords::from_str("").unwrap();
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+
+        let whitespace_only = SeedWords::from_str("   \t\n  ").unwrap();
+        assert!(whitespace_only.is_empty());
+        assert_eq!(whitespace_only.len(), 0);
+
+        let parsed = SeedWords::from_str("  hi   niao\thola\nbonjour  olá \r\n").unwrap();
+        let expected = SeedWords::new(vec![
+            Hidden::hide("hi".to_string()),
+            Hidden::hide("niao".to_string()),
+            Hidden::hide("hola".to_string()),
+            Hidden::hide("bonjour".to_string()),
+            Hidden::hide("olá".to_string()),
+        ]);
+        assert_eq!(parsed, expected);
     }
 }

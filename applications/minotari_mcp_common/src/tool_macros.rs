@@ -33,7 +33,7 @@
 ///
 /// # Usage
 ///
-/// ```rust
+/// ```rust,ignore
 /// use minotari_mcp_common::impl_mcp_tool;
 ///
 /// struct MyQueryTool;

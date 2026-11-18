@@ -979,8 +979,8 @@ mod read_tests {
         fn fetch_header_containing_kernel_mmr_fork_block() {
             let state = &*SHARED_STATE;
             let mut accumulated: u64 = 0;
-            for i in 0..=5 {
-                accumulated += state.data.expected[i].kernel_count as u64;
+            for expected in state.data.expected.iter().take(6) {
+                accumulated += expected.kernel_count as u64;
             }
             let header = state
                 .db

@@ -449,6 +449,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
         match (part1, part2) {
             (Protocol::Ip4(ip), Some(Protocol::Tcp(port))) => {
+                if addr_iter.next().is_some() {
+                    return Err(SocksError::AddressTypeNotSupported);
+                }
                 *self.buf.get_mut(3).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0x01;
                 self.buf
                     .get_mut(4..8)
@@ -461,6 +464,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.len = 10;
             },
             (Protocol::Ip6(ip), Some(Protocol::Tcp(port))) => {
+                if addr_iter.next().is_some() {
+                    return Err(SocksError::AddressTypeNotSupported);
+                }
                 *self.buf.get_mut(3).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0x04;
                 self.buf
                     .get_mut(4..20)
@@ -472,11 +478,16 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                     .copy_from_slice(&port.to_be_bytes());
                 self.len = 22;
             },
-            (Protocol::Dns4(domain), Some(Protocol::Tcp(port))) => {
+            (Protocol::Dns(domain), Some(Protocol::Tcp(port))) |
+            (Protocol::Dns4(domain), Some(Protocol::Tcp(port))) |
+            (Protocol::Dns6(domain), Some(Protocol::Tcp(port))) => {
+                if addr_iter.next().is_some() {
+                    return Err(SocksError::AddressTypeNotSupported);
+                }
                 self.write_domain_request(domain.as_bytes(), port)?;
             },
             // Special case for Tor resolve: a zero port
-            (Protocol::Dns4(domain), None) | (Protocol::Dns(domain), None) => {
+            (Protocol::Dns(domain), None) | (Protocol::Dns4(domain), None) | (Protocol::Dns6(domain), None) => {
                 self.write_domain_request(domain.as_bytes(), 0)?;
             },
             (p @ Protocol::Onion(_, _), None) => {
@@ -529,5 +540,43 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             )
             .await?;
         Ok(self.len.saturating_sub(self.ptr))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tokio::io::duplex;
+
+    use super::*;
+
+    #[test]
+    fn prepare_send_request_supports_dns_dns4_dns6_and_rejects_extra_components() {
+        for addr_str in [
+            "/dns/tari.com/tcp/443",
+            "/dns4/tari.com/tcp/443",
+            "/dns6/tari.com/tcp/443",
+        ] {
+            let (sock, _peer) = duplex(64);
+            let mut proto = SocksProtocol::new(sock);
+            let addr: Multiaddr = addr_str.parse().unwrap();
+            proto.prepare_send_request(Command::Connect, &addr).unwrap();
+            assert_eq!(proto.buf.get(..5), Some(&[0x05, 0x01, 0x00, 0x03, 8u8][..]));
+            assert_eq!(proto.buf.get(5..13), Some(&b"tari.com"[..]));
+            assert_eq!(proto.buf.get(13..15), Some(&443u16.to_be_bytes()[..]));
+        }
+
+        for invalid in [
+            "/ip4/1.2.3.4/tcp/443/http",
+            "/dns4/tari.com/tcp/443/http",
+            "/dnsaddr/tari.com/tcp/443",
+        ] {
+            let (sock, _peer) = duplex(64);
+            let mut proto = SocksProtocol::new(sock);
+            let addr: Multiaddr = invalid.parse().unwrap();
+            assert!(matches!(
+                proto.prepare_send_request(Command::Connect, &addr),
+                Err(SocksError::AddressTypeNotSupported)
+            ));
+        }
     }
 }

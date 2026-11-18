@@ -35,7 +35,7 @@ pub use dht_handler::DhtHandlerLayer;
 mod forward;
 pub use forward::ForwardLayer;
 
-mod metrics;
+pub(crate) mod metrics;
 pub use metrics::MetricsLayer;
 
 mod error;

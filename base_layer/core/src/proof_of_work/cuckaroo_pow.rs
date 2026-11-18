@@ -43,7 +43,7 @@ use std::{
 use blake2::{Blake2b, Digest};
 use digest::{FixedOutput, consts::U32};
 use tari_node_components::blocks::BlockHeader;
-use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyError};
+use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyError, PowError};
 use thiserror::Error;
 
 use crate::proof_of_work::siphash::siphash_block;
@@ -78,6 +78,46 @@ pub enum CuckarooVerificationError {
     CycleDidNotUseAllEdges,
     #[error("Difficulty error: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("PoW data is not in canonical form: {0}")]
+    NonCanonicalPowData(PowError),
+}
+
+/// The exact size of Cuckaroo pow data: `cycle_length` edges of `edge_bits` bits each, bit packed and rounded up to a
+/// whole byte.
+pub(crate) fn cuckaroo_pow_data_size(cuckaroo_cycle_length: u8, cuckaroo_edge_bits: u8) -> usize {
+    let total_packed_size = (cuckaroo_cycle_length as usize).saturating_mul(cuckaroo_edge_bits as usize);
+    total_packed_size.div_ceil(8)
+}
+
+/// The canonical form of Cuckaroo pow data, shared by the full header validator, `cuckaroo_result_inner` and the
+/// block propagation pre-check: exactly [`cuckaroo_pow_data_size`] bytes, with the unused high bits of the last byte
+/// clear. The proof hash covers the raw bytes, so any other encoding of the same cycle would yield a different
+/// difficulty and block hash for the same work.
+pub(crate) fn check_cuckaroo_pow_data(pow_data: &[u8], cycle_length: u8, edge_bits: u8) -> Result<(), PowError> {
+    let remainder = (cycle_length as usize).saturating_mul(edge_bits as usize) % 8;
+    let total_bytes = cuckaroo_pow_data_size(cycle_length, edge_bits);
+
+    if pow_data.len() != total_bytes {
+        return Err(PowError::CuckarooPowDataSizeMismatch {
+            expected: total_bytes,
+            actual: pow_data.len(),
+        });
+    }
+
+    if remainder != 0 {
+        // Ensure that the last byte is not padded with zeros
+        let last_byte = *pow_data.get(total_bytes.saturating_sub(1)).expect("Already checked");
+
+        let padding_mask = (1u8 << remainder).saturating_sub(1);
+        let mask = 0xff ^ padding_mask; // Mask to check if the last byte is padded
+
+        if last_byte & mask != 0 {
+            return Err(PowError::CuckarooPowDataNonZeroPadding {
+                padding: last_byte & mask,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn determine_sip_hash(mining_hash: &[u8], nonce: u64) -> Vec<u8> {
@@ -124,17 +164,12 @@ fn cuckaroo_result_inner(
     edge_bits: u8,
     bipartite: bool,
 ) -> Result<Vec<u8>, CuckarooVerificationError> {
-    let packed_size = required_cycle_length.get().saturating_mul(edge_bits as usize);
-    let packed_bytes = packed_size.div_ceil(8);
+    let cycle_length =
+        u8::try_from(required_cycle_length.get()).map_err(|_| CuckarooVerificationError::UnsupportedCycleLength)?;
+    check_cuckaroo_pow_data(packed_edge_data, cycle_length, edge_bits)
+        .map_err(CuckarooVerificationError::NonCanonicalPowData)?;
 
     let blob = determine_sip_hash(header_before_nonce, nonce);
-
-    // Data after <required_cycle_length * edge_bits> is padding, it must be zero
-    for &byte in packed_edge_data.get(packed_bytes..).expect("Already checked") {
-        if byte != 0 {
-            return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
-        }
-    }
 
     // unpack_nonces returns at most `required_cycle_length` nonces and rejects any non-zero extras
     let nonces = unpack_nonces(packed_edge_data, edge_bits, required_cycle_length.get())?;
@@ -987,6 +1022,87 @@ mod test {
         .unwrap();
         let expected = hex::decode("06d52b90ccfd4db1a52cc133a46dac0dc4577343c1a27d200865a81d717a60e1").unwrap();
         assert_eq!(hex::encode(res), hex::encode(expected));
+    }
+
+    /// Every non-canonical encoding of the real `test_solution` proof: each non-zero value of the 6 unused high bits
+    /// of byte 152, and lengths other than 153.
+    fn non_canonical_variants(packed: &[u8]) -> Vec<(Vec<u8>, PowError)> {
+        let mut variants = Vec::new();
+        for high_bits in 1..64u8 {
+            let mut v = packed.to_vec();
+            v[152] |= high_bits << 2;
+            variants.push((v, PowError::CuckarooPowDataNonZeroPadding {
+                padding: high_bits << 2,
+            }));
+        }
+        for len in [152, 154, 155, 156, 65_535] {
+            let mut v = packed.to_vec();
+            v.resize(len, 0);
+            variants.push((v, PowError::CuckarooPowDataSizeMismatch {
+                expected: 153,
+                actual: len,
+            }));
+        }
+        variants
+    }
+
+    #[test]
+    fn only_the_canonical_encoding_of_a_real_c29_proof_is_accepted() {
+        let (blake, nonce, packed) = real_c29_packed_solution();
+        assert_eq!(packed.len(), 153);
+        assert_eq!(packed[152] & 0b1111_1100, 0);
+        let expected = hex::decode("06d52b90ccfd4db1a52cc133a46dac0dc4577343c1a27d200865a81d717a60e1").unwrap();
+
+        for bipartite in [false, true] {
+            assert_eq!(
+                cuckaroo_result_inner(&blake, nonce, &packed, l42(), 29, bipartite).unwrap(),
+                expected
+            );
+            for (data, err) in non_canonical_variants(&packed) {
+                assert_eq!(
+                    cuckaroo_result_inner(&blake, nonce, &data, l42(), 29, bipartite),
+                    Err(CuckarooVerificationError::NonCanonicalPowData(err)),
+                    "len {} bipartite {bipartite}",
+                    data.len()
+                );
+            }
+        }
+    }
+
+    /// Through a `BlockHeader`: the canonical encoding gets past the encoding check to cycle verification (the
+    /// header's mining hash is not the vector's, so the cycle itself fails), every other encoding stops at it.
+    #[test]
+    fn cuckaroo_difficulty_rejects_non_canonical_pow_data() {
+        let (_, _, packed) = real_c29_packed_solution();
+        let header_with = |pow_data: &[u8]| {
+            let mut header = BlockHeader::new(0);
+            header.pow = ProofOfWork {
+                pow_algo: PowAlgorithm::Cuckaroo,
+                pow_data: pow_data.to_vec().try_into().unwrap(),
+            };
+            header
+        };
+        for bipartite in [false, true] {
+            let err = cuckaroo_difficulty(&header_with(&packed), 42, 29, bipartite).unwrap_err();
+            assert!(
+                !matches!(err, CuckarooVerificationError::NonCanonicalPowData(_)),
+                "{err:?}"
+            );
+            for (data, err) in non_canonical_variants(&packed) {
+                // `cuckaroo_result`'s length guard stops a short proof first
+                let expected = if data.len() < 153 {
+                    CuckarooVerificationError::PowDataTooShort
+                } else {
+                    CuckarooVerificationError::NonCanonicalPowData(err)
+                };
+                assert_eq!(
+                    cuckaroo_difficulty(&header_with(&data), 42, 29, bipartite),
+                    Err(expected),
+                    "len {} bipartite {bipartite}",
+                    data.len()
+                );
+            }
+        }
     }
 
     // =============================================================================================================

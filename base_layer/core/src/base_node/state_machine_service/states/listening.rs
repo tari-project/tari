@@ -22,7 +22,7 @@
 
 use std::{
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     fmt::{Display, Formatter},
     ops::Deref,
@@ -34,10 +34,11 @@ use log::*;
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::NodeId;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::{
     sync::broadcast,
-    time::{MissedTickBehavior, interval},
+    time::{self, MissedTickBehavior, interval},
 };
 
 use crate::{
@@ -64,6 +65,15 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 const CHAIN_STATUS_LOG_INTERVAL: Duration = Duration::from_secs(30);
+/// With fewer than `initial_sync_peer_count` up-to-date peers, how long to listen without any peer reporting that we
+/// are lagging before declaring initial sync anyway
+const INITIAL_SYNC_UP_TO_DATE_TIMEOUT: Duration = Duration::from_secs(60);
+/// Dropped metadata events push the up-to-date timeout back by about one ping round, as they may have claimed a
+/// stronger chain
+const INITIAL_SYNC_DROPPED_EVENTS_DEFERRAL: Duration = Duration::from_secs(30);
+/// Dropped metadata events never push the up-to-date timeout past this long after the loop started, as any peer can
+/// cause them
+const INITIAL_SYNC_DROPPED_EVENTS_DEFERRAL_CAP: Duration = Duration::from_secs(5 * 60);
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
 #[derive(Serialize, Deserialize)]
@@ -246,14 +256,35 @@ impl ChainStatusLog {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ListeningLoopState {
     /// When we first saw a stronger chain, and our accumulated difficulty at that time
     time_since_better_block: Option<(Instant, U512)>,
     initial_sync_counter: u64,
-    ahead_of_peers_counter: u64,
+    /// Distinct peers that reported we are up to date
+    up_to_date_peers: HashSet<NodeId>,
     initial_sync_peer_list: HashMap<String, SyncPeer>,
     chain_status_log: ChainStatusLog,
+    started_at: time::Instant,
+    /// How long after `started_at` the up-to-date timeout fires
+    up_to_date_timeout: Duration,
+    /// Whether, since this loop started, a peer claimed a stronger chain than ours
+    seen_stronger_chain: bool,
+}
+
+impl Default for ListeningLoopState {
+    fn default() -> Self {
+        Self {
+            time_since_better_block: None,
+            initial_sync_counter: 0,
+            up_to_date_peers: HashSet::new(),
+            initial_sync_peer_list: HashMap::new(),
+            chain_status_log: ChainStatusLog::default(),
+            started_at: time::Instant::now(),
+            up_to_date_timeout: INITIAL_SYNC_UP_TO_DATE_TIMEOUT,
+            seen_stronger_chain: false,
+        }
+    }
 }
 
 /// This state listens for chain metadata events received from the liveness and chain metadata service. Based on the
@@ -306,6 +337,15 @@ impl Listening {
                 }
             },
             Err(broadcast::error::RecvError::Lagged(n)) => {
+                state.up_to_date_timeout = state
+                    .up_to_date_timeout
+                    .max(
+                        state
+                            .started_at
+                            .elapsed()
+                            .saturating_add(INITIAL_SYNC_DROPPED_EVENTS_DEFERRAL),
+                    )
+                    .min(INITIAL_SYNC_DROPPED_EVENTS_DEFERRAL_CAP);
                 debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {n} item(s)");
             },
             Err(broadcast::error::RecvError::Closed) => {
@@ -360,7 +400,7 @@ impl Listening {
 
         state.chain_status_log.record(&local_metadata, peer_metadata);
 
-        self.update_initial_sync_status(shared, state, &sync_mode);
+        self.update_initial_sync_status(shared, state, &sync_mode, &local_metadata, peer_metadata);
 
         // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
         // immediately return fallen behind with the peer that has a higher pow than us
@@ -496,23 +536,76 @@ impl Listening {
         shared: &mut BaseNodeStateMachine<B>,
         state: &mut ListeningLoopState,
         sync_mode: &SyncStatus,
+        local_metadata: &ChainMetadata,
+        peer_metadata: &PeerChainMetadata,
     ) {
-        if self.is_synced || !sync_mode.is_up_to_date() {
+        // SyncNotPossible is also returned for a peer far behind us, which says nothing about a stronger chain, and
+        // before the propagation tolerance is applied, so a peer whose blocks are still propagating does not count
+        let peer_claim = peer_metadata.claimed_chain_metadata();
+        let claims_stronger_chain = peer_claim.accumulated_difficulty() > local_metadata.accumulated_difficulty() &&
+            !within_propagation_tolerance(
+                shared.config.blocks_behind_before_considered_lagging,
+                local_metadata.best_block_height(),
+                peer_claim.best_block_height(),
+            );
+        state.seen_stronger_chain |=
+            sync_mode.is_lagging() || (sync_mode.is_sync_not_possible() && claims_stronger_chain);
+        if self.is_synced {
             return;
         }
-
-        state.ahead_of_peers_counter = state.ahead_of_peers_counter.saturating_add(1);
-        if state.ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
-            self.set_synced_response(shared);
-            info!(target: LOG_TARGET, "Initial sync achieved");
-        } else {
+        if sync_mode.is_up_to_date() {
+            state.up_to_date_peers.insert(peer_metadata.node_id().clone());
+        }
+        if !self.check_initial_sync(shared, state) && sync_mode.is_up_to_date() {
             info!(
                 target: LOG_TARGET,
-                "We are ahead of at least {} peers, waiting for more info",
-                state.ahead_of_peers_counter
+                "{} of {} distinct peer(s) report we are up to date, waiting for more info",
+                state.up_to_date_peers.len(),
+                Self::initial_sync_peer_threshold(shared)
             );
-            self.set_synced_response(shared);
         }
+    }
+
+    /// How many distinct up-to-date peers declare initial sync: `initial_sync_peer_count`, but no more than the forced
+    /// sync peers when those are configured, as no other peer is counted
+    fn initial_sync_peer_threshold<B: BlockchainBackend + 'static>(shared: &BaseNodeStateMachine<B>) -> u64 {
+        // The same peer may be listed once per address
+        let forced_sync_peers = shared
+            .config
+            .blockchain_sync_config
+            .forced_sync_peers
+            .iter()
+            .collect::<HashSet<_>>()
+            .len();
+        if forced_sync_peers == 0 {
+            shared.config.initial_sync_peer_count
+        } else {
+            shared
+                .config
+                .initial_sync_peer_count
+                .min(u64::try_from(forced_sync_peers).unwrap_or(u64::MAX))
+        }
+    }
+
+    /// Declares initial sync once enough distinct peers report we are up to date (see `initial_sync_peer_threshold`),
+    /// or once at least one has and the up-to-date timeout has passed with no sign of a stronger chain. Returns
+    /// whether we are synced.
+    fn check_initial_sync<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+        state: &ListeningLoopState,
+    ) -> bool {
+        if self.is_synced {
+            return true;
+        }
+        let peers = state.up_to_date_peers.len();
+        let enough_peers = u64::try_from(peers).unwrap_or(u64::MAX) >= Self::initial_sync_peer_threshold(shared);
+        let timed_out = !state.seen_stronger_chain && state.started_at.elapsed() >= state.up_to_date_timeout;
+        if peers > 0 && (enough_peers || timed_out) {
+            self.set_synced_response(shared);
+            info!(target: LOG_TARGET, "Initial sync achieved with {peers} distinct up-to-date peer(s)");
+        }
+        self.is_synced
     }
 
     fn collect_initial_lagging_peers<B: BlockchainBackend + 'static>(
@@ -594,8 +687,11 @@ impl Listening {
 
         loop {
             tokio::select! {
+                // shortcut: the up-to-date timeout can fire up to one log interval late, add a dedicated timer if that
+                // ever matters
                 _ = chain_status_log_interval.tick() => {
                     state.chain_status_log.log_and_clear();
+                    self.check_initial_sync(shared, &state);
                 },
                 metadata_event = shared.metadata_event_stream.recv() => {
                     if let Some(state_event) = self.handle_metadata_event(shared, metadata_event, &mut state).await {
@@ -646,6 +742,14 @@ impl From<DecideNextSync> for Listening {
             network_silence: false,
         }
     }
+}
+
+/// Whether a peer's tip is close enough above ours that its blocks are probably still propagating to us. A tolerance
+/// of 0 turns this off, and a tip at or below ours never qualifies, as such chains would never be reorged to.
+fn within_propagation_tolerance(tolerance: u64, local_tip_height: u64, network_tip_height: u64) -> bool {
+    tolerance > 0 &&
+        network_tip_height > local_tip_height &&
+        local_tip_height.saturating_add(tolerance) >= network_tip_height
 }
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
@@ -705,22 +809,20 @@ fn determine_sync_mode(
 
         // This is to test the block propagation by delaying lagging.
         // If the config is 0, ignore this set.
-        if blocks_behind_before_considered_lagging > 0 {
-            // Otherwise, only wait when the tip is above us, otherwise
-            // chains with a lower height will never be reorged to.
-            if network_tip_height > local_tip_height &&
-                local_tip_height.saturating_add(blocks_behind_before_considered_lagging) >= network_tip_height
-            {
-                trace!(
-                    target: LOG_TARGET,
-                    "While we are behind, we are still within {blocks_behind_before_considered_lagging} blocks of them, so we are staying as listening and \
-                     waiting for the propagated blocks"
-                );
-                return SyncStatus::BehindButNotYetLagging {
-                    local: local.clone(),
-                    network: network.claimed_chain_metadata().clone(),
-                    sync_peers: vec![network.clone().into()],
-                };
+        if within_propagation_tolerance(
+            blocks_behind_before_considered_lagging,
+            local_tip_height,
+            network_tip_height,
+        ) {
+            trace!(
+                target: LOG_TARGET,
+                "While we are behind, we are still within {blocks_behind_before_considered_lagging} blocks of them, so we are staying as listening and \
+                 waiting for the propagated blocks"
+            );
+            return SyncStatus::BehindButNotYetLagging {
+                local: local.clone(),
+                network: network.claimed_chain_metadata().clone(),
+                sync_peers: vec![network.clone().into()],
             };
         }
 
@@ -765,9 +867,33 @@ mod test {
 
     use primitive_types::U512;
     use tari_common_types::types::FixedHash;
-    use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+    use tari_comms::{
+        PeerManager,
+        peer_manager::PeerFeatures,
+        test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
+        types::CommsPublicKey,
+    };
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::Shutdown;
+    use tokio::sync::watch;
 
     use super::*;
+    use crate::{
+        base_node::{
+            BaseNodeStateMachineConfig,
+            LocalNodeCommsInterface,
+            state_machine_service::states::{BaseNodeState, StatusInfo},
+            sync::{AttemptSyncResult, HeaderSyncStatus, SyncValidators},
+        },
+        chain_storage::BlockchainDatabase,
+        proof_of_work::randomx_factory::RandomXFactory,
+        test_helpers::{
+            blockchain::{TempDatabase, create_new_blockchain},
+            create_consensus_rules,
+            create_peer_manager,
+        },
+        validation::mocks::MockValidator,
+    };
 
     fn random_node_id() -> NodeId {
         let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut rand::rng());
@@ -843,34 +969,12 @@ mod test {
         assert!(sync_mode.is_lagging());
     }
 
-    #[tokio::test]
-    async fn add_block_is_disabled_once_headers_are_synchronized_not_on_a_claim() {
-        use tari_comms::{
-            peer_manager::PeerFeatures,
-            test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
-        };
-        use tari_service_framework::reply_channel;
-        use tari_shutdown::Shutdown;
-        use tokio::sync::watch;
-
-        use crate::{
-            base_node::{
-                BaseNodeStateMachineConfig,
-                LocalNodeCommsInterface,
-                state_machine_service::states::{BaseNodeState, StatusInfo},
-                sync::{AttemptSyncResult, HeaderSyncStatus, SyncValidators},
-            },
-            proof_of_work::randomx_factory::RandomXFactory,
-            test_helpers::{blockchain::create_new_blockchain, create_consensus_rules, create_peer_manager},
-            validation::mocks::MockValidator,
-        };
-
-        let db = create_new_blockchain();
-        let peer_manager = create_peer_manager();
-        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
+    fn create_state_machine(
+        db: &BlockchainDatabase<TempDatabase>,
+        peer_manager: Arc<PeerManager>,
+        metadata_rx: broadcast::Receiver<Arc<ChainMetadataEvent>>,
+    ) -> BaseNodeStateMachine<TempDatabase> {
         let (connectivity, _connectivity_mock) = create_connectivity_mock();
-        let (metadata_tx, metadata_rx) = broadcast::channel(10);
         let (_dht_tx, dht_rx) = broadcast::channel(10);
         let (req_tx, _) = reply_channel::unbounded();
         let (block_tx, _) = reply_channel::unbounded();
@@ -878,7 +982,7 @@ mod test {
         let (status_tx, _status_rx) = watch::channel(StatusInfo::new());
         let (event_tx, _event_rx) = broadcast::channel(10);
         let shutdown = Shutdown::new();
-        let mut state_machine = BaseNodeStateMachine::new(
+        BaseNodeStateMachine::new(
             db.clone().into(),
             LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
             connectivity,
@@ -892,7 +996,313 @@ mod test {
             RandomXFactory::default(),
             create_consensus_rules(),
             shutdown.to_signal(),
+        )
+    }
+
+    /// A state machine with no metadata events, and its event sender
+    fn idle_state_machine() -> (
+        BaseNodeStateMachine<TempDatabase>,
+        broadcast::Sender<Arc<ChainMetadataEvent>>,
+    ) {
+        let (metadata_tx, metadata_rx) = broadcast::channel(10);
+        let state_machine = create_state_machine(&create_new_blockchain(), create_peer_manager(), metadata_rx);
+        (state_machine, metadata_tx)
+    }
+
+    fn local() -> ChainMetadata {
+        chain_metadata(100, U512::from(1000))
+    }
+
+    fn equal_peer() -> PeerChainMetadata {
+        peer_chain_metadata(100, U512::from(1000))
+    }
+
+    fn stronger_peer() -> PeerChainMetadata {
+        peer_chain_metadata(200, U512::from(2000))
+    }
+
+    fn lagging() -> SyncStatus {
+        SyncStatus::Lagging {
+            local: local(),
+            network: chain_metadata(200, U512::from(2000)),
+            sync_peers: vec![],
+        }
+    }
+
+    fn sync_not_possible() -> SyncStatus {
+        SyncStatus::SyncNotPossible { peers: vec![] }
+    }
+
+    #[tokio::test]
+    async fn one_peer_repeating_up_to_date_does_not_declare_initial_sync() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        let peer = equal_peer();
+        for _ in 0..state_machine.config.initial_sync_peer_count {
+            listening.update_initial_sync_status(
+                &mut state_machine,
+                &mut state,
+                &SyncStatus::UpToDate,
+                &local(),
+                &peer,
+            );
+        }
+        assert!(!listening.is_synced);
+    }
+
+    #[tokio::test]
+    async fn enough_distinct_up_to_date_peers_declare_initial_sync() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        for _ in 1..state_machine.config.initial_sync_peer_count {
+            listening.update_initial_sync_status(
+                &mut state_machine,
+                &mut state,
+                &SyncStatus::UpToDate,
+                &local(),
+                &equal_peer(),
+            );
+        }
+        assert!(!listening.is_synced);
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
         );
+        assert!(listening.is_synced);
+        assert!(state_machine.info.is_synced());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn one_up_to_date_peer_declares_initial_sync_after_the_timeout() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
+        );
+        assert!(!listening.check_initial_sync(&mut state_machine, &state));
+
+        time::advance(INITIAL_SYNC_UP_TO_DATE_TIMEOUT).await;
+        assert!(listening.check_initial_sync(&mut state_machine, &state));
+        assert!(state_machine.info.is_synced());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_lagging_report_stops_the_timeout_from_declaring_initial_sync() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
+        );
+        listening.update_initial_sync_status(&mut state_machine, &mut state, &lagging(), &local(), &stronger_peer());
+
+        time::advance(INITIAL_SYNC_UP_TO_DATE_TIMEOUT).await;
+        assert!(!listening.check_initial_sync(&mut state_machine, &state));
+        assert!(!state_machine.info.is_synced());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_peer_we_cannot_sync_from_within_the_propagation_tolerance_does_not_stop_the_timeout() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
+        );
+        let one_ahead = peer_chain_metadata(101, U512::from(1010));
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &sync_not_possible(),
+            &local(),
+            &one_ahead,
+        );
+        assert!(!state.seen_stronger_chain);
+
+        time::advance(INITIAL_SYNC_UP_TO_DATE_TIMEOUT).await;
+        assert!(listening.check_initial_sync(&mut state_machine, &state));
+    }
+
+    #[test]
+    fn duplicate_forced_sync_peers_count_once() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let (a, b) = (random_node_id(), random_node_id());
+        state_machine.config.blockchain_sync_config.forced_sync_peers = vec![a.clone(), a, b];
+        assert_eq!(Listening::initial_sync_peer_threshold(&state_machine), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stronger_peer_we_cannot_sync_from_stops_the_timeout_from_declaring_initial_sync() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
+        );
+        // A peer far behind us does not count, but one beyond the propagation tolerance does
+        let weaker_peer = peer_chain_metadata(10, U512::from(100));
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &sync_not_possible(),
+            &local(),
+            &weaker_peer,
+        );
+        assert!(!state.seen_stronger_chain);
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &sync_not_possible(),
+            &local(),
+            &stronger_peer(),
+        );
+
+        time::advance(INITIAL_SYNC_UP_TO_DATE_TIMEOUT).await;
+        assert!(!listening.check_initial_sync(&mut state_machine, &state));
+    }
+
+    async fn drop_metadata_events(
+        listening: &mut Listening,
+        state_machine: &mut BaseNodeStateMachine<TempDatabase>,
+        state: &mut ListeningLoopState,
+    ) {
+        let event = listening
+            .handle_metadata_event(state_machine, Err(broadcast::error::RecvError::Lagged(1)), state)
+            .await;
+        assert!(event.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dropped_metadata_events_defer_the_timeout() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
+        );
+
+        time::advance(Duration::from_secs(50)).await;
+        drop_metadata_events(&mut listening, &mut state_machine, &mut state).await;
+        time::advance(Duration::from_secs(10)).await;
+        assert!(!listening.check_initial_sync(&mut state_machine, &state));
+        time::advance(Duration::from_secs(20)).await;
+        assert!(listening.check_initial_sync(&mut state_machine, &state));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn repeatedly_dropped_metadata_events_defer_the_timeout_no_further_than_the_cap() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
+        );
+
+        let step = Duration::from_secs(20);
+        let mut elapsed = Duration::ZERO;
+        while elapsed < INITIAL_SYNC_DROPPED_EVENTS_DEFERRAL_CAP {
+            drop_metadata_events(&mut listening, &mut state_machine, &mut state).await;
+            assert!(!listening.check_initial_sync(&mut state_machine, &state));
+            time::advance(step).await;
+            elapsed += step;
+        }
+        drop_metadata_events(&mut listening, &mut state_machine, &mut state).await;
+        assert!(listening.check_initial_sync(&mut state_machine, &state));
+    }
+
+    #[tokio::test]
+    async fn every_forced_sync_peer_up_to_date_declares_initial_sync() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let peers = [equal_peer(), equal_peer()];
+        state_machine.config.blockchain_sync_config.forced_sync_peers =
+            peers.iter().map(|peer| peer.node_id().clone()).collect();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        for peer in &peers {
+            assert!(Listening::is_configured_sync_peer(&state_machine, peer));
+            listening.update_initial_sync_status(&mut state_machine, &mut state, &SyncStatus::UpToDate, &local(), peer);
+        }
+        assert!(listening.is_synced);
+    }
+
+    #[tokio::test]
+    async fn network_silence_still_declares_initial_sync() {
+        let (mut state_machine, metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        let event = listening
+            .handle_metadata_event(
+                &mut state_machine,
+                Ok(Arc::new(ChainMetadataEvent::NetworkSilence)),
+                &mut state,
+            )
+            .await;
+        assert!(event.is_none());
+        assert!(listening.is_synced);
+
+        // And when entering the state after network silence
+        drop(metadata_tx);
+        let mut listening = Listening::new();
+        let event = listening.next_event(&mut state_machine, true).await;
+        assert!(matches!(event, StateEvent::UserQuit));
+        assert!(listening.is_synced);
+    }
+
+    #[tokio::test]
+    async fn a_bootstrapped_node_restores_initial_sync() {
+        let (mut state_machine, metadata_tx) = idle_state_machine();
+        Listening {
+            is_synced: true,
+            ..Default::default()
+        }
+        .publish_status_info(&mut state_machine);
+        assert!(state_machine.is_bootstrapped());
+
+        drop(metadata_tx);
+        let mut listening = Listening::new();
+        let event = listening.next_event(&mut state_machine, false).await;
+        assert!(matches!(event, StateEvent::UserQuit));
+        assert!(listening.is_synced);
+    }
+
+    #[tokio::test]
+    async fn add_block_is_disabled_once_headers_are_synchronized_not_on_a_claim() {
+        let db = create_new_blockchain();
+        let peer_manager = create_peer_manager();
+        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
+        let (metadata_tx, metadata_rx) = broadcast::channel(10);
+        let mut state_machine = create_state_machine(&db, peer_manager, metadata_rx);
 
         let local = db.get_chain_metadata().unwrap();
         let claim = chain_metadata(

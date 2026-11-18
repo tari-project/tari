@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::types::{CompressedCommitment, FixedHash};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
@@ -67,6 +67,11 @@ struct State {
     on_mined_info_query: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Outputs `query_deleted_utxos` reports as spent: output hash -> (height, block hash)
     spent_utxos: HashMap<Vec<u8>, (u64, Vec<u8>)>,
+    /// Outputs `fetch_utxo` returns, keyed by output hash
+    utxos: HashMap<Vec<u8>, TransactionOutput>,
+    /// The answer to `submit_transaction`; accepted if not set
+    submit_transaction_response: Option<TxSubmissionResponse>,
+    submit_transaction_calls: usize,
 }
 
 impl State {
@@ -150,9 +155,22 @@ impl HttpBaseNodeMock {
             .collect();
     }
 
+    /// Return each output from `fetch_utxo` when asked for the hash it is paired with.
+    pub async fn set_utxos(&self, utxos: Vec<(FixedHash, TransactionOutput)>) {
+        self.state.write().await.utxos = utxos.into_iter().map(|(hash, o)| (hash.to_vec(), o)).collect();
+    }
+
     /// Run `hook` on every `get_utxos_mined_info` query.
     pub async fn set_on_mined_info_query(&self, hook: Arc<dyn Fn() + Send + Sync>) {
         self.state.write().await.on_mined_info_query = Some(hook);
+    }
+
+    pub async fn set_submit_transaction_response(&self, response: TxSubmissionResponse) {
+        self.state.write().await.submit_transaction_response = Some(response);
+    }
+
+    pub async fn submit_transaction_calls(&self) -> usize {
+        self.state.read().await.submit_transaction_calls
     }
 
     pub async fn set_last_request_latency(&self, last_request_latency: Duration) -> Result<(), Error> {
@@ -208,8 +226,8 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         })
     }
 
-    async fn fetch_utxo(&self, _hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
-        todo!()
+    async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
+        Ok(self.state.read().await.utxos.get(&hash).cloned())
     }
 
     async fn query_deleted_utxos(
@@ -239,12 +257,17 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     }
 
     async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
-        Ok(TxSubmissionResponse {
-            accepted: true,
-            rejection_reason: models::TxSubmissionRejectionReason::None,
-            is_synced: true,
-            details: None,
-        })
+        let mut state = self.state.write().await;
+        state.submit_transaction_calls = state.submit_transaction_calls.saturating_add(1);
+        Ok(state
+            .submit_transaction_response
+            .clone()
+            .unwrap_or(TxSubmissionResponse {
+                accepted: true,
+                rejection_reason: models::TxSubmissionRejectionReason::None,
+                is_synced: true,
+                details: None,
+            }))
     }
 
     async fn transaction_query(

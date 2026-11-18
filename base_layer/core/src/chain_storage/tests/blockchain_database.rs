@@ -2432,3 +2432,193 @@ mod rewind_past_pruning_horizon {
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
     }
 }
+
+mod rewind_headers_above_the_block_tip {
+    use tari_common_types::types::FixedHash;
+    use tari_node_components::blocks::ChainBlock;
+    use tari_utilities::ByteArray;
+
+    use super::*;
+    use crate::{
+        block_specs,
+        blocks::UpdateBlockAccumulatedData,
+        chain_storage::{DbTransaction, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint},
+        test_helpers::blockchain::create_main_chain,
+    };
+
+    /// A node with the headers of a five block chain and no blocks past genesis, holding the outputs of the blocks at
+    /// `heights` as horizon sync stores them
+    fn headers_with_synced_outputs(heights: &[u64]) -> (BlockchainDatabase<TempDatabase>, Vec<Arc<ChainBlock>>) {
+        let source = setup();
+        let (names, chain) =
+            create_main_chain(&source, block_specs!(["1->GB"], ["2->1"], ["3->2"], ["4->3"], ["5->4"]));
+        let blocks = names
+            .iter()
+            .map(|name| chain.get(name).unwrap().clone())
+            .collect::<Vec<_>>();
+        let db = setup();
+        let mut txn = DbTransaction::new();
+        for block in &blocks {
+            txn.insert_chain_header(block.to_chain_header());
+        }
+        for block in blocks.iter().filter(|block| heights.contains(&block.height())) {
+            let mut updates = Vec::new();
+            for output in block.block().body.outputs() {
+                txn.insert_utxo(output.clone(), *block.hash(), block.height(), 0);
+                updates.push(HorizonStateTreeUpdate {
+                    key: FixedHash::try_from(output.commitment.as_bytes()).unwrap(),
+                    value: Some(output.smt_hash(block.height())),
+                    replaces_value: false,
+                });
+            }
+            txn.apply_horizon_state_tree_updates(updates);
+        }
+        db.write(txn).unwrap();
+        (db, blocks)
+    }
+
+    fn set_checkpoint(db: &BlockchainDatabase<TempDatabase>, checkpoint: &ChainBlock, target: &ChainBlock) {
+        let mut txn = DbTransaction::new();
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: checkpoint.height(),
+            checkpoint_hash: *checkpoint.hash(),
+            sync_target_height: target.height(),
+            sync_target_hash: *target.hash(),
+        });
+        db.write(txn).unwrap();
+    }
+
+    fn has_its_outputs(db: &BlockchainDatabase<TempDatabase>, block: &ChainBlock) -> bool {
+        db.fetch_outputs_in_block(*block.hash()).unwrap().len() == block.block().body.outputs().len()
+    }
+
+    #[test]
+    fn a_rewind_removes_the_synced_outputs_under_the_headers_it_deletes() {
+        let (db, blocks) = headers_with_synced_outputs(&[1, 2, 3, 4, 5]);
+        set_checkpoint(&db, &blocks[3], &blocks[4]);
+
+        db.rewind_to_hash(*blocks[1].hash()).unwrap();
+
+        assert_eq!(db.fetch_last_header().unwrap().height, 2);
+        for block in &blocks[2..] {
+            assert!(db.fetch_outputs_in_block(*block.hash()).unwrap().is_empty());
+        }
+        assert!(blocks[..2].iter().all(|block| has_its_outputs(&db, block)));
+        // The output tree holds only the outputs up to the new tip
+        db.verify_horizon_sync_output_root(blocks[1].header().output_mr)
+            .unwrap();
+        assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_rewind_keeps_a_checkpoint_below_the_target() {
+        let (db, blocks) = headers_with_synced_outputs(&[1]);
+        set_checkpoint(&db, &blocks[0], &blocks[1]);
+
+        db.rewind_to_hash(*blocks[1].hash()).unwrap();
+
+        assert_eq!(db.fetch_last_header().unwrap().height, 2);
+        assert!(has_its_outputs(&db, &blocks[0]));
+        db.verify_horizon_sync_output_root(blocks[0].header().output_mr)
+            .unwrap();
+        assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_some());
+    }
+
+    #[test]
+    fn an_interrupted_rewind_leaves_every_remaining_header_with_its_outputs() {
+        let (db, blocks) = headers_with_synced_outputs(&[1, 2, 3, 4, 5]);
+        set_checkpoint(&db, &blocks[4], &blocks[4]);
+        // A kernel under header 3 without its block data fails the write that deletes that header
+        let mut txn = DbTransaction::new();
+        txn.insert_kernel(blocks[2].block().body.kernels()[0].clone(), *blocks[2].hash(), 0);
+        db.write(txn).unwrap();
+
+        assert!(db.rewind_to_hash(*blocks[0].hash()).is_err());
+
+        let tip = db.fetch_last_header().unwrap().height;
+        assert!(
+            (3..5).contains(&tip),
+            "the rewind deletes the headers above 3 before it fails, tip {tip}"
+        );
+        for block in &blocks {
+            if block.height() <= tip {
+                assert!(has_its_outputs(&db, block));
+            } else {
+                assert!(db.fetch_outputs_in_block(*block.hash()).unwrap().is_empty());
+            }
+        }
+        // The first write clears the checkpoint
+        assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
+
+        let mut txn = DbTransaction::new();
+        txn.delete_all_kernerls_in_block(*blocks[2].hash());
+        db.write(txn).unwrap();
+        db.rewind_to_hash(*blocks[0].hash()).unwrap();
+
+        assert_eq!(db.fetch_last_header().unwrap().height, 1);
+        assert!(has_its_outputs(&db, &blocks[0]));
+        for block in &blocks[1..] {
+            assert!(db.fetch_outputs_in_block(*block.hash()).unwrap().is_empty());
+        }
+        db.verify_horizon_sync_output_root(blocks[0].header().output_mr)
+            .unwrap();
+    }
+
+    #[test]
+    fn deleting_block_data_above_the_block_tip_keeps_the_headers() {
+        let (db, blocks) = headers_with_synced_outputs(&[]);
+        // Kernel sync stores each block's kernels with its block data
+        let mut txn = DbTransaction::new();
+        for block in &blocks[..3] {
+            let kernels = block.block().body.kernels();
+            let first_position = block
+                .header()
+                .kernel_mmr_size
+                .saturating_sub(u64::try_from(kernels.len()).unwrap());
+            for (position, kernel) in (first_position..).zip(kernels) {
+                txn.insert_kernel(kernel.clone(), *block.hash(), position);
+            }
+            txn.update_block_accumulated_data(*block.hash(), UpdateBlockAccumulatedData::default());
+        }
+        db.write(txn).unwrap();
+
+        db.delete_block_data_above_block_tip().unwrap();
+
+        assert_eq!(db.fetch_last_header().unwrap().height, 5);
+        for block in &blocks {
+            assert!(db.fetch_kernels_in_block(*block.hash()).unwrap().is_empty());
+            assert!(db.fetch_block_accumulated_data_by_height(block.height()).is_err());
+        }
+        // The first block can be added on the genesis block
+        let block = blocks[0].clone();
+        let mut txn = DbTransaction::new();
+        txn.insert_tip_block_body(block.clone()).set_best_block(
+            block.height(),
+            *block.hash(),
+            block.accumulated_data().total_accumulated_difficulty,
+            block.header().prev_hash,
+            block.header().timestamp.as_u64(),
+        );
+        db.write(txn).unwrap();
+    }
+
+    #[test]
+    fn block_data_above_the_block_tip_without_a_header_is_an_error() {
+        let (db, blocks) = headers_with_synced_outputs(&[]);
+        let mut txn = DbTransaction::new();
+        txn.update_block_accumulated_data(*blocks[0].hash(), UpdateBlockAccumulatedData::default());
+        db.write(txn).unwrap();
+        let mut txn = DbTransaction::new();
+        for height in (2..=5).rev() {
+            txn.delete_header(height);
+        }
+        db.write(txn).unwrap();
+        // Only a damaged database loses the header of block data it holds
+        db.db_read_access().unwrap().delete_header_row_for_test(1);
+
+        assert!(matches!(
+            db.delete_block_data_above_block_tip(),
+            Err(ChainStorageError::DataInconsistencyDetected { .. })
+        ));
+    }
+}
