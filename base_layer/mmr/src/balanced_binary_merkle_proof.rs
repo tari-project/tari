@@ -66,13 +66,16 @@ where D: Digest
                 None => return false,
             }
         }
-        computed_root == *root
+        node_index == 0 && computed_root == *root
     }
 
     pub fn generate_proof(
         tree: &BalancedBinaryMerkleTree<D>,
         leaf_index: usize,
     ) -> Result<Self, BalancedBinaryMerkleProofError> {
+        if leaf_index >= tree.num_leaf_nodes() {
+            return Err(BalancedBinaryMerkleProofError::TreeDoesNotContainLeafIndex { leaf_index });
+        }
         let node_index = tree.get_node_index(leaf_index);
         let mut index = node_index;
         let mut path = Vec::new();
@@ -274,6 +277,9 @@ where D: Digest
         }
         if consumed.len().saturating_add(1) < self.paths.len() {
             // If the proof is valid then all but one paths will be consumed by other paths.
+            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+        }
+        if self.paths.iter().any(|path| !path.is_empty()) || self.node_indices.first() != Some(&0) {
             return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }
         let computed_root = computed_hashes
@@ -485,10 +491,51 @@ mod test {
     #[test]
     fn test_generate_faulty_proof() {
         let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(vec![]);
+        let err = BalancedBinaryMerkleProof::<TestHasher>::generate_proof(&bmt, 0).unwrap_err();
+        assert!(matches!(
+            err,
+            BalancedBinaryMerkleProofError::TreeDoesNotContainLeafIndex { leaf_index: 0 }
+        ));
         let err = BalancedBinaryMerkleProof::<TestHasher>::generate_proof(&bmt, 1).unwrap_err();
         assert!(matches!(
             err,
             BalancedBinaryMerkleProofError::TreeDoesNotContainLeafIndex { leaf_index: 1 }
+        ));
+    }
+
+    #[test]
+    fn test_verify_rejects_non_root_terminal_index_and_unconsumed_merged_paths() {
+        let root = vec![9u8; 32];
+        // Non-zero node_index with empty path must not verify even if leaf_hash == root
+        let forged_single = BalancedBinaryMerkleProof::<TestHasher> {
+            path: vec![],
+            node_index: 3,
+            _phantom: PhantomData,
+        };
+        assert!(!forged_single.verify(&root, root.clone()));
+
+        // Merged proof with non-zero terminal node_index must be rejected
+        let forged_merged_index = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths: vec![vec![]],
+            node_indices: vec![3],
+            heights: vec![0],
+            _phantom: PhantomData,
+        };
+        assert!(matches!(
+            forged_merged_index.verify_consume(&root, vec![root.clone()]),
+            Err(BalancedBinaryMerkleProofError::BadProofSemantics)
+        ));
+
+        // Merged proof with unconsumed path elements hidden by a zero height must be rejected
+        let forged_unconsumed = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths: vec![vec![MergedBalancedBinaryMerkleIndexOrHash::Hash(vec![1u8; 32])]],
+            node_indices: vec![0],
+            heights: vec![0],
+            _phantom: PhantomData,
+        };
+        assert!(matches!(
+            forged_unconsumed.verify_consume(&root, vec![root.clone()]),
+            Err(BalancedBinaryMerkleProofError::BadProofSemantics)
         ));
     }
 
