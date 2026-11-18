@@ -83,7 +83,7 @@ use crate::{
         inputs_and_outputs_match_header,
     },
     consensus::BaseNodeConsensusManager,
-    mempool::{Mempool, MempoolLastSeen},
+    mempool::{Mempool, MempoolLastSeen, select_disjoint_kernel_cover},
     proof_of_work::{
         AdjustedTarget,
         cuckaroo_pow::{check_cuckaroo_pow_data, cuckaroo_difficulty},
@@ -1237,7 +1237,7 @@ where B: BlockchainBackend + 'static
                 not_found,
             } = self
                 .outbound_nci
-                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs)
+                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs.clone())
                 .await?;
 
             // Only keep transactions that we actually asked for. Anything else is dropped before it reaches the mempool
@@ -1278,6 +1278,9 @@ where B: BlockchainBackend + 'static
                 return Ok(block);
             }
 
+            // Overlapping transactions would duplicate kernels in the block. A signature this leaves uncovered fails
+            // the MMR root check below, which falls back to the full block.
+            let (transactions, _) = select_disjoint_kernel_cover(transactions, vec![], &missing_excess_sigs);
             builder = builder.with_transactions(
                 transactions
                     .into_iter()

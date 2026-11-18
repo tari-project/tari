@@ -49,6 +49,7 @@ mod unconfirmed_pool;
 
 pub use error::MempoolError;
 pub use mempool::{Mempool, MempoolLastSeen, ValidationPermit};
+pub use mempool_storage::select_disjoint_kernel_cover;
 use tari_transaction_components::rpc::models::FeePerGramStat;
 
 pub use self::config::{MempoolConfig, MempoolServiceConfig};
