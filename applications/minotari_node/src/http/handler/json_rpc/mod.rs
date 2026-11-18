@@ -25,12 +25,12 @@ use std::{error::Error as StdError, sync::Arc, time::Duration};
 use axum::{
     Extension,
     Json,
-    body::{Body, Bytes},
+    body::Body,
     extract::{DefaultBodyLimit, FromRequestParts},
     http::{HeaderMap, StatusCode, header, request::Parts},
     routing::{MethodRouter, post},
 };
-use http_body_util::{BodyExt, LengthLimitError, Limited};
+use http_body_util::{BodyExt, LengthLimitError};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use tari_comms::{
@@ -60,78 +60,74 @@ const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc";
 
 /// Maximum JSON-RPC HTTP request body size (10 MiB, matching the HTTP router's `RequestBodyLimitLayer`).
 pub const MAX_JSON_RPC_BODY_BYTES: usize = 25 * 4 * 1024 * 1024 / 10;
-/// Maximum number of JSON-RPC requests allowed in flight (streaming upload, decoding, or awaiting mempool submission).
-/// Requests beyond this cap are shed in [`JsonRpcAdmission`] before reading the HTTP body so unfinished uploads cannot
-/// accumulate unbounded memory.
-pub const MAX_IN_FLIGHT_JSON_RPC_REQUESTS: usize = 8;
+/// Maximum aggregate HTTP request body bytes buffered across all concurrent `/json_rpc` uploads and decodes (80 MiB).
+/// Permits are charged per non-empty body chunk as data arrives so stalled header-only connections hold zero permits
+/// and cannot starve active wallets, and are released as soon as decoding completes before
+/// `submit_transaction::handle`.
+pub const MAX_IN_FLIGHT_JSON_RPC_BODY_BYTES: usize = 8 * MAX_JSON_RPC_BODY_BYTES;
 /// Maximum number of JSON-RPC requests running synchronous JSON + protobuf transaction decoding at once,
 /// matching `MempoolService`'s `MAX_CONCURRENT_HANDLE_SUBMISSIONS`.
 pub const MAX_CONCURRENT_JSON_RPC_DECODES: usize = 2;
-/// Maximum wall-clock time allowed for an admitted `/json_rpc` request to finish streaming its HTTP body.
-pub const DEFAULT_JSON_RPC_BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum idle time allowed waiting for the next non-empty HTTP body chunk on `/json_rpc`.
+/// Allows large transactions over slow links (e.g. Tor or mobile) to succeed as long as bytes continue arriving, while
+/// aborting stalled uploads with `408 Request Timeout`.
+pub const DEFAULT_JSON_RPC_BODY_CHUNK_IDLE_TIMEOUT: Duration = Duration::from_secs(15);
 
 const MAX_JSONRPC_VERSION_BYTES: usize = 16;
 const MAX_JSON_RPC_ID_BYTES: usize = 256;
 const MAX_JSON_RPC_METHOD_BYTES: usize = 128;
 
-/// Per-server concurrency and body-read bounds for the unauthenticated `/json_rpc` ingress.
+/// Per-server buffered-byte, decode-concurrency, and per-chunk idle timeout bounds for `/json_rpc`.
 #[derive(Clone, Debug)]
 pub struct JsonRpcLimiter {
-    in_flight: Arc<Semaphore>,
+    in_flight_bytes: Arc<Semaphore>,
     decode: Arc<Semaphore>,
-    body_read_timeout: Duration,
+    chunk_idle_timeout: Duration,
 }
 
 impl Default for JsonRpcLimiter {
     fn default() -> Self {
-        Self::with_limits(MAX_IN_FLIGHT_JSON_RPC_REQUESTS, MAX_CONCURRENT_JSON_RPC_DECODES)
+        Self::with_limits(MAX_IN_FLIGHT_JSON_RPC_BODY_BYTES, MAX_CONCURRENT_JSON_RPC_DECODES)
     }
 }
 
 impl JsonRpcLimiter {
-    pub fn with_limits(max_in_flight: usize, max_concurrent_decodes: usize) -> Self {
-        Self::with_limits_and_timeout(
-            max_in_flight,
+    pub fn with_limits(max_in_flight_bytes: usize, max_concurrent_decodes: usize) -> Self {
+        Self::with_limits_and_idle_timeout(
+            max_in_flight_bytes,
             max_concurrent_decodes,
-            DEFAULT_JSON_RPC_BODY_READ_TIMEOUT,
+            DEFAULT_JSON_RPC_BODY_CHUNK_IDLE_TIMEOUT,
         )
     }
 
-    pub fn with_limits_and_timeout(
-        max_in_flight: usize,
+    pub fn with_limits_and_idle_timeout(
+        max_in_flight_bytes: usize,
         max_concurrent_decodes: usize,
-        body_read_timeout: Duration,
+        chunk_idle_timeout: Duration,
     ) -> Self {
+        let max_semaphore_permits = Semaphore::MAX_PERMITS.min(usize::try_from(u32::MAX).unwrap_or(usize::MAX));
+        let capped_bytes = max_in_flight_bytes.clamp(1, max_semaphore_permits);
         Self {
-            in_flight: Arc::new(Semaphore::new(max_in_flight.max(1))),
+            in_flight_bytes: Arc::new(Semaphore::new(capped_bytes)),
             decode: Arc::new(Semaphore::new(max_concurrent_decodes.max(1))),
-            body_read_timeout,
+            chunk_idle_timeout,
         }
     }
 }
 
-/// Pre-body admission guard for `/json_rpc` that acquires an `in_flight` slot from [`JsonRpcLimiter`] inside
-/// [`FromRequestParts`], strictly before Axum reads or buffers any HTTP request body bytes.
+/// Pre-body header validator and limiter extractor for `/json_rpc`.
+///
+/// Validates `Content-Length` inside [`FromRequestParts`] before reading the HTTP body without reserving permits up
+/// front: byte permits are charged per non-empty chunk in [`read_bounded_body`], so connections that send no body bytes
+/// hold nothing and cannot lock out well-behaved wallets.
 #[derive(Debug)]
 pub struct JsonRpcAdmission {
-    in_flight_permit: OwnedSemaphorePermit,
     limiter: JsonRpcLimiter,
 }
 
 impl JsonRpcAdmission {
-    pub fn try_acquire(limiter: JsonRpcLimiter) -> Result<Self, (StatusCode, Json<ErrorResponse>)> {
-        let in_flight_permit = limiter.in_flight.clone().try_acquire_owned().map_err(|_| {
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse::new(
-                    "Too many concurrent JSON-RPC requests; try again later".to_string(),
-                )),
-            )
-        })?;
-        Ok(Self {
-            in_flight_permit,
-            limiter,
-        })
+    pub fn new(limiter: JsonRpcLimiter) -> Self {
+        Self { limiter }
     }
 }
 
@@ -147,14 +143,23 @@ impl<S: Send + Sync> FromRequestParts<S> for JsonRpcAdmission {
                 Json(ErrorResponse::new("JSON-RPC limiter unavailable".to_string())),
             )
         })?;
-        Self::try_acquire(limiter)
+        Ok(Self::new(limiter))
     }
 }
 
 /// Builds the `/json_rpc` [`MethodRouter`] with Axum's default 2 MiB limit disabled so [`JsonRpcAdmission`] and
-/// [`handle`] enforce pre-body admission, the 10 MiB body cap, and body-read timeouts directly.
+/// [`handle`] enforce pre-body `Content-Length` checks, per-chunk byte permits, the 10 MiB body cap, and idle timeouts.
 pub fn route<B: BlockchainBackend + 'static>() -> MethodRouter {
     post(handle::<B>).layer(DefaultBodyLimit::disable())
+}
+
+fn payload_too_large_error() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::PAYLOAD_TOO_LARGE,
+        Json(ErrorResponse::new(format!(
+            "JSON-RPC request body exceeds maximum allowed size ({MAX_JSON_RPC_BODY_BYTES} bytes)"
+        ))),
+    )
 }
 
 fn validate_content_length(headers: &HeaderMap) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -186,12 +191,7 @@ fn validate_content_length(headers: &HeaderMap) -> Result<(), (StatusCode, Json<
                 ));
             },
             Err(_) => {
-                return Err((
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    Json(ErrorResponse::new(format!(
-                        "JSON-RPC request body exceeds maximum allowed size ({MAX_JSON_RPC_BODY_BYTES} bytes)"
-                    ))),
-                ));
+                return Err(payload_too_large_error());
             },
         }
     }
@@ -209,28 +209,38 @@ fn is_length_limit_error(err: &(dyn StdError + 'static)) -> bool {
     false
 }
 
+struct BufferedJsonRpcBody {
+    bytes: Vec<u8>,
+    byte_permit: Option<OwnedSemaphorePermit>,
+}
+
 async fn read_bounded_body(
-    body: Body,
-    body_read_timeout: Duration,
-) -> Result<Bytes, (StatusCode, Json<ErrorResponse>)> {
-    let collected = time::timeout(body_read_timeout, Limited::new(body, MAX_JSON_RPC_BODY_BYTES).collect())
-        .await
-        .map_err(|_| {
+    mut body: Body,
+    limiter: &JsonRpcLimiter,
+) -> Result<BufferedJsonRpcBody, (StatusCode, Json<ErrorResponse>)> {
+    let mut buffered = Vec::new();
+    let mut byte_permit: Option<OwnedSemaphorePermit> = None;
+    let mut idle_deadline = time::Instant::now()
+        .checked_add(limiter.chunk_idle_timeout)
+        .unwrap_or_else(time::Instant::now);
+
+    loop {
+        let next_frame = time::timeout_at(idle_deadline, body.frame()).await.map_err(|_| {
             (
                 StatusCode::REQUEST_TIMEOUT,
                 Json(ErrorResponse::new(
                     "Timed out reading JSON-RPC request body".to_string(),
                 )),
             )
-        })?
-        .map_err(|err| {
-            if is_length_limit_error(err.as_ref()) {
-                (
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    Json(ErrorResponse::new(format!(
-                        "JSON-RPC request body exceeds maximum allowed size ({MAX_JSON_RPC_BODY_BYTES} bytes)"
-                    ))),
-                )
+        })?;
+
+        let Some(frame_result) = next_frame else {
+            break;
+        };
+
+        let frame = frame_result.map_err(|err| {
+            if is_length_limit_error(&err) {
+                payload_too_large_error()
             } else {
                 (
                     StatusCode::BAD_REQUEST,
@@ -240,21 +250,70 @@ async fn read_bounded_body(
                 )
             }
         })?;
-    Ok(collected.to_bytes())
+
+        let Ok(chunk) = frame.into_data() else {
+            continue;
+        };
+        if chunk.is_empty() {
+            continue;
+        }
+
+        let new_total = buffered
+            .len()
+            .checked_add(chunk.len())
+            .ok_or_else(payload_too_large_error)?;
+        if new_total > MAX_JSON_RPC_BODY_BYTES {
+            return Err(payload_too_large_error());
+        }
+
+        let chunk_permits = u32::try_from(chunk.len()).map_err(|_| payload_too_large_error())?;
+        let chunk_permit = limiter
+            .in_flight_bytes
+            .clone()
+            .try_acquire_many_owned(chunk_permits)
+            .map_err(|_| {
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    Json(ErrorResponse::new(
+                        "Too many concurrent JSON-RPC request bytes buffered; try again later".to_string(),
+                    )),
+                )
+            })?;
+
+        match &mut byte_permit {
+            Some(existing) => existing.merge(chunk_permit),
+            None => byte_permit = Some(chunk_permit),
+        }
+
+        if new_total > buffered.capacity() {
+            let target_cap = buffered
+                .capacity()
+                .saturating_mul(2)
+                .max(new_total)
+                .min(MAX_JSON_RPC_BODY_BYTES);
+            buffered.reserve_exact(target_cap.saturating_sub(buffered.len()));
+        }
+        buffered.extend_from_slice(&chunk);
+
+        idle_deadline = time::Instant::now()
+            .checked_add(limiter.chunk_idle_timeout)
+            .unwrap_or_else(time::Instant::now);
+    }
+
+    Ok(BufferedJsonRpcBody {
+        bytes: buffered,
+        byte_permit,
+    })
 }
 
-pub async fn handle<B: BlockchainBackend + 'static>(
-    admission: JsonRpcAdmission,
-    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
-    Extension(mempool_service): Extension<MempoolHandle>,
+async fn read_and_decode_transaction(
     body: Body,
-) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let JsonRpcAdmission {
-        in_flight_permit,
-        limiter,
-    } = admission;
-
-    let body = read_bounded_body(body, limiter.body_read_timeout).await?;
+    limiter: &JsonRpcLimiter,
+) -> Result<DecodedSubmitTransaction, (StatusCode, Json<ErrorResponse>)> {
+    let BufferedJsonRpcBody {
+        bytes: body,
+        byte_permit,
+    } = read_bounded_body(body, limiter).await?;
 
     let decode_permit = limiter.decode.clone().acquire_owned().await.map_err(|_| {
         (
@@ -263,13 +322,16 @@ pub async fn handle<B: BlockchainBackend + 'static>(
         )
     })?;
 
-    // Hold both permits inside the blocking task so that an HTTP client disconnecting mid-decode cannot release
-    // its decode or in-flight slot before the blocking thread finishes freeing the request buffers, then return
-    // `in_flight_permit` so it stays held through mempool submission.
-    let (in_flight_permit, decoded) = task::spawn_blocking(move || {
+    // Move `body`, `byte_permit`, and `decode_permit` into the blocking task so that:
+    // 1) If an HTTP client disconnects mid-decode, both permits remain held until the blocking thread finishes freeing
+    //    `body`.
+    // 2) Both `byte_permit` and `decode_permit` are dropped as soon as decoding finishes, strictly before calling
+    //    `submit_transaction::handle` (which is bounded separately by the mempool's own submission permits).
+    task::spawn_blocking(move || {
         let _decode_permit = decode_permit;
-        let result = decode_transaction(&body);
-        (in_flight_permit, result)
+        let _byte_permit = byte_permit;
+        let body = body;
+        decode_transaction(&body)
     })
     .await
     .map_err(|e| {
@@ -278,17 +340,24 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse::new("Internal error decoding request".to_string())),
         )
-    })?;
+    })?
+}
 
+pub async fn handle<B: BlockchainBackend + 'static>(
+    admission: JsonRpcAdmission,
+    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
+    Extension(mempool_service): Extension<MempoolHandle>,
+    body: Body,
+) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
     let DecodedSubmitTransaction {
         id,
         version,
         transaction,
-    } = decoded?;
+    } = read_and_decode_transaction(body, &admission.limiter).await?;
+    drop(admission);
 
     let submission_result =
         submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await;
-    drop(in_flight_permit);
 
     match submission_result {
         Ok(response) => {
@@ -391,17 +460,111 @@ struct SubmitTransactionEnvelope {
     params: SubmitTransactionParams,
 }
 
-#[derive(Default, Deserialize)]
+const fn default_submit_tx_version() -> u64 {
+    1
+}
+
+#[derive(Deserialize)]
 struct SubmitTransactionParams {
     #[serde(default, deserialize_with = "deserialize_present_transaction")]
     transaction: Option<Transaction>,
-    #[serde(default)]
-    version: Option<u64>,
+    #[serde(
+        default = "default_submit_tx_version",
+        deserialize_with = "deserialize_lenient_version"
+    )]
+    version: u64,
+}
+
+impl Default for SubmitTransactionParams {
+    fn default() -> Self {
+        Self {
+            transaction: None,
+            version: default_submit_tx_version(),
+        }
+    }
 }
 
 fn deserialize_present_transaction<'de, D>(deserializer: D) -> Result<Option<Transaction>, D::Error>
 where D: serde::Deserializer<'de> {
     Transaction::deserialize(deserializer).map(Some)
+}
+
+/// Matches legacy `params.get("version").and_then(Value::as_u64).unwrap_or(1)` semantics without allocating an untyped
+/// `serde_json::Value` tree: non-negative `u64` integers are preserved, while strings (`"2"`), floats (`2.0`),
+/// negative integers (`-1`), booleans, `null`, arrays, and objects fall back to version `1`.
+fn deserialize_lenient_version<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where D: serde::Deserializer<'de> {
+    struct LenientVersionVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for LenientVersionVisitor {
+        type Value = u64;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("any JSON value representing an optional RPC version")
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
+            Ok(v)
+        }
+
+        fn visit_u128<E>(self, v: u128) -> Result<Self::Value, E> {
+            Ok(u64::try_from(v).unwrap_or(default_submit_tx_version()))
+        }
+
+        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
+            Ok(u64::try_from(v).unwrap_or(default_submit_tx_version()))
+        }
+
+        fn visit_i128<E>(self, v: i128) -> Result<Self::Value, E> {
+            Ok(u64::try_from(v).unwrap_or(default_submit_tx_version()))
+        }
+
+        fn visit_f64<E>(self, _v: f64) -> Result<Self::Value, E> {
+            Ok(default_submit_tx_version())
+        }
+
+        fn visit_bool<E>(self, _v: bool) -> Result<Self::Value, E> {
+            Ok(default_submit_tx_version())
+        }
+
+        fn visit_str<E>(self, _v: &str) -> Result<Self::Value, E> {
+            Ok(default_submit_tx_version())
+        }
+
+        fn visit_string<E>(self, _v: String) -> Result<Self::Value, E> {
+            Ok(default_submit_tx_version())
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(default_submit_tx_version())
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(default_submit_tx_version())
+        }
+
+        fn visit_some<D2>(self, deserializer: D2) -> Result<Self::Value, D2::Error>
+        where D2: serde::Deserializer<'de> {
+            deserializer.deserialize_any(self)
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where A: serde::de::SeqAccess<'de> {
+            while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+            Ok(default_submit_tx_version())
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where A: serde::de::MapAccess<'de> {
+            while map
+                .next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>()?
+                .is_some()
+            {}
+            Ok(default_submit_tx_version())
+        }
+    }
+
+    deserializer.deserialize_any(LenientVersionVisitor)
 }
 
 fn verify_p2p_proto_limits(
@@ -450,9 +613,9 @@ fn decode_transaction(body: &[u8]) -> Result<DecodedSubmitTransaction, (StatusCo
     }
 
     let submit = serde_json::from_slice::<SubmitTransactionEnvelope>(body).map_err(|e| bad_request(e.to_string()))?;
-    // Version defaults to 1 for backward compatibility with older wallets.
+    // Version defaults to 1 (and falls back to 1 for non-u64 values) for backward compatibility with existing clients.
     // V2 adds the optional `details` field in the response.
-    let version = submit.params.version.unwrap_or(1);
+    let version = submit.params.version;
     let transaction = submit
         .params
         .transaction
@@ -482,6 +645,7 @@ mod tests {
     #![allow(clippy::indexing_slicing)]
     use std::net::SocketAddr;
 
+    use axum::body::Bytes;
     use tari_common::configuration::Network;
     use tari_common_types::types::{ComAndPubSignature, FixedHash, PrivateKey};
     use tari_core::{
@@ -524,7 +688,7 @@ mod tests {
         limiter: JsonRpcLimiter,
         body: Bytes,
     ) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
-        let admission = JsonRpcAdmission::try_acquire(limiter)?;
+        let admission = JsonRpcAdmission::new(limiter);
         handle(
             admission,
             Extension(query_service),
@@ -1002,33 +1166,42 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn limiter_sheds_requests_above_in_flight_cap_and_releases_slots_after_completion() {
+    async fn limiter_sheds_requests_above_byte_budget_and_releases_permits_before_mempool_submission() {
         let shutdown = Shutdown::new();
         let (mempool, mempool_state) = create_mempool_service_mock();
         mempool_state
             .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
             .await;
         let query_service = make_query_service(&shutdown, mempool.clone());
-        let limiter = JsonRpcLimiter::with_limits(2, 1);
+        let payload = request(transaction_json(None));
+        let budget = payload.len();
+        let limiter = JsonRpcLimiter::with_limits(budget, 1);
 
-        let permit_one = limiter.in_flight.clone().try_acquire_owned().unwrap();
-        let permit_two = limiter.in_flight.clone().try_acquire_owned().unwrap();
+        let held_bytes = limiter
+            .in_flight_bytes
+            .clone()
+            .try_acquire_many_owned(u32::try_from(budget).unwrap())
+            .unwrap();
 
-        let (status, Json(err)) = call_handle(
-            query_service.clone(),
-            mempool.clone(),
-            limiter.clone(),
-            request(transaction_json(None)),
-        )
-        .await
-        .unwrap_err();
+        let (status, Json(err)) = call_handle(query_service.clone(), mempool.clone(), limiter.clone(), payload.clone())
+            .await
+            .unwrap_err();
         assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
         assert!(serde_json::to_string(&err).unwrap().contains("Too many concurrent"));
         assert_eq!(mempool_state.get_call_count(), 0);
 
-        drop((permit_one, permit_two));
+        drop(held_bytes);
 
-        let resp = match call_handle(query_service, mempool, limiter, request(transaction_json(None))).await {
+        // Prove both `in_flight_bytes` and `decode` permits are already 100% released as soon as
+        // `read_and_decode_transaction` returns, strictly before `submit_transaction::handle` executes.
+        let decoded = read_and_decode_transaction(Body::from(payload.clone()), &limiter)
+            .await
+            .unwrap_or_else(|(s, _)| panic!("unexpected decode failure: {s}"));
+        assert_eq!(decoded.version, 1);
+        assert_eq!(limiter.in_flight_bytes.available_permits(), budget);
+        assert_eq!(limiter.decode.available_permits(), 1);
+
+        let resp = match call_handle(query_service, mempool, limiter, payload).await {
             Ok(Json(resp)) => resp,
             Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
         };
@@ -1037,83 +1210,137 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unfinished_uploads_consume_in_flight_slots_and_shed_excess_at_route_level() {
+    async fn stalled_header_only_uploads_hold_zero_bytes_and_cannot_starve_honest_client() {
         let shutdown = Shutdown::new();
         let (mempool, mempool_state) = create_mempool_service_mock();
         mempool_state
             .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
             .await;
         let query_service = make_query_service(&shutdown, mempool.clone());
-        let limiter = JsonRpcLimiter::with_limits_and_timeout(2, 1, Duration::from_secs(30));
+        let valid_body = request(transaction_json(None));
+        let byte_budget = valid_body.len().saturating_mul(2);
+        let limiter = JsonRpcLimiter::with_limits_and_idle_timeout(byte_budget, 2, Duration::from_secs(30));
         let addr = spawn_test_server(query_service, mempool, limiter.clone(), shutdown.to_signal()).await;
 
-        let unfinished_req = concat!(
+        let stalled_headers = concat!(
+            "POST /json_rpc HTTP/1.1\r\n",
+            "Host: localhost\r\n",
+            "Content-Type: application/json\r\n",
+            "Connection: close\r\n",
+            "Content-Length: 10485760\r\n\r\n",
+        );
+
+        let mut stalled_streams = Vec::with_capacity(12);
+        for _ in 0..12 {
+            let mut stream = TcpStream::connect(addr).await.unwrap();
+            stream.write_all(stalled_headers.as_bytes()).await.unwrap();
+            stalled_streams.push(stream);
+        }
+
+        time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(limiter.in_flight_bytes.available_permits(), byte_budget);
+
+        let valid_http = format!(
+            "POST /json_rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nConnection: \
+             close\r\nContent-Length: {}\r\n\r\n",
+            valid_body.len()
+        );
+        let mut honest_stream = TcpStream::connect(addr).await.unwrap();
+        honest_stream.write_all(valid_http.as_bytes()).await.unwrap();
+        honest_stream.write_all(&valid_body).await.unwrap();
+        let (ok_status, ok_body) = read_http_response(&mut honest_stream).await;
+        assert_eq!(ok_status, StatusCode::OK.as_u16(), "{ok_body}");
+        let parsed: serde_json::Value = serde_json::from_str(&ok_body).unwrap();
+        assert!(parsed["error"].is_null(), "{ok_body}");
+        assert_eq!(mempool_state.get_call_count(), 1);
+        drop(stalled_streams);
+    }
+
+    #[tokio::test]
+    async fn unfinished_uploads_exceeding_byte_budget_shed_excess_and_release_on_abort() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limiter = JsonRpcLimiter::with_limits_and_idle_timeout(4_096, 1, Duration::from_secs(30));
+        let addr = spawn_test_server(query_service, mempool, limiter.clone(), shutdown.to_signal()).await;
+
+        let unfinished_headers = concat!(
             "POST /json_rpc HTTP/1.1\r\n",
             "Host: localhost\r\n",
             "Content-Type: application/json\r\n",
             "Connection: close\r\n",
             "Content-Length: 65536\r\n\r\n",
-            "{\"jsonrpc\":\"2.0\",",
         );
+        let partial_chunk = vec![b' '; 2_048];
 
         let mut stream_one = TcpStream::connect(addr).await.unwrap();
-        stream_one.write_all(unfinished_req.as_bytes()).await.unwrap();
+        stream_one.write_all(unfinished_headers.as_bytes()).await.unwrap();
+        stream_one.write_all(&partial_chunk).await.unwrap();
 
         let mut stream_two = TcpStream::connect(addr).await.unwrap();
-        stream_two.write_all(unfinished_req.as_bytes()).await.unwrap();
+        stream_two.write_all(unfinished_headers.as_bytes()).await.unwrap();
+        stream_two.write_all(&partial_chunk).await.unwrap();
 
-        // Both unfinished uploads must acquire `in_flight` slots before their bodies finish arriving.
         time::timeout(Duration::from_secs(5), async {
-            while limiter.in_flight.available_permits() != 0 {
+            while limiter.in_flight_bytes.available_permits() != 0 {
                 time::sleep(Duration::from_millis(5)).await;
             }
         })
         .await
-        .expect("unfinished uploads did not acquire both in-flight slots before body completion");
+        .expect("unfinished uploads did not charge all 4096 buffered byte permits");
 
-        // A third unfinished upload must be shed immediately with 429 before sending its remaining bytes.
         let mut stream_three = TcpStream::connect(addr).await.unwrap();
-        stream_three.write_all(unfinished_req.as_bytes()).await.unwrap();
+        stream_three.write_all(unfinished_headers.as_bytes()).await.unwrap();
+        stream_three.write_all(b"{\"jsonrpc\":\"2.0\",").await.unwrap();
         let (status, err_body) = read_http_response(&mut stream_three).await;
         assert_eq!(status, StatusCode::TOO_MANY_REQUESTS.as_u16(), "{err_body}");
         assert!(err_body.contains("Too many concurrent"), "{err_body}");
         assert_eq!(mempool_state.get_call_count(), 0);
 
-        // Dropping both unfinished uploads aborts body collection and releases their `in_flight` slots.
         drop((stream_one, stream_two));
         time::timeout(Duration::from_secs(5), async {
-            while limiter.in_flight.available_permits() != 2 {
+            while limiter.in_flight_bytes.available_permits() != 4_096 {
                 time::sleep(Duration::from_millis(5)).await;
             }
         })
         .await
-        .expect("aborted unfinished uploads did not release their in-flight slots");
+        .expect("aborted unfinished uploads did not release their byte permits");
+    }
 
-        // A valid request over the same route now succeeds and forwards to the mempool.
+    #[tokio::test]
+    async fn slow_streaming_upload_succeeds_past_single_idle_window_while_stalled_upload_times_out() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limiter = JsonRpcLimiter::with_limits_and_idle_timeout(65_536, 1, Duration::from_millis(120));
+        let addr = spawn_test_server(query_service, mempool, limiter.clone(), shutdown.to_signal()).await;
+
+        // 1) Stream valid request in 8 chunks spaced 35ms apart (~280ms total > 2x the 120ms per-chunk idle timeout).
         let valid_body = request(transaction_json(None));
         let valid_http = format!(
             "POST /json_rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nConnection: \
              close\r\nContent-Length: {}\r\n\r\n",
             valid_body.len()
         );
-        let mut stream_four = TcpStream::connect(addr).await.unwrap();
-        stream_four.write_all(valid_http.as_bytes()).await.unwrap();
-        stream_four.write_all(&valid_body).await.unwrap();
-        let (ok_status, ok_body) = read_http_response(&mut stream_four).await;
+        let mut slow_stream = TcpStream::connect(addr).await.unwrap();
+        slow_stream.write_all(valid_http.as_bytes()).await.unwrap();
+        let chunk_size = valid_body.len().div_ceil(8).max(1);
+        for chunk in valid_body.chunks(chunk_size) {
+            slow_stream.write_all(chunk).await.unwrap();
+            slow_stream.flush().await.unwrap();
+            time::sleep(Duration::from_millis(35)).await;
+        }
+        let (ok_status, ok_body) = read_http_response(&mut slow_stream).await;
         assert_eq!(ok_status, StatusCode::OK.as_u16(), "{ok_body}");
-        let parsed: serde_json::Value = serde_json::from_str(&ok_body).unwrap();
-        assert!(parsed["error"].is_null(), "{ok_body}");
         assert_eq!(mempool_state.get_call_count(), 1);
-    }
 
-    #[tokio::test]
-    async fn stalled_unfinished_upload_times_out_and_releases_in_flight_slot() {
-        let shutdown = Shutdown::new();
-        let (mempool, mempool_state) = create_mempool_service_mock();
-        let query_service = make_query_service(&shutdown, mempool.clone());
-        let limiter = JsonRpcLimiter::with_limits_and_timeout(1, 1, Duration::from_millis(100));
-        let addr = spawn_test_server(query_service, mempool, limiter.clone(), shutdown.to_signal()).await;
-
+        // 2) An upload that stalls past the 120ms chunk idle window gets 408 and frees all charged byte permits.
         let mut stalled_stream = TcpStream::connect(addr).await.unwrap();
         stalled_stream
             .write_all(
@@ -1121,21 +1348,82 @@ mod tests {
             )
             .await
             .unwrap();
-
         let (status, err_body) = read_http_response(&mut stalled_stream).await;
         assert_eq!(status, StatusCode::REQUEST_TIMEOUT.as_u16(), "{err_body}");
         assert!(
             err_body.contains("Timed out reading JSON-RPC request body"),
             "{err_body}"
         );
-
         time::timeout(Duration::from_secs(5), async {
-            while limiter.in_flight.available_permits() != 1 {
+            while limiter.in_flight_bytes.available_permits() != 65_536 {
                 time::sleep(Duration::from_millis(5)).await;
             }
         })
         .await
-        .expect("timed-out stalled upload did not release its in-flight slot");
-        assert_eq!(mempool_state.get_call_count(), 0);
+        .expect("timed-out stalled upload did not release its byte permits");
+    }
+
+    #[tokio::test]
+    async fn lenient_version_deserialization_falls_back_to_v1_for_non_u64_values() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::NotStoredMempoolPolicy("full".to_string()))
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limiter = JsonRpcLimiter::default();
+        let tx = transaction_json(None);
+
+        // `version: 2` (`u64`) uses V2 response schema (includes `details`).
+        let v2_body = serde_json::to_vec(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": "v2",
+            "method": "submit_transaction",
+            "params": { "transaction": tx.clone(), "version": 2 },
+        }))
+        .unwrap();
+        let Json(v2_resp) = call_handle(
+            query_service.clone(),
+            mempool.clone(),
+            limiter.clone(),
+            Bytes::from(v2_body),
+        )
+        .await
+        .unwrap_or_else(|(s, _)| panic!("unexpected v2 error: {s}"));
+        assert_eq!(v2_resp.result.get("details").and_then(|v| v.as_str()), Some("full"));
+
+        // Non-u64 JSON values (`"2"`, `2.0`, `-1`, `null`, `true`, `[2]`, `{"v": 2}`) must not fail with 400 and
+        // must fall back to V1 response schema (`details` omitted), matching `as_u64().unwrap_or(1)`.
+        for legacy_version in [
+            serde_json::json!("2"),
+            serde_json::json!(2.0),
+            serde_json::json!(-1),
+            serde_json::Value::Null,
+            serde_json::json!(true),
+            serde_json::json!([2]),
+            serde_json::json!({"v": 2}),
+        ] {
+            let body = serde_json::to_vec(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "legacy",
+                "method": "submit_transaction",
+                "params": { "transaction": tx.clone(), "version": legacy_version },
+            }))
+            .unwrap();
+            let Json(resp) = call_handle(
+                query_service.clone(),
+                mempool.clone(),
+                limiter.clone(),
+                Bytes::from(body),
+            )
+            .await
+            .unwrap_or_else(|(s, Json(e))| panic!("legacy version {legacy_version} rejected with {s}: {}", e.error));
+            assert!(resp.error.is_none());
+            assert!(
+                resp.result.get("details").is_none(),
+                "expected V1 fallback without `details` for version={legacy_version}, got {}",
+                resp.result
+            );
+        }
     }
 }
