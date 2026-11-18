@@ -36,6 +36,7 @@ use tari_node_components::blocks::BlockHeader;
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::mpsc, task};
 
+use super::service::{check_chain_on_err, ensure_on_requested_chain};
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
@@ -170,6 +171,8 @@ where B: BlockchainBackend + 'static
         }
 
         let start_header = current_header.clone();
+        let end_height = end_header.height;
+        let end_hash = end_header.hash();
         // Tracks whether the stream walked all the way to `end_header`. Only on a natural completion
         // do we emit the terminator below; an early break (peer left, send failed) must not, so that
         // a truncated stream is not mistaken for a complete one by the consumer.
@@ -189,11 +192,21 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
+            let height = current_header.height;
             let outputs_with_statuses = self
                 .db
-                .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_header.hash()))
+                .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_hash))
                 .await
-                .rpc_status_internal_error(LOG_TARGET)?;
+                .rpc_status_internal_error(LOG_TARGET);
+            let outputs_with_statuses = check_chain_on_err(
+                &self.db,
+                outputs_with_statuses,
+                height,
+                &current_header_hash,
+                end_height,
+                &end_hash,
+            )
+            .await?;
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                 break;
@@ -240,7 +253,16 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_inputs_in_block(current_header_hash)
                 .await
-                .rpc_status_internal_error(LOG_TARGET)?;
+                .rpc_status_internal_error(LOG_TARGET);
+            let inputs_in_block = check_chain_on_err(
+                &self.db,
+                inputs_in_block,
+                height,
+                &current_header_hash,
+                end_height,
+                &end_hash,
+            )
+            .await?;
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                 break;
@@ -259,7 +281,16 @@ where B: BlockchainBackend + 'static
                     .db
                     .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
                     .await
-                    .rpc_status_internal_error(LOG_TARGET)?;
+                    .rpc_status_internal_error(LOG_TARGET);
+                let mined_infos = check_chain_on_err(
+                    &self.db,
+                    mined_infos,
+                    height,
+                    &current_header_hash,
+                    end_height,
+                    &end_hash,
+                )
+                .await?;
                 if tx.is_closed() {
                     debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                     break;
@@ -278,10 +309,12 @@ where B: BlockchainBackend + 'static
                 let input_commitment = match mined_info {
                     Some(o) => o.output.commitment,
                     None => {
-                        return Err(RpcStatus::general(&format!(
+                        let err = Err(RpcStatus::general(&format!(
                             "Mined info for input '{}' not found",
                             input.output_hash().to_hex()
                         )));
+                        return check_chain_on_err(&self.db, err, height, &current_header_hash, end_height, &end_hash)
+                            .await;
                     },
                 };
                 trace!(target: LOG_TARGET, "Spent TXO (commitment '{}') to peer", input_commitment.to_hex());
@@ -311,6 +344,10 @@ where B: BlockchainBackend + 'static
             }
             let txos = txos.into_iter();
 
+            // Every block, including the last, is checked after its reads, so the terminator only follows data that
+            // was on the requested chain when it was sent
+            ensure_on_requested_chain(&self.db, height, &current_header_hash, end_height, &end_hash).await?;
+
             // Ensure task stops if the peer prematurely stops their RPC session
             let txos_len = txos.len();
             if utils::mpsc::send_all(tx, txos).await.is_err() {
@@ -324,8 +361,8 @@ where B: BlockchainBackend + 'static
                 timer.elapsed()
             );
 
-            let next_height = current_header.height.saturating_add(1);
-            if next_height > end_header.height {
+            let next_height = height.saturating_add(1);
+            if next_height > end_height {
                 reached_end = true;
                 break;
             }
@@ -334,22 +371,34 @@ where B: BlockchainBackend + 'static
                 Some(header) => Some(header),
                 None => {
                     // Prefetch the next chunk of headers. The chunk stops early at the first missing header.
-                    let chunk_end = next_height.saturating_add(HEADER_CHUNK_SIZE - 1).min(end_header.height);
-                    header_chunk = self
+                    let chunk_end = next_height.saturating_add(HEADER_CHUNK_SIZE - 1).min(end_height);
+                    let headers = self
                         .db
                         .fetch_headers(next_height..=chunk_end)
                         .await
-                        .rpc_status_internal_error(LOG_TARGET)?
-                        .into_iter();
+                        .rpc_status_internal_error(LOG_TARGET);
+                    header_chunk =
+                        check_chain_on_err(&self.db, headers, height, &current_header_hash, end_height, &end_hash)
+                            .await?
+                            .into_iter();
                     header_chunk.next()
                 },
             };
-            current_header = next_header.ok_or_else(|| {
+            let next_header = next_header.ok_or_else(|| {
                 RpcStatus::general(&format!(
                     "Potential data consistency issue: header {} not found",
                     next_height
                 ))
-            })?;
+            });
+            current_header = check_chain_on_err(
+                &self.db,
+                next_header,
+                height,
+                &current_header_hash,
+                end_height,
+                &end_hash,
+            )
+            .await?;
         }
 
         // Always send a final terminator response tagged with the end header. It carries no TXO, so the
@@ -357,21 +406,18 @@ where B: BlockchainBackend + 'static
         // outputs (e.g. an empty block, or a coinbase that was later spent and pruned on this node). Without
         // it, the consumer would infer completeness from the last data-bearing message, which may belong to
         // an earlier block.
-        if reached_end {
-            let end_header_hash = end_header.hash();
-            if tx
-                .send(Ok(SyncUtxosResponse {
-                    txo: None,
-                    mined_header: end_header_hash.to_vec(),
-                }))
-                .await
-                .is_err()
-            {
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer '{}' exited TXO sync session before terminator could be sent", self.peer_node_id
-                );
-            }
+        if reached_end &&
+            tx.send(Ok(SyncUtxosResponse {
+                txo: None,
+                mined_header: end_hash.to_vec(),
+            }))
+            .await
+            .is_err()
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Peer '{}' exited TXO sync session before terminator could be sent", self.peer_node_id
+            );
         }
 
         debug!(
