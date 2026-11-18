@@ -52,8 +52,7 @@ macro_rules! hash_type {
                 if value.len() < KEY_LENGTH {
                     return Err(SMTError::ArrayTooShort(value.len()));
                 }
-                let mut bytes = [0u8; KEY_LENGTH];
-                bytes.copy_from_slice(value);
+                let bytes = <[u8; KEY_LENGTH]>::try_from(value).map_err(|_| SMTError::ArrayWrongLength(value.len()))?;
                 Ok(Self(bytes))
             }
         }
@@ -178,7 +177,7 @@ impl ExactSizeIterator for PathIterator<'_> {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(bound(deserialize = "H:"))]
+#[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
 #[serde(bound(serialize = "H:"))]
 pub enum Node<H> {
     Empty(EmptyNode),
@@ -272,13 +271,33 @@ impl EmptyNode {
     }
 }
 
-#[derive(Serialize, Deserialize)]
 //-------------------------------------       Leaf Node     -----------------------------------------------------------
+/// On deserialization the stored hash is discarded and recomputed from the key and value.
+#[derive(Serialize, Deserialize)]
+#[serde(from = "RawLeafNode")]
+#[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
 pub struct LeafNode<H> {
     key: NodeKey,
     hash: NodeHash,
     value: ValueHash,
     hash_type: PhantomData<H>,
+}
+
+/// Wire shape of [`LeafNode`]; the `hash` field is read for format compatibility and then ignored.
+#[derive(Deserialize)]
+struct RawLeafNode {
+    key: NodeKey,
+    #[allow(dead_code)]
+    hash: NodeHash,
+    value: ValueHash,
+    #[allow(dead_code)]
+    hash_type: PhantomData<()>,
+}
+
+impl<H: Digest<OutputSize = U32>> From<RawLeafNode> for LeafNode<H> {
+    fn from(raw: RawLeafNode) -> Self {
+        Self::new(raw.key, raw.value)
+    }
 }
 
 impl<H> Clone for LeafNode<H> {
@@ -382,8 +401,11 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
 }
 
 //-------------------------------------       Branch Node     ----------------------------------------------------------
+/// On deserialization the child shape and height are validated as in [`BranchNode::new`], and the stored hash is
+/// discarded, so it is recomputed on the first call to [`BranchNode::hash`].
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(deserialize = "H:"))]
+#[serde(try_from = "RawBranchNode<H>")]
+#[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
 #[serde(bound(serialize = "H:"))]
 pub struct BranchNode<H> {
     // The height of the branch. It is also the number of bits that all keys below this branch share.
@@ -397,6 +419,36 @@ pub struct BranchNode<H> {
     left: Box<Node<H>>,
     right: Box<Node<H>>,
     hash_type: PhantomData<H>,
+}
+
+/// Wire shape of [`BranchNode`]; `hash` and `is_hash_stale` are read for format compatibility and then ignored.
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
+struct RawBranchNode<H> {
+    height: usize,
+    key: NodeKey,
+    #[allow(dead_code)]
+    hash: NodeHash,
+    #[allow(dead_code)]
+    is_hash_stale: bool,
+    left: Box<Node<H>>,
+    right: Box<Node<H>>,
+    #[allow(dead_code)]
+    hash_type: PhantomData<H>,
+}
+
+impl<H: Digest<OutputSize = U32>> TryFrom<RawBranchNode<H>> for BranchNode<H> {
+    type Error = SMTError;
+
+    fn try_from(raw: RawBranchNode<H>) -> Result<Self, Self::Error> {
+        if raw.height > KEY_LENGTH * 8 {
+            return Err(SMTError::InvalidBranch(format!(
+                "Height {} exceeds the key length",
+                raw.height
+            )));
+        }
+        Self::new(raw.height, raw.key, *raw.left, *raw.right)
+    }
 }
 
 impl<H: Debug> Debug for BranchNode<H> {
@@ -493,11 +545,12 @@ impl<H: Digest<OutputSize = U32>> BranchNode<H> {
         &self.hash
     }
 
+    /// The height is hashed as 8 little-endian bytes on every platform.
     pub fn branch_hash(height: usize, key: &NodeKey, left: &NodeHash, right: &NodeHash) -> NodeHash {
         let hasher = H::new();
         let hash = hasher
             .chain_update(b"B")
-            .chain_update(height.to_le_bytes())
+            .chain_update((height as u64).to_le_bytes())
             .chain_update(key)
             .chain_update(left)
             .chain_update(right)
@@ -515,11 +568,16 @@ impl<H: Digest<OutputSize = U32>> BranchNode<H> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use blake2::Blake2b;
     use rand::Rng;
 
     use super::*;
-    use crate::sparse_merkle_tree::bit_utils::TraverseDirection::{Left, Right};
+    use crate::sparse_merkle_tree::{
+        ExclusionProof,
+        SparseMerkleTree,
+        bit_utils::TraverseDirection::{Left, Right},
+    };
 
     fn random_arr() -> [u8; KEY_LENGTH] {
         let mut result = [0; KEY_LENGTH];
@@ -689,5 +747,94 @@ mod test {
         );
         assert_eq!(format!("{key:b}"), bin);
         assert_eq!(format!("{key:#}"), bin);
+    }
+
+    #[test]
+    fn exclusion_proof_with_forged_leaf_hash_is_rejected() {
+        type H = Blake2b<U32>;
+        let k1 = NodeKey::from([64u8; 32]);
+        let v1 = ValueHash::from([1u8; 32]);
+        let k3 = NodeKey::from([222u8; 32]);
+        let v3 = ValueHash::from([3u8; 32]);
+        let mut tree = SparseMerkleTree::<H>::default();
+        tree.upsert(k1.clone(), v1.clone()).unwrap();
+        tree.upsert(k3.clone(), v3.clone()).unwrap();
+        let root = tree.hash().clone();
+
+        // k1 and k3 diverge at bit 0, so k1's only sibling is k3's leaf
+        let siblings = vec![LeafNode::<H>::hash_value(&k3, &v3)];
+        let forged = LeafNode::<H> {
+            key: NodeKey::from([65u8; 32]),
+            hash: LeafNode::<H>::hash_value(&k1, &v1),
+            value: ValueHash::from([9u8; 32]),
+            hash_type: PhantomData,
+        };
+        let proof = ExclusionProof::<H>::new(siblings, Some(forged));
+        assert!(!proof.validate(&k1, &root));
+
+        let absent = NodeKey::from([65u8; 32]);
+        let honest = ExclusionProof::from_tree(&tree, &absent).unwrap();
+        assert!(honest.validate(&absent, &root));
+        assert!(matches!(
+            ExclusionProof::from_tree(&tree, &k1),
+            Err(SMTError::NonViableProof)
+        ));
+    }
+
+    #[test]
+    fn deserialized_leaf_recomputes_hash() {
+        let leaf = LeafNode::<Blake2b<U32>>::new(random_key(), random_value_hash());
+        let mut json: serde_json::Value = serde_json::to_value(&leaf).unwrap();
+        json["hash"] = serde_json::to_value(NodeHash::from([7u8; 32])).unwrap();
+        let decoded: LeafNode<Blake2b<U32>> = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            decoded.hash(),
+            &LeafNode::<Blake2b<U32>>::hash_value(leaf.key(), leaf.value())
+        );
+    }
+
+    #[test]
+    fn deserialized_branch_rejects_invalid_children() {
+        type H = Blake2b<U32>;
+        let leaf = || Node::Leaf(LeafNode::<H>::new(random_key(), random_value_hash()));
+        let valid = BranchNode::<H>::new(0, NodeKey::default(), leaf(), leaf()).unwrap();
+        let json = serde_json::to_value(&valid).unwrap();
+        assert!(serde_json::from_value::<BranchNode<H>>(json.clone()).is_ok());
+
+        let empty = serde_json::to_value(Node::<H>::Empty(EmptyNode {})).unwrap();
+        let mut both_empty = json.clone();
+        both_empty["left"] = empty.clone();
+        both_empty["right"] = empty.clone();
+        assert!(serde_json::from_value::<BranchNode<H>>(both_empty).is_err());
+
+        let mut empty_leaf = json.clone();
+        empty_leaf["left"] = empty;
+        assert!(serde_json::from_value::<BranchNode<H>>(empty_leaf).is_err());
+
+        let mut too_high = json;
+        too_high["height"] = 300.into();
+        assert!(serde_json::from_value::<BranchNode<H>>(too_high).is_err());
+    }
+
+    #[test]
+    fn try_from_rejects_33_bytes() {
+        assert_eq!(NodeHash::try_from(&[0u8; 33][..]), Err(SMTError::ArrayWrongLength(33)));
+        assert_eq!(ValueHash::try_from(&[0u8; 31][..]), Err(SMTError::ArrayTooShort(31)));
+        assert_eq!(NodeKey::try_from(&[5u8; 32][..]), Ok(NodeKey::from([5u8; 32])));
+    }
+
+    #[test]
+    fn branch_hash_fixture() {
+        // Captured with the height hashed as a native usize on a 64-bit target
+        let hash = BranchNode::<Blake2b<U32>>::branch_hash(
+            5,
+            &NodeKey::from([1u8; 32]),
+            &NodeHash::from([2u8; 32]),
+            &NodeHash::from([3u8; 32]),
+        );
+        assert_eq!(
+            hash.to_string(),
+            "cec533ef371db397a668e668032d857f56e5fe6384078664f11bebe02c8c54b9"
+        );
     }
 }

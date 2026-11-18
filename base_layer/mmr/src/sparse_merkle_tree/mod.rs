@@ -73,6 +73,18 @@
 //! tree.delete(&new_key(79)).unwrap();
 //! assert!(tree.is_empty());
 //! ```
+//!
+//! # Decoding untrusted data
+//!
+//! * [`ExclusionProof::validate`] recomputes the leaf hash from the proof leaf's key and value.
+//! * Deserialized [`LeafNode`]s recompute their hash; deserialized [`BranchNode`]s apply the child-shape rules of
+//!   [`BranchNode::new`], reject heights above 256, and recompute their hash on first use. The tree `size` is not
+//!   checked.
+//! * `TryFrom<&[u8]>` for [`NodeHash`], [`ValueHash`] and [`NodeKey`] requires exactly 32 bytes.
+//! * Branch heights are hashed as 8 little-endian bytes, so roots match on 32- and 64-bit targets.
+//!
+//! Decoding has no recursion-depth limit of its own (serde_json applies one; bincode does not), so consumers handling
+//! untrusted input should prefer exchanging proofs over whole trees.
 //! Copyright 2023. The Tari Project
 //! SPDX-License-Identifier: BSD-3-Clause
 

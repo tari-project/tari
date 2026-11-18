@@ -32,7 +32,7 @@ pub enum DeleteResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(bound(deserialize = "H:"))]
+#[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
 #[serde(bound(serialize = "H:"))]
 pub struct SparseMerkleTree<H> {
     size: u64,
@@ -47,6 +47,8 @@ impl<H> SparseMerkleTree<H> {
         }
     }
 
+    /// The number of leaves in the tree. Informational only: it is not checked against the nodes when a tree is
+    /// deserialized.
     pub fn size(&self) -> u64 {
         self.size
     }
@@ -148,7 +150,9 @@ impl<H: Digest<OutputSize = U32>> TerminalBranch<'_, H> {
     //
     // This function prunes that node and returns the height that it needs to be inserted into.
     fn prune(&mut self) -> Result<(Node<H>, usize), SMTError> {
-        let branches_to_prune = self.empty_siblings.iter()
+        let branches_to_prune = self
+            .empty_siblings
+            .iter()
             .rev()
             // The last branch has two non-empty nodes by definition, so it's always F.
             .skip(1)
@@ -462,7 +466,7 @@ mod test {
     {
         Blake2b::<U32>::default()
             .chain_update(b"B")
-            .chain_update(height.to_le_bytes())
+            .chain_update((height as u64).to_le_bytes())
             .chain_update(key)
             .chain_update(left)
             .chain_update(right)
@@ -924,5 +928,27 @@ mod test {
             SMTError::KeyExists
         );
         assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
+    }
+
+    #[test]
+    fn deserialized_tree_hashes_to_same_root() {
+        use rand::Rng;
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::new();
+        for _ in 0..50 {
+            let mut key = [0u8; 32];
+            let mut value = [0u8; 32];
+            rand::rng().fill_bytes(&mut key);
+            rand::rng().fill_bytes(&mut value);
+            tree.upsert(NodeKey::from(key), ValueHash::from(value)).unwrap();
+        }
+        let root = tree.hash().clone();
+
+        let json = serde_json::to_string(&tree).unwrap();
+        let mut from_json: SparseMerkleTree<Blake2b<U32>> = serde_json::from_str(&json).unwrap();
+        assert_eq!(from_json.hash(), &root);
+
+        let bytes = bincode::serialize(&tree).unwrap();
+        let mut from_bincode: SparseMerkleTree<Blake2b<U32>> = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(from_bincode.hash(), &root);
     }
 }
