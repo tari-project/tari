@@ -42,7 +42,8 @@ fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleProofError> {
 /// Leaves and internal nodes are hashed identically (no domain separation). `node_index` is bound to the path length:
 /// the proof only verifies if the walk from `node_index` ends exactly at the root, so a leaf's index cannot be reused
 /// with a shorter path. An internal node with its own index and path still verifies, so callers must check that
-/// `node_index()` is a leaf index (`>= leaf_count - 1`) or domain-separate leaf hashes before relying on the position.
+/// `node_index()` is a leaf index (`leaf_count - 1 <= node_index() < 2 * leaf_count - 1`) or domain-separate leaf
+/// hashes before relying on the position.
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct BalancedBinaryMerkleProof<D> {
     /// Since this is balanced tree, the index `2k+1` is always left child and `2k` is right child
@@ -57,8 +58,8 @@ where D: Digest
     /// Returns true if `leaf_hash` at `node_index` hashes up `path` to `root`. The proof verifies only if `node_index`
     /// and `path.len()` describe a walk that ends exactly at the root (node index 0), so a leaf's index cannot be
     /// reused with a shorter path. Leaves and internal nodes are hashed identically, so callers must check that
-    /// `node_index()` is a leaf index (`>= leaf_count - 1`) or domain-separate leaf hashes before relying on the
-    /// position.
+    /// `node_index()` is a leaf index (`leaf_count - 1 <= node_index() < 2 * leaf_count - 1`) or domain-separate leaf
+    /// hashes before relying on the position.
     #[must_use = "Must use the result of the proof verification"]
     pub fn verify(&self, root: &Hash, leaf_hash: Hash) -> bool {
         let mut computed_root = leaf_hash;
@@ -555,6 +556,21 @@ mod test {
         // Keep the leaf's node index but only the path above internal node 1
         proof.path.remove(0);
         assert!(!proof.verify(&root, bmt.get_hash(1).unwrap().clone()));
+    }
+
+    #[test]
+    fn verify_accepts_index_past_leaf_range() {
+        // Why callers need the upper bound of the leaf range: leaf 0 (node 2) of a 3-leaf tree is H(a || b), so a
+        // proof for "node 5" below it verifies
+        let (a, b) = (vec![1u8; 32], vec![2u8; 32]);
+        let leaves = vec![hash_together::<TestHasher>(&a, &b), vec![3u8; 32], vec![4u8; 32]];
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves);
+        let proof = BalancedBinaryMerkleProof::<TestHasher> {
+            path: vec![b, bmt.get_hash(1).unwrap().clone()],
+            node_index: 5,
+            _phantom: PhantomData,
+        };
+        assert!(proof.verify(&bmt.get_merkle_root(), a));
     }
 
     #[test]
