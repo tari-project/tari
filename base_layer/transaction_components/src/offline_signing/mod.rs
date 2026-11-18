@@ -3168,14 +3168,17 @@ mod test {
         let (spend, view) = wallets(Some(1));
         let payload = prepare(&spend, &view);
         let max = crate::offline_signing::MAX_PAYLOAD_LIFETIME.as_secs();
+        let skew = crate::offline_signing::offline_signer::MAX_CLOCK_SKEW.as_secs();
         for policy in [PayloadKeyPolicy::AcceptViewKey, require(&[1])] {
-            // As if the signer's clock were further back than the payload's lifetime allows
-            let now = payload.expires_at.saturating_sub(max);
+            // A payload at the maximum lifetime, with the signer's clock half an hour behind the wallet's
+            let now = payload.expires_at.saturating_sub(max).saturating_sub(30 * 60);
+            verify_payload(&spend, &policy, &payload, now).unwrap();
+            let now = payload.expires_at.saturating_sub(max).saturating_sub(skew);
             verify_payload(&spend, &policy, &payload, now).unwrap();
             let err = verify_payload(&spend, &policy, &payload, now.saturating_sub(1))
                 .unwrap_err()
                 .to_string();
-            assert!(err.contains("more than 168 hours from now"), "{err}");
+            assert!(err.contains("more than 169 hours from now"), "{err}");
         }
     }
 

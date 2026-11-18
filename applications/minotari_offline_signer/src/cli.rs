@@ -101,6 +101,12 @@ pub enum Commands {
     /// `sign --require-payload-key --payload-key-index <index>` refuses any payload that is not.
     ExportPayloadKey(ExportPayloadKeyArgs),
 
+    /// Stop accepting payloads signed with an exported payload key, for example one that may have leaked
+    ///
+    /// The signer stays strict even when no recorded index is left: it then refuses every payload until another key
+    /// is exported.
+    RetirePayloadKey(RetirePayloadKeyArgs),
+
     /// Check if the signer has been initialized
     Status,
 
@@ -187,7 +193,7 @@ pub struct SignArgs {
 #[derive(Debug, Args, Clone)]
 #[clap(group(clap::ArgGroup::new("destination").required(true).args(["output", "stdout"])))]
 pub struct ExportPayloadKeyArgs {
-    /// The payload key index. A key is retired by no longer accepting its index when signing
+    /// The payload key index. A key is retired with `retire-payload-key`
     #[clap(long)]
     pub index: u64,
 
@@ -198,6 +204,17 @@ pub struct ExportPayloadKeyArgs {
     /// Print the key instead of writing it to a file
     #[clap(long)]
     pub stdout: bool,
+
+    /// Passphrase to decrypt the keys
+    #[clap(long, env = "TARI_PASSPHRASE")]
+    pub passphrase: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RetirePayloadKeyArgs {
+    /// The payload key index to stop accepting
+    #[clap(long)]
+    pub index: u64,
 
     /// Passphrase to decrypt the keys
     #[clap(long, env = "TARI_PASSPHRASE")]
@@ -227,6 +244,7 @@ impl Cli {
                 Some(out) => export_payload_key(args, out),
                 None => export_payload_key(args, &mut io::stdout().lock()),
             },
+            Commands::RetirePayloadKey(args) => retire_payload_key(args),
             Commands::Status => check_status(),
             Commands::Clear => clear_keystore(),
         }
@@ -488,12 +506,14 @@ fn sign_policy(
     let accepted_indices = if payload_key_indices.is_empty() {
         keystore::get_payload_key_indices(passphrase)?
     } else {
-        payload_key_indices
+        Some(payload_key_indices)
     };
-    if require_payload_key || !accepted_indices.is_empty() {
-        Ok(PayloadKeyPolicy::RequirePayloadKey { accepted_indices })
-    } else {
-        Ok(PayloadKeyPolicy::AcceptViewKey)
+    match accepted_indices {
+        Some(accepted_indices) => Ok(PayloadKeyPolicy::RequirePayloadKey { accepted_indices }),
+        None if require_payload_key => Ok(PayloadKeyPolicy::RequirePayloadKey {
+            accepted_indices: Vec::new(),
+        }),
+        None => Ok(PayloadKeyPolicy::AcceptViewKey),
     }
 }
 
@@ -525,16 +545,25 @@ fn export_payload_key(args: ExportPayloadKeyArgs, out: &mut dyn Write) -> Result
                 .open(&path)
                 .with_context(|| format!("Failed to create output file: {:?}", path))?;
             writeln!(file, "{}", *json)?;
-            writeln!(out, "✓ Payload key #{} written to {:?}", args.index, path)?;
+            eprintln!("✓ Payload key #{} written to {:?}", args.index, path);
         },
+        // Only the key goes to stdout, so it can be redirected straight into a file
         None => writeln!(out, "{}", *json)?,
     }
     keystore::record_payload_key_index(args.index, &args.passphrase)?;
-    writeln!(
-        out,
+    eprintln!(
         "Payload key #{} recorded: `sign` now requires a payload key unless --allow-view-key is given",
         args.index
-    )?;
+    );
+    Ok(())
+}
+
+fn retire_payload_key(args: RetirePayloadKeyArgs) -> Result<()> {
+    keystore::retire_payload_key_index(args.index, &args.passphrase)?;
+    println!(
+        "✓ Payload key #{} retired: `sign` no longer accepts payloads signed with it",
+        args.index
+    );
     Ok(())
 }
 
@@ -810,34 +839,8 @@ mod test {
             )))
             .unwrap();
             view.set_payload_auth_key(Some((export.index, PrivateKey::from_hex(&export.private_key).unwrap())));
-
-            // The binary refuses networks other than the one it was built for
             let network = Network::get_current();
-            let consensus_manager = ConsensusManager::builder(network).build();
-            let mut tx_builder =
-                TransactionBuilder::new(consensus_manager.consensus_constants(0).clone(), view.clone(), network)
-                    .unwrap();
-            tx_builder
-                .with_fee_per_gram(MicroMinotari(20))
-                .with_input(create_test_input(MicroMinotari(100_000), 0, &spend, vec![], None))
-                .unwrap();
-            let recipient = PaymentRecipient {
-                amount: MicroMinotari(5_000),
-                output_features: OutputFeatures::default(),
-                address: one_sided_address(&KeyManager::new_random().unwrap(), network),
-                payment_id: MemoField::new_empty(),
-            };
-            let payload = prepare_one_sided_transaction_for_signing(
-                &view,
-                TxId::new_random(),
-                tx_builder,
-                &[recipient],
-                MemoField::new_empty(),
-                one_sided_address(&view, network),
-                None,
-            )
-            .unwrap();
-            fs::write(&input, payload.to_json().unwrap()).unwrap();
+            fs::write(&input, prepare_on(&spend, &view).to_json().unwrap()).unwrap();
 
             let out = run(&keystore, &[
                 "sign",
@@ -858,6 +861,108 @@ mod test {
             assert!(out.contains("Expires        : "), "{out}");
             assert!(out.contains("Transaction signed successfully"), "{out}");
             assert!(output.exists());
+            fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
+        }
+
+        /// A real one-sided payload prepared by the view-only wallet `view` over an input of `spend`'s, on the
+        /// network the binary was built for (it refuses any other).
+        fn prepare_on(spend: &KeyManager, view: &KeyManager) -> PrepareOneSidedTransactionForSigningResult {
+            let network = Network::get_current();
+            let consensus_manager = ConsensusManager::builder(network).build();
+            let mut tx_builder =
+                TransactionBuilder::new(consensus_manager.consensus_constants(0).clone(), view.clone(), network)
+                    .unwrap();
+            tx_builder
+                .with_fee_per_gram(MicroMinotari(20))
+                .with_input(create_test_input(MicroMinotari(100_000), 0, spend, vec![], None))
+                .unwrap();
+            let recipient = PaymentRecipient {
+                amount: MicroMinotari(5_000),
+                output_features: OutputFeatures::default(),
+                address: one_sided_address(&KeyManager::new_random().unwrap(), network),
+                payment_id: MemoField::new_empty(),
+            };
+            prepare_one_sided_transaction_for_signing(
+                view,
+                TxId::new_random(),
+                tx_builder,
+                &[recipient],
+                MemoField::new_empty(),
+                one_sided_address(view, network),
+                None,
+            )
+            .unwrap()
+        }
+
+        /// A retired index is refused by a plain `sign`, the others still sign, and retiring the last one leaves the
+        /// signer strict.
+        #[test]
+        fn a_retired_payload_key_is_no_longer_accepted() {
+            let (keystore, spend) = init_keystore("retire");
+            let input = keystore.with_file_name("payload.json");
+            let output = keystore.with_file_name("signed.json");
+            let network = Network::get_current().to_string();
+            let sign = |payload: &PrepareOneSidedTransactionForSigningResult| {
+                fs::write(&input, payload.to_json().unwrap()).unwrap();
+                run(&keystore, &[
+                    "sign",
+                    "-i",
+                    input.to_str().unwrap(),
+                    "-o",
+                    output.to_str().unwrap(),
+                    "--passphrase",
+                    "p",
+                    "-n",
+                    &network,
+                ])
+            };
+            let export = |index: &str| {
+                run(&keystore, &[
+                    "export-payload-key",
+                    "--index",
+                    index,
+                    "--stdout",
+                    "--passphrase",
+                    "p",
+                ])
+                .unwrap()
+            };
+            let retire = |index: &str| {
+                run(&keystore, &[
+                    "retire-payload-key",
+                    "--index",
+                    index,
+                    "--passphrase",
+                    "p",
+                ])
+            };
+            export("1");
+            export("2");
+            retire("1").unwrap();
+            assert!(retire("1").is_err(), "an index that is not recorded cannot be retired");
+
+            let view = KeyManager::new(WalletType::ViewWallet(ViewWallet::new(
+                spend.get_spend_key().pub_key,
+                spend.get_private_view_key(),
+                None,
+            )))
+            .unwrap();
+            for index in [1, 2] {
+                let key = spend.get_private_key(&TariKeyId::PayloadAuth { index }).unwrap();
+                view.set_payload_auth_key(Some((index, key)));
+                let result = sign(&prepare_on(&spend, &view));
+                if index == 1 {
+                    let err = result.unwrap_err().to_string();
+                    assert!(err.contains("payload key #1 is not an accepted index"), "{err}");
+                } else {
+                    result.unwrap();
+                }
+            }
+
+            retire("2").unwrap();
+            view.set_payload_auth_key(None);
+            let err = sign(&prepare_on(&spend, &view)).unwrap_err().to_string();
+            assert!(err.contains("signed with the view key (shared key)"), "{err}");
             fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
         }
 
@@ -957,11 +1062,7 @@ mod test {
                 "p",
             ])
             .unwrap();
-            let printed: ExportedPayloadKey = serde_json::Deserializer::from_str(&out)
-                .into_iter()
-                .next()
-                .unwrap()
-                .unwrap();
+            let printed: ExportedPayloadKey = serde_json::from_str(&out).unwrap();
             assert_eq!(printed.private_key, export.private_key);
             fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
         }

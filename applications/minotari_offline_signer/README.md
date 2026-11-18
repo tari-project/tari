@@ -96,7 +96,7 @@ prepares, while a new signer signs version 5 payloads and returns the result as 
 wallet can broadcast.
 To set it up:
 
-1. On the signer, export payload key 1 (any index works; a key is retired by no longer accepting its index):
+1. On the signer, export payload key 1 (any index works; a key is retired with `retire-payload-key`):
 
    ```bash
    minotari_offline_signer export-payload-key --index 1 --output payload_key.json
@@ -122,7 +122,14 @@ To set it up:
 
    The online wallet's database now holds a credential for preparing payloads, not just the view key. Do not copy the
    database and passphrase to other view-only instances as if it were a view key. If the payload key may have
-   leaked, export a new index, import it, and stop accepting the old one (`--payload-key-index <new>`).
+   leaked, export a new index and import it, then retire the old one on the signer:
+
+   ```bash
+   minotari_offline_signer retire-payload-key --index 1
+   ```
+
+   From then on `sign` refuses payloads signed with it. Retiring the last index does not turn strict mode off: the
+   signer then refuses every payload until another key is exported.
 
    The signer holds the spend key, so it derives the payload key itself and needs no import. A wallet that prepares
    payloads needs the import to know which index to sign with: a view wallet signs with the imported key, while a
@@ -135,7 +142,7 @@ To set it up:
    ```
 
    The signer accepts only payloads signed with a payload key whose index it exported.
-   `--payload-key-index <n>` (repeatable) accepts the given indices instead, which is how an old key is retired.
+   `--payload-key-index <n>` (repeatable) accepts the given indices instead for that run.
    `--require-payload-key` turns the same check on before any key has been exported (with no index, it refuses
    everything). `--allow-view-key` accepts view key payloads again for one run, and cannot be combined with the other
    two. A console wallet that signs offline payloads does the same with `require_payload_key = true` and
@@ -150,8 +157,9 @@ view key could have prepared it.
 
 A payload prepared by this version expires 24 hours after it was prepared, or after `--payload-expiry-hours <n>` on
 the console wallet's `prepare-*` commands (`payload_expiry_hours` over gRPC), at most 168 hours (7 days). The signer
-refuses an expired payload, and one that claims to stay valid for more than 7 days, before showing its summary, and the summary shows the expiry in UTC and the time left. The signer's own clock is used,
-so keep it roughly right. Version 5 payloads have no expiry.
+refuses an expired payload, and one that claims to stay valid for more than 7 days plus an hour of clock skew, before
+showing its summary, and the summary shows the expiry in UTC and the time left. The signer's own clock is used, so keep
+it roughly right. Version 5 payloads have no expiry.
 
 ### Clear Stored Keys
 
@@ -169,6 +177,7 @@ minotari_offline_signer clear
 | `init seed-words`    | Initialize the signer with seed words (mnemonic phrase) |
 | `sign`               | Sign a one-sided transaction using stored keys |
 | `export-payload-key` | Export a payload key for the online wallet |
+| `retire-payload-key` | Stop accepting payloads signed with an exported payload key |
 | `status`             | Check if the signer has been initialized |
 | `clear`              | Clear all stored keys from the keystore |
 
@@ -202,7 +211,13 @@ minotari_offline_signer clear
 
 - `--index`: The payload key index
 - `--output, -o`: Write the key to this new file (owner-only)
-- `--stdout`: Print the key instead (one of `--output` and `--stdout` is required)
+- `--stdout`: Print the key instead (one of `--output` and `--stdout` is required). Only the key goes to stdout, so it
+  can be redirected into a file for `import-payload-key --file`; status lines go to stderr
+- `--passphrase`: Passphrase to decrypt the keys (can also be set via `TARI_PASSPHRASE` env var)
+
+### `retire-payload-key` Command
+
+- `--index`: The recorded payload key index to stop accepting
 - `--passphrase`: Passphrase to decrypt the keys (can also be set via `TARI_PASSPHRASE` env var)
 
 ## Security

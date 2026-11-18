@@ -71,6 +71,9 @@ pub const DEFAULT_PAYLOAD_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60)
 /// The longest a prepared payload can be signed for. The signer also refuses a payload that claims to stay valid for
 /// longer than this, so an abandoned payload cannot be kept signable indefinitely.
 pub const MAX_PAYLOAD_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+/// How far the signer's clock may be behind the preparing wallet's before a payload at [`MAX_PAYLOAD_LIFETIME`] is
+/// refused as lasting too long. Expiry itself is checked exactly.
+pub const MAX_CLOCK_SKEW: Duration = Duration::from_secs(60 * 60);
 
 /// Which payload signatures the offline signer accepts.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -163,11 +166,15 @@ pub(crate) fn check_payload_expiry(expires_at: Option<u64>, now: u64) -> Result<
             format_unix_time(expires_at)
         )));
     }
-    if expires_at > now.saturating_add(MAX_PAYLOAD_LIFETIME.as_secs()) {
+    let latest = MAX_PAYLOAD_LIFETIME.saturating_add(MAX_CLOCK_SKEW).as_secs();
+    if expires_at > now.saturating_add(latest) {
         return Err(TransactionBuilderError::Other(format!(
-            "Payload refused: it expires at {}, more than {} hours from now, which no wallet sets.",
+            "Payload refused: it expires at {}, more than {} hours from now (the {}-hour maximum plus {} hour of \
+             clock skew), which no wallet sets.",
             format_unix_time(expires_at),
-            MAX_PAYLOAD_LIFETIME.as_secs() / 3600
+            latest / 3600,
+            MAX_PAYLOAD_LIFETIME.as_secs() / 3600,
+            MAX_CLOCK_SKEW.as_secs() / 3600
         )));
     }
     Ok(())

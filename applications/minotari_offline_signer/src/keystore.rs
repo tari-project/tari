@@ -112,28 +112,47 @@ impl Keystore {
         Ok((spend_key, view_key))
     }
 
-    /// The payload key indices recorded by [`Self::record_payload_key_index`], empty if none were.
-    pub fn payload_key_indices(&self, passphrase: &str) -> Result<Vec<u64>, OfflineSignerError> {
+    /// The recorded payload key indices: `None` if no payload key was ever exported, otherwise the indices still
+    /// accepted, which can be empty once every one has been retired.
+    pub fn payload_key_indices(&self, passphrase: &str) -> Result<Option<Vec<u64>>, OfflineSignerError> {
         let encrypted = match self.backend.retrieve(PAYLOAD_KEY_INDICES_ENTRY) {
             Ok(encrypted) => encrypted,
-            Err(OfflineSignerError::NotInitialized(_)) => return Ok(Vec::new()),
+            Err(OfflineSignerError::NotInitialized(_)) => return Ok(None),
             Err(e) => return Err(e),
         };
         let json = decrypt_bytes(&encrypted, passphrase)?;
         serde_json::from_slice(&json)
+            .map(Some)
             .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse payload key indices: {}", e)))
+    }
+
+    fn store_payload_key_indices(&self, indices: &[u64], passphrase: &str) -> Result<(), OfflineSignerError> {
+        let json = serde_json::to_vec(indices)
+            .map_err(|e| OfflineSignerError::SerializationError(format!("Failed to serialize indices: {}", e)))?;
+        self.backend
+            .store(PAYLOAD_KEY_INDICES_ENTRY, &encrypt_bytes(&json, passphrase)?)
     }
 
     /// Adds `index` to the recorded payload key indices.
     pub fn record_payload_key_index(&self, index: u64, passphrase: &str) -> Result<(), OfflineSignerError> {
-        let mut indices = self.payload_key_indices(passphrase)?;
+        let mut indices = self.payload_key_indices(passphrase)?.unwrap_or_default();
         if !indices.contains(&index) {
             indices.push(index);
         }
-        let json = serde_json::to_vec(&indices)
-            .map_err(|e| OfflineSignerError::SerializationError(format!("Failed to serialize indices: {}", e)))?;
-        self.backend
-            .store(PAYLOAD_KEY_INDICES_ENTRY, &encrypt_bytes(&json, passphrase)?)
+        self.store_payload_key_indices(&indices, passphrase)
+    }
+
+    /// Removes `index` from the recorded payload key indices. The record stays even when it becomes empty, so the
+    /// signer stays strict and refuses every payload until another key is exported.
+    pub fn retire_payload_key_index(&self, index: u64, passphrase: &str) -> Result<(), OfflineSignerError> {
+        let mut indices = self.payload_key_indices(passphrase)?.unwrap_or_default();
+        if !indices.contains(&index) {
+            return Err(OfflineSignerError::InvalidKey(format!(
+                "Payload key #{index} is not a recorded payload key"
+            )));
+        }
+        indices.retain(|i| *i != index);
+        self.store_payload_key_indices(&indices, passphrase)
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -161,6 +180,15 @@ impl Default for Keystore {
 
 struct OsKeyringBackend;
 
+/// Only a missing entry is "not there". Anything else (a locked keychain, a denied prompt, a secret service failure)
+/// is an error, so a recorded payload key list that cannot be read never reads as "none recorded".
+fn retrieve_error(e: keyring::Error) -> OfflineSignerError {
+    match e {
+        keyring::Error::NoEntry => OfflineSignerError::NotInitialized(format!("Key not found in keyring: {}", e)),
+        e => OfflineSignerError::KeystoreError(format!("Failed to read from keyring: {}", e)),
+    }
+}
+
 impl KeystoreBackend for OsKeyringBackend {
     fn store(&self, entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError> {
         let entry = Entry::new(SERVICE_NAME, entry_name)
@@ -180,9 +208,7 @@ impl KeystoreBackend for OsKeyringBackend {
         let entry = Entry::new(SERVICE_NAME, entry_name)
             .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to create keyring entry: {}", e)))?;
 
-        let json = entry
-            .get_password()
-            .map_err(|e| OfflineSignerError::NotInitialized(format!("Key not found in keyring: {}", e)))?;
+        let json = entry.get_password().map_err(retrieve_error)?;
 
         serde_json::from_str(&json)
             .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse key data: {}", e)))
@@ -390,13 +416,18 @@ pub fn get_keys(passphrase: &str) -> Result<(PrivateKey, PrivateKey), OfflineSig
 }
 
 /// The payload key indices exported so far.
-pub fn get_payload_key_indices(passphrase: &str) -> Result<Vec<u64>, OfflineSignerError> {
+pub fn get_payload_key_indices(passphrase: &str) -> Result<Option<Vec<u64>>, OfflineSignerError> {
     Keystore::new().payload_key_indices(passphrase)
 }
 
 /// Records an exported payload key index, which makes `sign` require a payload key by default.
 pub fn record_payload_key_index(index: u64, passphrase: &str) -> Result<(), OfflineSignerError> {
     Keystore::new().record_payload_key_index(index, passphrase)
+}
+
+/// Stops accepting a recorded payload key index.
+pub fn retire_payload_key_index(index: u64, passphrase: &str) -> Result<(), OfflineSignerError> {
+    Keystore::new().retire_payload_key_index(index, passphrase)
 }
 
 /// Checks if the keystore has been initialized.
@@ -412,4 +443,19 @@ pub fn clear_keystore() -> Result<(), OfflineSignerError> {
 /// Returns a human-readable description of the active keystore backend.
 pub fn storage_description() -> &'static str {
     Keystore::new().description()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn only_a_missing_keyring_entry_reads_as_not_initialized() {
+        assert!(matches!(
+            retrieve_error(keyring::Error::NoEntry),
+            OfflineSignerError::NotInitialized(_)
+        ));
+        let locked = keyring::Error::NoStorageAccess("the keychain is locked".into());
+        assert!(matches!(retrieve_error(locked), OfflineSignerError::KeystoreError(_)));
+    }
 }
