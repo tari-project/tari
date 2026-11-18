@@ -48,6 +48,7 @@ pub enum TxSubmissionRejectionReason {
     ValidationFailed,
     FeeTooLow,
     ValidatorNodeSlotTaken,
+    MempoolPolicy,
 }
 
 impl Display for TxSubmissionRejectionReason {
@@ -62,6 +63,7 @@ impl Display for TxSubmissionRejectionReason {
             ValidationFailed => "Validation Failed",
             FeeTooLow => "Fee too low",
             ValidatorNodeSlotTaken => "Validator node slot taken",
+            MempoolPolicy => "Mempool policy",
             None => "None",
         };
         fmt.write_str(response)
@@ -83,6 +85,7 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
             ValidationFailed => TxSubmissionRejectionReason::ValidationFailed,
             FeeTooLow => TxSubmissionRejectionReason::FeeTooLow,
             ValidatorNodeSlotTaken => TxSubmissionRejectionReason::ValidatorNodeSlotTaken,
+            MempoolPolicy => TxSubmissionRejectionReason::MempoolPolicy,
         })
     }
 }
@@ -100,6 +103,7 @@ impl From<TxSubmissionRejectionReason> for proto::TxSubmissionRejectionReason {
             ValidationFailed => proto::TxSubmissionRejectionReason::ValidationFailed,
             FeeTooLow => proto::TxSubmissionRejectionReason::FeeTooLow,
             ValidatorNodeSlotTaken => proto::TxSubmissionRejectionReason::ValidatorNodeSlotTaken,
+            MempoolPolicy => proto::TxSubmissionRejectionReason::MempoolPolicy,
         }
     }
 }

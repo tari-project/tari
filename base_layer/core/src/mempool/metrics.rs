@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{IntCounter, IntGauge};
+use tari_metrics::{IntCounter, IntCounterVec, IntGauge};
 
 pub fn inbound_transactions() -> IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
@@ -45,6 +45,21 @@ pub fn rejected_inbound_transactions() -> IntCounter {
     });
 
     METER.clone()
+}
+
+/// Transactions refused by a mempool policy (not a validation failure), by reason: `no_inputs`, `spend_cap` or
+/// `would_orphan`
+pub fn policy_refused_transactions(reason: &str) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "base_node::mempool::policy_refused_transactions",
+            "Number of transactions refused by a mempool policy, by reason",
+            &["reason"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[reason])
 }
 
 pub fn unconfirmed_pool_size() -> IntGauge {

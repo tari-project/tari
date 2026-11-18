@@ -245,6 +245,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         } = message;
 
         // Ban the source peer. They should not have propagated a DHT discover response.
+        // Backstop: initial_validation already rejects unsigned DHT protocol messages
         let Some(authenticated_pk) = authenticated_origin else {
             warn!(
                 target: LOG_TARGET,
@@ -475,6 +476,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .expect("already checked that this message decrypted successfully");
 
         // Ban the source peer. They should not have propagated a DHT discover response.
+        // Backstop: initial_validation already rejects unsigned DHT protocol messages
         let Some(authenticated_origin) = message.authenticated_origin.as_ref() else {
             warn!(
                 target: LOG_TARGET,
@@ -554,6 +556,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .success()
             .expect("already checked that this message decrypted successfully");
 
+        // Backstop: initial_validation already rejects unsigned DHT protocol messages
         let Some(authenticated_pk) = message.authenticated_origin.as_ref() else {
             warn!(
                 target: LOG_TARGET,
@@ -563,7 +566,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .ban_peer(
                     message.source_peer.public_key.clone(),
                     OffenceSeverity::Low,
-                    "Received JoinMessage that did not have an authenticated origin",
+                    "Received DiscoveryMessage that did not have an authenticated origin",
                 )
                 .await;
 

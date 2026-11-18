@@ -107,6 +107,10 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
 
+      - name: build wallet FFI library
+        # tari_integration_tests links the cdylib from target/release/ (see integration_tests/build.rs)
+        run: cargo build --locked --release -p minotari_wallet_ffi
+
       - name: cargo test compile
         run: cargo test --no-run --locked --all-features --release
 
@@ -213,6 +217,11 @@ jobs:
           restore-keys: |
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
+
+      - name: build wallet FFI library
+        if: ${{ env.CI_FFI == 'true' }}
+        # tari_integration_tests links the cdylib from target/release/ (see integration_tests/build.rs)
+        run: cargo build --locked --release -p minotari_wallet_ffi
 
       - name: cargo test compile
         if: ${{ env.CI_FFI == 'true' }}
