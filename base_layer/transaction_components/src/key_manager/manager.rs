@@ -346,9 +346,24 @@ impl KeyManager {
         *self.payload_auth_key.lock().unwrap_or_else(PoisonError::into_inner) = key;
     }
 
-    /// The imported payload key at `index` if there is one, otherwise `H("payload_auth", spend_key || index)`, which
-    /// only a wallet holding the spend key can derive.
+    /// `H("payload_auth", spend_key || index)` when this wallet holds the spend key. Only a wallet that cannot derive
+    /// it (view-only or Ledger) uses an imported key, and only at the imported index: a wallet that can derive never
+    /// trusts an import, so a wrong one cannot make it accept payloads signed by another key.
     fn payload_auth_private_key(&self, index: u64) -> Result<PrivateKey, KeyManagerError> {
+        let spend_key = if self.wallet_type.is_ledger() {
+            None
+        } else {
+            self.get_private_spend_key().ok()
+        };
+        if let Some(spend_key) = spend_key {
+            let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                HASHER_LABEL_PAYLOAD_AUTH,
+            )
+            .chain(spend_key.as_bytes())
+            .chain(index.to_le_bytes())
+            .finalize_zeroizing();
+            return Ok(PrivateKey::from_uniform_bytes(hash.as_slice())?);
+        }
         if let Some((_, key)) = self
             .payload_auth_key
             .lock()
@@ -358,24 +373,9 @@ impl KeyManager {
         {
             return Ok(key.clone());
         }
-        if self.wallet_type.is_ledger() {
-            return Err(KeyManagerError::LedgerError(
-                "Payload authentication keys cannot be derived on Ledger wallets; import it instead".to_string(),
-            ));
-        }
-        let spend_key = self.get_private_spend_key().map_err(|_| {
-            KeyManagerError::InvalidWalletType(
-                "A payload authentication key can only be derived by a wallet holding the spend key; import it instead"
-                    .to_string(),
-            )
-        })?;
-        let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-            HASHER_LABEL_PAYLOAD_AUTH,
-        )
-        .chain(spend_key.as_bytes())
-        .chain(index.to_le_bytes())
-        .finalize_zeroizing();
-        Ok(PrivateKey::from_uniform_bytes(hash.as_slice())?)
+        Err(KeyManagerError::InvalidWalletType(format!(
+            "This wallet cannot derive payload authentication key #{index} without the spend key; import it instead"
+        )))
     }
 
     fn created_encrypted_key(

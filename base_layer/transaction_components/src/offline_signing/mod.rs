@@ -3036,6 +3036,28 @@ mod test {
         assert!(view.get_private_key(&payload_key(1)).is_err());
     }
 
+    /// A wallet that can derive its payload key never trusts an import, so a foreign key imported at an accepted index
+    /// does not make it sign payloads that key signed.
+    #[test]
+    fn a_spend_wallet_ignores_an_imported_payload_key() {
+        let (spend, view) = wallets(None);
+        let own = spend.get_private_key(&payload_key(1)).unwrap();
+        let foreign = KeyManager::new_random()
+            .unwrap()
+            .get_private_key(&payload_key(1))
+            .unwrap();
+        spend.set_payload_auth_key(Some((1, foreign.clone())));
+        assert_eq!(spend.get_private_key(&payload_key(1)).unwrap(), own);
+
+        view.set_payload_auth_key(Some((1, foreign)));
+        let forged = prepare(&spend, &view);
+        let err = refusal(sign_one_sided(&spend, forged, &require(&[1])));
+        assert!(err.contains("integrity check failed"), "{err}");
+
+        view.set_payload_auth_key(Some((1, own)));
+        sign_one_sided(&spend, prepare(&spend, &view), &require(&[1])).unwrap();
+    }
+
     #[test]
     fn a_spend_wallet_without_an_import_derives_its_payload_key() {
         let (spend, _) = wallets(None);

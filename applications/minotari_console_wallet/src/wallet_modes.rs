@@ -129,12 +129,14 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
     )
 }
 
-/// Clap's message can quote the token it could not parse, which on an `import-payload-key` line can be the private
-/// key, so neither the line nor the message is shown for one.
+/// Clap's message can quote the token it could not parse, which on a payload key import line can be the private key.
+/// Neither the line nor that message is shown for a line that names `--key` or a payload key command, however it is
+/// misspelt or cased.
 fn parse_error_message(command: &str, e: &clap::Error) -> String {
-    if command.contains("import-payload-key") {
+    let line = command.to_ascii_lowercase();
+    if line.contains("--key") || line.contains("payload") {
         format!(
-            "parsing an import-payload-key command ({}); it is not shown because it can hold a private key",
+            "parsing a command that can hold a private key ({}); it is not shown",
             e.kind()
         )
     } else {
@@ -526,10 +528,14 @@ mod test {
             format!("import-payload-key --index 1 {key}"),
             format!("import-payload-key --index x --key {key}"),
             format!("import-payload-key --key {key} --file f --index 1"),
+            format!("import-paylod-key --key {key}"),
+            format!("import_payload_key --index 1 --key {key}"),
+            format!("Import-Payload-Key --index 1 {key}"),
+            format!("get-balance --KEY {key}"),
         ] {
             let err = parse_command_file(line).unwrap_err().to_string();
             assert!(!err.contains(key), "{err}");
-            assert!(err.contains("import-payload-key"), "{err}");
+            assert!(err.contains("not shown"), "{err}");
         }
     }
 

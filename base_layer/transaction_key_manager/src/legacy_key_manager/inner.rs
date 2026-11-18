@@ -269,7 +269,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
             // anything that does try to convert it back fails loudly. Mapping it to `Managed` instead would be
             // silently catastrophic - an unrecognised `Managed` branch is derived from the master seed, which would
             // turn a one-shot nonce back into the deterministic, host-indexable one this type exists to replace.
-            // A payload auth key is never persisted under its own id either (an imported one is `Encrypted`).
+            // A payload auth key is never persisted under its own id either: an imported one is kept by the wallet
+            // as a raw private key in its database, not as a key id.
             TariKeyId::LedgerEphemeralNonce { .. } | TariKeyId::PayloadAuth { .. } => LegacyTariKeyId::Derived {
                 key: key_id.to_string().into(),
             },

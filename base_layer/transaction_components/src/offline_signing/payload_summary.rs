@@ -766,11 +766,15 @@ pub enum PayloadNotConfirmed {
 /// use tari_transaction_components::{
 ///     consensus::ConsensusConstants,
 ///     key_manager::KeyManager,
-///     offline_signing::{models::PrepareOneSidedTransactionForSigningResult, sign_locked_transaction},
+///     offline_signing::{
+///         PayloadKeyPolicy,
+///         models::PrepareOneSidedTransactionForSigningResult,
+///         sign_locked_transaction,
+///     },
 /// };
 ///
 /// fn sign(km: &KeyManager, cc: ConsensusConstants, net: Network, prepared: PrepareOneSidedTransactionForSigningResult) {
-///     let _ = sign_locked_transaction(km, cc, net, prepared);
+///     let _ = sign_locked_transaction(km, cc, net, prepared, &PayloadKeyPolicy::default());
 /// }
 /// ```
 ///
