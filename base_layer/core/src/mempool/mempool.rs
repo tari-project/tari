@@ -234,11 +234,11 @@ impl Mempool {
         permit: Option<ValidationPermit>,
     ) -> Result<(TxStorageResponse, Option<BanReason>), MempoolError> {
         let tx_clone = tx.clone();
-        if let Some(response) = self
+        if let Some(rejection) = self
             .with_read_access(move |storage| Ok(storage.pre_check(&tx_clone)))
             .await?
         {
-            return Ok((response, None));
+            return Ok(rejection);
         }
         let permit = match permit {
             Some(permit) => permit,

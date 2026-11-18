@@ -63,8 +63,10 @@ pub struct Cli {
     /// Force wallet recovery
     #[clap(long, alias = "recover")]
     pub recovery: bool,
-    /// Supply the optional wallet seed words for recovery on the command line. They should be in one string space
-    /// separated. e.g. --seed-words "seed1 seed2 ..."
+    /// Supply the optional wallet seed words for recovery. They should be in one string space separated, e.g.
+    /// MINOTARI_WALLET_SEED_WORDS="seed1 seed2 ...". The seed words give full control of the wallet's funds. It's
+    /// very bad security practice to provide them on the command line, since they're visible using `ps ax` from
+    /// anywhere on the system, so always use the env var where possible.
     #[clap(
         long,
         alias = "seed-words",
@@ -98,9 +100,12 @@ pub struct Cli {
     pub command2: Option<CliCommands>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
-    // For read only wallets
+    /// Supply the private view key (hex) to create a read-only wallet. The view key reveals every incoming
+    /// transaction of the wallet. It's very bad security practice to provide it on the command line, since it's
+    /// visible using `ps ax` from anywhere on the system, so always use the env var where possible.
     #[clap(long, env = "MINOTARI_WALLET_VIEW_PRIVATE_KEY", hide_env_values = true)]
     pub view_private_key: Option<String>,
+    /// Supply the public spend key (hex) to create a read-only wallet, together with the private view key.
     #[clap(long, env = "MINOTARI_WALLET_SPEND_KEY", hide_env_values = true)]
     pub spend_key: Option<String>,
     #[clap(long)]
