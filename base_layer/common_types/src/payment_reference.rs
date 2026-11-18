@@ -184,7 +184,7 @@ pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDispla
         } => {
             let prefix = *prefix_chars as usize;
             let suffix = *suffix_chars as usize;
-            if hex.len() > prefix.saturating_add(suffix) {
+            if (prefix > 0 || suffix > 0) && hex.len() > prefix.saturating_add(suffix) {
                 format!("{}...{}", &hex[0..prefix], &hex[hex.len().saturating_sub(suffix)..])
             } else {
                 hex
@@ -243,6 +243,20 @@ mod tests {
             suffix_chars: 4,
         });
         assert_eq!(custom, "1234...cdef");
+
+        // When prefix + suffix covers the entire 64-character hex string, return full hex without ellipsis
+        let exact_length = format_payment_reference(&payref, &PayRefDisplayFormat::Custom {
+            prefix_chars: 32,
+            suffix_chars: 32,
+        });
+        assert_eq!(exact_length, full);
+
+        // When both prefix and suffix are zero, return full hex instead of bare "..."
+        let zero_both = format_payment_reference(&payref, &PayRefDisplayFormat::Custom {
+            prefix_chars: 0,
+            suffix_chars: 0,
+        });
+        assert_eq!(zero_both, full);
     }
 
     #[test]
