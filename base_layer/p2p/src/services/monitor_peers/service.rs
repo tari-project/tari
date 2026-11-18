@@ -186,7 +186,7 @@ impl MonitorPeersService {
                         tokio::select! {
                             biased;
                             _ = self.shutdown_signal.wait() => {
-                                break;
+                                return;
                             }
 
                             event = liveness_events.recv() => {
