@@ -76,6 +76,10 @@ const MAX_CONCURRENT_JSON_RPC_DECODES: usize = 2;
 /// slowly but steadily (e.g. over Tor) still gets through.
 const JSON_RPC_BODY_PROGRESS_WINDOW: Duration = Duration::from_secs(10);
 const JSON_RPC_BODY_MIN_WINDOW_BYTES: usize = 64 * 1024;
+/// A body still unfinished this long after its first chunk was charged to the budget gets a 408
+const JSON_RPC_BODY_MAX_HOLD: Duration = Duration::from_secs(120);
+/// Decoded transactions waiting on the mempool, whose local request queue is unbounded
+const MAX_PENDING_JSON_RPC_SUBMISSIONS: usize = 16;
 const REJECTION_WARN_INTERVAL: Duration = Duration::from_secs(60);
 const MAX_JSONRPC_BYTES: usize = 16;
 const MAX_ID_BYTES: usize = 256;
@@ -95,41 +99,31 @@ fn busy() -> Rejection {
 pub struct JsonRpcLimits {
     body_budget: Arc<Semaphore>,
     decodes: Arc<Semaphore>,
+    pending_submissions: Semaphore,
     admission_wait: Duration,
     progress_window: Duration,
     min_window_bytes: usize,
+    max_hold: Duration,
     /// Per status: when a rejection was last logged, and how many were not logged since
     rejection_warnings: Mutex<HashMap<StatusCode, (Option<Instant>, u64)>>,
 }
 
 impl Default for JsonRpcLimits {
     fn default() -> Self {
-        Self::new(
-            JSON_RPC_BODY_BUDGET_BYTES,
-            JSON_RPC_ADMISSION_WAIT,
-            JSON_RPC_BODY_PROGRESS_WINDOW,
-            JSON_RPC_BODY_MIN_WINDOW_BYTES,
-        )
+        Self {
+            body_budget: Arc::new(Semaphore::new(JSON_RPC_BODY_BUDGET_BYTES)),
+            decodes: Arc::new(Semaphore::new(MAX_CONCURRENT_JSON_RPC_DECODES)),
+            pending_submissions: Semaphore::new(MAX_PENDING_JSON_RPC_SUBMISSIONS),
+            admission_wait: JSON_RPC_ADMISSION_WAIT,
+            progress_window: JSON_RPC_BODY_PROGRESS_WINDOW,
+            min_window_bytes: JSON_RPC_BODY_MIN_WINDOW_BYTES,
+            max_hold: JSON_RPC_BODY_MAX_HOLD,
+            rejection_warnings: Mutex::new(HashMap::new()),
+        }
     }
 }
 
 impl JsonRpcLimits {
-    fn new(
-        body_budget_bytes: usize,
-        admission_wait: Duration,
-        progress_window: Duration,
-        min_window_bytes: usize,
-    ) -> Self {
-        Self {
-            body_budget: Arc::new(Semaphore::new(body_budget_bytes)),
-            decodes: Arc::new(Semaphore::new(MAX_CONCURRENT_JSON_RPC_DECODES)),
-            admission_wait,
-            progress_window,
-            min_window_bytes,
-            rejection_warnings: Mutex::new(HashMap::new()),
-        }
-    }
-
     fn warn_rejection(&self, peer: SocketAddr, status: StatusCode) {
         let now = Instant::now();
         let mut warnings = self.rejection_warnings.lock().unwrap_or_else(PoisonError::into_inner);
@@ -208,8 +202,15 @@ async fn handle_request<B: BlockchainBackend + 'static>(
         reject(StatusCode::INTERNAL_SERVER_ERROR, "Internal error decoding the request")
     })??;
 
-    // Nothing is held here: the mempool limits its own concurrent submissions
-    match submit_transaction::handle(query_service, &mut mempool_service, transaction).await {
+    // Only a pending slot is held while the mempool handles the transaction
+    let pending = timeout(limits.admission_wait, limits.pending_submissions.acquire())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .ok_or_else(busy)?;
+    let submitted = submit_transaction::handle(query_service, &mut mempool_service, transaction).await;
+    drop(pending);
+    match submitted {
         Ok(response) => {
             // Version defaults to 1 for backward compatibility with older wallets.
             // V2 adds the optional `details` field in the response.
@@ -276,15 +277,23 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
         .clone()
         .try_acquire_many_owned(0)
         .map_err(|_| busy())?;
+    // Both clocks leave out the time this request spent waiting for budget: that is the server's delay, not the
+    // client's
     let mut window_start = Instant::now();
+    let mut window_waited = Duration::ZERO;
     let mut window_bytes = 0usize;
+    let mut hold_start = None;
+    let mut hold_waited = Duration::ZERO;
     loop {
-        let frame = match timeout(
-            limits.progress_window.saturating_sub(window_start.elapsed()),
-            body.frame(),
-        )
-        .await
-        {
+        let window_left = limits
+            .progress_window
+            .saturating_sub(window_start.elapsed().saturating_sub(window_waited));
+        let hold_left = hold_start.map_or(Duration::MAX, |start: Instant| {
+            limits
+                .max_hold
+                .saturating_sub(start.elapsed().saturating_sub(hold_waited))
+        });
+        let frame = match timeout(window_left.min(hold_left), body.frame()).await {
             Err(_) => {
                 return Err(reject(
                     StatusCode::REQUEST_TIMEOUT,
@@ -310,9 +319,11 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
         window_bytes = window_bytes.saturating_add(data.len());
         if window_bytes >= limits.min_window_bytes {
             window_start = Instant::now();
+            window_waited = Duration::ZERO;
             window_bytes = 0;
         }
         let len = u32::try_from(data.len()).map_err(|_| too_large())?;
+        let wait_start = Instant::now();
         let permit = timeout(
             limits.admission_wait,
             limits.body_budget.clone().acquire_many_owned(len),
@@ -322,6 +333,13 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
         .and_then(Result::ok)
         .ok_or_else(busy)?;
         charged.merge(permit);
+        let waited = wait_start.elapsed();
+        window_waited = window_waited.saturating_add(waited);
+        hold_waited = hold_waited.saturating_add(waited);
+        if hold_start.is_none() {
+            hold_start = Some(Instant::now());
+            hold_waited = Duration::ZERO;
+        }
         // shortcut: the budget counts body bytes, not the Vec's capacity, which growth can double; charge capacity if
         // the budget is ever sized close to available memory
         bytes.extend_from_slice(&data);
@@ -449,8 +467,9 @@ mod tests {
     use tari_utilities::hex::to_hex;
     use tokio::{
         io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
-        net::{TcpListener, TcpStream},
+        net::{TcpListener, TcpStream, tcp::OwnedWriteHalf},
         sync::{broadcast, watch},
+        task::JoinHandle,
         time::sleep,
     };
 
@@ -891,8 +910,10 @@ mod tests {
         String::from_utf8_lossy(&response).into_owned()
     }
 
-    async fn wait_for_budget(limits: &JsonRpcLimits, available: usize) {
-        timeout(Duration::from_secs(10), async {
+    const LONG: Duration = Duration::from_secs(10);
+
+    async fn wait_for_budget(limits: &JsonRpcLimits, available: usize, within: Duration) {
+        timeout(within, async {
             while limits.body_budget.available_permits() != available {
                 sleep(Duration::from_millis(5)).await;
             }
@@ -911,12 +932,10 @@ mod tests {
             .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
             .await;
         let query_service = make_query_service(&shutdown, mempool.clone());
-        let limits = Arc::new(JsonRpcLimits::new(
-            JSON_RPC_BODY_BUDGET_BYTES,
-            JSON_RPC_ADMISSION_WAIT,
-            Duration::from_millis(500),
-            JSON_RPC_BODY_MIN_WINDOW_BYTES,
-        ));
+        let limits = Arc::new(JsonRpcLimits {
+            progress_window: Duration::from_millis(500),
+            ..Default::default()
+        });
         let address = serve(query_service, mempool, limits.clone()).await;
 
         let mut stalled = Vec::new();
@@ -934,7 +953,7 @@ mod tests {
             let response = read_response(&mut stream).await;
             assert!(response.starts_with("HTTP/1.1 408"), "{response}");
         }
-        wait_for_budget(&limits, JSON_RPC_BODY_BUDGET_BYTES).await;
+        wait_for_budget(&limits, JSON_RPC_BODY_BUDGET_BYTES, LONG).await;
     }
 
     /// Body bytes beyond the budget wait and then get a 503; the budget comes back on a timeout, a disconnect and after
@@ -948,17 +967,17 @@ mod tests {
             .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
             .await;
         let query_service = make_query_service(&shutdown, mempool.clone());
-        let limits = Arc::new(JsonRpcLimits::new(
-            BUDGET,
-            Duration::from_millis(200),
-            Duration::from_secs(2),
-            JSON_RPC_BODY_MIN_WINDOW_BYTES,
-        ));
+        let limits = Arc::new(JsonRpcLimits {
+            body_budget: Arc::new(Semaphore::new(BUDGET)),
+            admission_wait: Duration::from_millis(200),
+            progress_window: Duration::from_secs(2),
+            ..Default::default()
+        });
         let address = serve(query_service, mempool, limits.clone()).await;
 
         // One stalled upload holds the whole budget
         let mut holder = post(address, 2 * BUDGET, &[b' '; BUDGET]).await;
-        wait_for_budget(&limits, 0).await;
+        wait_for_budget(&limits, 0, LONG).await;
         let mut waiting = post(address, 100, b" ").await;
         let response = read_response(&mut waiting).await;
         assert!(response.starts_with("HTTP/1.1 503"), "{response}");
@@ -967,13 +986,13 @@ mod tests {
         // Returned when the stalled upload times out
         let response = read_response(&mut holder).await;
         assert!(response.starts_with("HTTP/1.1 408"), "{response}");
-        wait_for_budget(&limits, BUDGET).await;
+        wait_for_budget(&limits, BUDGET, LONG).await;
 
-        // Returned when the client disconnects
+        // Returned when the client disconnects, well before the progress window would end it
         let partial = post(address, 2 * BUDGET, &[b' '; 1000]).await;
-        wait_for_budget(&limits, BUDGET - 1000).await;
+        wait_for_budget(&limits, BUDGET - 1000, LONG).await;
         drop(partial);
-        wait_for_budget(&limits, BUDGET).await;
+        wait_for_budget(&limits, BUDGET, Duration::from_millis(500)).await;
 
         // Returned after the decode, with the decode slot
         let body = request(transaction_json(None));
@@ -981,7 +1000,7 @@ mod tests {
         let mut submission = post(address, body.len(), body.as_bytes()).await;
         let response = read_response(&mut submission).await;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
-        wait_for_budget(&limits, BUDGET).await;
+        wait_for_budget(&limits, BUDGET, LONG).await;
         assert_eq!(limits.decodes.available_permits(), MAX_CONCURRENT_JSON_RPC_DECODES);
         assert_eq!(mempool_state.get_call_count(), 1);
     }
@@ -997,21 +1016,17 @@ mod tests {
             .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
             .await;
         let query_service = make_query_service(&shutdown, mempool.clone());
-        let limits = Arc::new(JsonRpcLimits::new(
-            BUDGET,
-            Duration::from_millis(200),
-            Duration::from_millis(500),
-            JSON_RPC_BODY_MIN_WINDOW_BYTES,
-        ));
+        let limits = Arc::new(JsonRpcLimits {
+            body_budget: Arc::new(Semaphore::new(BUDGET)),
+            admission_wait: Duration::from_millis(50),
+            progress_window: Duration::from_secs(3),
+            ..Default::default()
+        });
         let address = serve(query_service, mempool, limits.clone()).await;
 
-        let (mut reader, mut writer) = post(address, 2 * BUDGET, &[b' '; PREFIX]).await.into_split();
-        wait_for_budget(&limits, BUDGET - PREFIX).await;
-        let trickle = tokio::spawn(async move {
-            while writer.write_all(b" ").await.is_ok() {
-                sleep(Duration::from_millis(50)).await;
-            }
-        });
+        let (mut reader, writer) = post(address, 2 * BUDGET, &[b' '; PREFIX]).await.into_split();
+        wait_for_budget(&limits, BUDGET - PREFIX, LONG).await;
+        let trickle = trickle(writer);
         // While the trickle holds the budget, a submission does not fit
         let body = request(transaction_json(None));
         assert!(body.len() > BUDGET - PREFIX);
@@ -1021,7 +1036,7 @@ mod tests {
         let response = read_response(&mut reader).await;
         assert!(response.starts_with("HTTP/1.1 408"), "{response}");
         trickle.abort();
-        wait_for_budget(&limits, BUDGET).await;
+        wait_for_budget(&limits, BUDGET, LONG).await;
         let response = read_response(&mut post(address, body.len(), body.as_bytes()).await).await;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         assert_eq!(mempool_state.get_call_count(), 1);
@@ -1075,5 +1090,126 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let err = serde_json::to_string(&err).unwrap();
         assert!(err.contains("P2P decode budget"), "{err}");
+    }
+
+    /// Writes one byte every 50 ms until the connection fails
+    fn trickle(mut writer: OwnedWriteHalf) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            while writer.write_all(b" ").await.is_ok() {
+                sleep(Duration::from_millis(50)).await;
+            }
+        })
+    }
+
+    /// A body that keeps making progress still gets a 408 once it has held budget for the maximum time
+    #[tokio::test]
+    async fn a_body_holding_budget_too_long_times_out() {
+        let shutdown = Shutdown::new();
+        let (mempool, _mempool_state) = create_mempool_service_mock();
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits {
+            progress_window: Duration::from_secs(3),
+            min_window_bytes: 1,
+            max_hold: Duration::from_millis(500),
+            ..Default::default()
+        });
+        let address = serve(query_service, mempool, limits.clone()).await;
+
+        let started = Instant::now();
+        let (mut reader, writer) = post(address, 1_000_000, &[b' '; 1024]).await.into_split();
+        let trickle = trickle(writer);
+        let response = read_response(&mut reader).await;
+        assert!(response.starts_with("HTTP/1.1 408"), "{response}");
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "ended by the hold cap, not the window"
+        );
+        trickle.abort();
+        wait_for_budget(&limits, JSON_RPC_BODY_BUDGET_BYTES, LONG).await;
+    }
+
+    /// Time spent waiting for budget is the server's, so it does not use up the client's progress window
+    #[tokio::test]
+    async fn waiting_for_budget_does_not_count_against_the_client() {
+        const BUDGET: usize = 1024 * 1024;
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits {
+            body_budget: Arc::new(Semaphore::new(BUDGET)),
+            admission_wait: Duration::from_secs(5),
+            progress_window: Duration::from_secs(1),
+            ..Default::default()
+        });
+        let address = serve(query_service, mempool, limits.clone()).await;
+
+        let held = limits
+            .body_budget
+            .clone()
+            .acquire_many_owned(u32::try_from(BUDGET).unwrap())
+            .await
+            .unwrap();
+        let body = request(transaction_json(None));
+        let (first, rest) = body.as_bytes().split_at(100);
+        // The first chunk waits for budget for longer than the progress window
+        let mut submission = post(address, body.len(), first).await;
+        sleep(Duration::from_millis(2500)).await;
+        drop(held);
+        // The rest arrives well inside the window, counted from the end of the wait
+        sleep(Duration::from_millis(100)).await;
+        submission.write_all(rest).await.unwrap();
+        let response = read_response(&mut submission).await;
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert_eq!(mempool_state.get_call_count(), 1);
+    }
+
+    /// A decoded submission waits for a pending slot and gets a 503 if none frees up; the slot comes back once the
+    /// mempool call returns
+    #[tokio::test]
+    async fn a_decoded_submission_waits_for_a_pending_slot() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        mempool_state.set_submit_transaction_delay(Duration::from_secs(2)).await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits {
+            pending_submissions: Semaphore::new(1),
+            admission_wait: Duration::from_millis(200),
+            ..Default::default()
+        });
+
+        let first = tokio::spawn({
+            let (query_service, mempool, limits) = (query_service.clone(), mempool.clone(), limits.clone());
+            async move {
+                let body = Body::from(request(transaction_json(None)));
+                handle_request(query_service, mempool, &limits, &json_headers(), body)
+                    .await
+                    .map(|Json(response)| response)
+                    .map_err(|(status, _)| status)
+            }
+        });
+        timeout(LONG, async {
+            while limits.pending_submissions.available_permits() != 0 {
+                sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the first submission never took the pending slot");
+
+        let body = Body::from(request(transaction_json(None)));
+        let (status, _) = handle_request(query_service, mempool, &limits, &json_headers(), body)
+            .await
+            .unwrap_err();
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+
+        let response = first.await.unwrap().unwrap();
+        assert!(response.error.is_none(), "{:?}", response.error);
+        assert_eq!(limits.pending_submissions.available_permits(), 1);
+        assert_eq!(mempool_state.get_call_count(), 1);
     }
 }
