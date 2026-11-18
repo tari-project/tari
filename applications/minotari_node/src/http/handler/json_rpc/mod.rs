@@ -86,6 +86,9 @@ const JSON_RPC_BODY_MIN_WINDOW_BYTES: usize = 64 * 1024;
 const JSON_RPC_BODY_MAX_HOLD: Duration = Duration::from_secs(120);
 /// The estimated heap all decoded transactions waiting on the mempool may hold together (see `decoded_size`)
 const JSON_RPC_DECODED_BUDGET_BYTES: usize = 256 * 1024 * 1024;
+/// A larger decoded transaction gets a 413. Kept well below the budget because waiters are served in order, so a
+/// near-budget charge at the head of the queue would hold up every smaller one.
+const JSON_RPC_MAX_DECODED_TX_BYTES: usize = JSON_RPC_DECODED_BUDGET_BYTES / 4;
 /// Decoded transactions waiting on the mempool, whose local request queue is unbounded
 const MAX_PENDING_JSON_RPC_SUBMISSIONS: usize = 16;
 const REJECTION_WARN_INTERVAL: Duration = Duration::from_secs(60);
@@ -110,7 +113,7 @@ pub struct JsonRpcLimits {
     decodes: Arc<Semaphore>,
     pending_submissions: Semaphore,
     decoded_budget: Semaphore,
-    decoded_budget_bytes: usize,
+    max_decoded_tx_bytes: usize,
     admission_wait: Duration,
     progress_window: Duration,
     min_window_bytes: usize,
@@ -126,7 +129,7 @@ impl Default for JsonRpcLimits {
             decodes: Arc::new(Semaphore::new(MAX_CONCURRENT_JSON_RPC_DECODES)),
             pending_submissions: Semaphore::new(MAX_PENDING_JSON_RPC_SUBMISSIONS),
             decoded_budget: Semaphore::new(JSON_RPC_DECODED_BUDGET_BYTES),
-            decoded_budget_bytes: JSON_RPC_DECODED_BUDGET_BYTES,
+            max_decoded_tx_bytes: JSON_RPC_MAX_DECODED_TX_BYTES,
             admission_wait: JSON_RPC_ADMISSION_WAIT,
             progress_window: JSON_RPC_BODY_PROGRESS_WINDOW,
             min_window_bytes: JSON_RPC_BODY_MIN_WINDOW_BYTES,
@@ -203,25 +206,27 @@ async fn handle_request<B: BlockchainBackend + 'static>(
         .and_then(Result::ok)
         .ok_or_else(busy)?;
     // The blocking task owns the body and the permits, so a client that disconnects mid-decode frees them only once
-    // the decode is done
-    let (id, version, transaction, size) = task::spawn_blocking(move || {
+    // the decode is done. The decode slot comes back with the result: a decoded transaction is held under it until it
+    // is charged to the decoded budget, so at most `MAX_CONCURRENT_JSON_RPC_DECODES` are held uncharged.
+    let (decoded, decode_permit) = task::spawn_blocking(move || {
         let decoded = decode_request(&body).map(|(id, version, transaction)| {
             let size = decoded_size(&transaction);
             (id, version, transaction, size)
         });
-        drop((body, budget, decode_permit));
-        decoded
+        drop((body, budget));
+        (decoded, decode_permit)
     })
     .await
     .map_err(|e| {
         warn!(target: LOG_TARGET, "JSON-RPC decode task failed: {e}");
         reject(StatusCode::INTERNAL_SERVER_ERROR, "Internal error decoding the request")
-    })??;
+    })?;
+    let (id, version, transaction, size) = decoded?;
 
     // Only the decoded-size charge and a pending slot are held while the mempool handles the transaction. Every request
-    // takes them in this order, so they can not deadlock.
+    // takes the decode slot, the decoded charge and the pending slot in this order, so they can not deadlock.
     let too_large = || reject(StatusCode::PAYLOAD_TOO_LARGE, "The decoded transaction is too large");
-    if size > limits.decoded_budget_bytes {
+    if size > limits.max_decoded_tx_bytes {
         return Err(too_large());
     }
     let size = u32::try_from(size).map_err(|_| too_large())?;
@@ -230,6 +235,7 @@ async fn handle_request<B: BlockchainBackend + 'static>(
         .ok()
         .and_then(Result::ok)
         .ok_or_else(busy)?;
+    drop(decode_permit);
     let pending = timeout(limits.admission_wait, limits.pending_submissions.acquire())
         .await
         .ok()
@@ -545,7 +551,7 @@ mod tests {
     #![allow(clippy::indexing_slicing)]
     use axum::http::HeaderValue;
     use tari_common::configuration::Network;
-    use tari_common_types::types::{ComAndPubSignature, FixedHash, PrivateKey};
+    use tari_common_types::types::{ComAndPubSignature, FixedHash, MAX_RANGE_PROOF_BYTES, PrivateKey, RangeProof};
     use tari_core::{
         base_node::{StateMachineHandle, state_machine_service::states::StatusInfo},
         block_specs,
@@ -560,7 +566,7 @@ mod tests {
         TransactionInputVersion,
         TransactionKernel,
         TransactionOutput,
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        encrypted_data::{EncryptedData, MAX_ENCRYPTED_DATA_SIZE, STATIC_ENCRYPTED_DATA_SIZE_TOTAL},
     };
     use tari_utilities::hex::to_hex;
     use tokio::{
@@ -1340,35 +1346,140 @@ mod tests {
         assert_eq!(mempool_state.get_call_count(), 0);
     }
 
-    /// The decoded-size estimate covers the heap a decoded transaction holds, without overstating it much. Compact
-    /// inputs with full `input_data` stacks are where a transaction is largest decoded relative to its JSON.
+    /// The decoded-size estimate covers the heap a decoded transaction holds, without overstating it much, for the
+    /// shapes that hold the most heap per encoded byte
     #[test]
     fn decoded_size_bounds_the_decoded_heap() {
-        let stack = ExecutionStack::new((0..255).map(StackItem::Number).collect());
-        let inputs = (0..200)
-            .map(|_| {
-                TransactionInput::new_with_output_hash(FixedHash::zero(), stack.clone(), ComAndPubSignature::default())
-            })
-            .collect();
-        let tx = Transaction::new(
-            inputs,
-            vec![TransactionOutput::default()],
-            vec![TransactionKernel::default()],
-            PrivateKey::default(),
-            PrivateKey::default(),
-        );
-        let params = RawValue::from_string(serde_json::json!({ "transaction": tx }).to_string()).unwrap();
+        let stack_of = |item: StackItem| ExecutionStack::new(vec![item; 255]);
+        let compact_inputs = |stack: ExecutionStack| -> Vec<TransactionInput> {
+            (0..100)
+                .map(|_| {
+                    TransactionInput::new_with_output_hash(
+                        FixedHash::zero(),
+                        stack.clone(),
+                        ComAndPubSignature::default(),
+                    )
+                })
+                .collect()
+        };
+        // A script of boxed keys and a 32-key multisig, a full range proof and full encrypted data
+        let rich_output = || {
+            let mut script = vec![Opcode::PushPubKey(Box::default()); 90];
+            script.push(Opcode::CheckMultiSig(
+                1,
+                32,
+                vec![CompressedPublicKey::default(); 32],
+                Box::new([0u8; 32]),
+            ));
+            TransactionOutput {
+                script: TariScript::new(script).unwrap(),
+                proof: Some(RangeProof::from(vec![1u8; MAX_RANGE_PROOF_BYTES])),
+                encrypted_data: EncryptedData::from_bytes(&[1u8; MAX_ENCRYPTED_DATA_SIZE]).unwrap(),
+                ..Default::default()
+            }
+        };
+        let full_inputs = || -> Vec<TransactionInput> {
+            (0..50)
+                .map(|_| {
+                    TransactionInput::new_current_version(
+                        SpentOutput::create_from_output(rich_output()),
+                        ExecutionStack::default(),
+                        ComAndPubSignature::default(),
+                    )
+                })
+                .collect()
+        };
+        let cases: Vec<(&str, Vec<TransactionInput>, Vec<TransactionOutput>)> = vec![
+            ("number stacks", compact_inputs(stack_of(StackItem::Number(1))), vec![]),
+            (
+                "public key stacks",
+                compact_inputs(stack_of(StackItem::PublicKey(CompressedPublicKey::default()))),
+                vec![],
+            ),
+            (
+                "signature stacks",
+                compact_inputs(stack_of(StackItem::Signature(Default::default()))),
+                vec![],
+            ),
+            (
+                "commitment stacks",
+                compact_inputs(stack_of(StackItem::Commitment(Default::default()))),
+                vec![],
+            ),
+            ("full spent outputs", full_inputs(), vec![]),
+            ("rich outputs", vec![], (0..50).map(|_| rich_output()).collect()),
+        ];
+        for (name, inputs, mut outputs) in cases {
+            outputs.push(TransactionOutput::default());
+            let tx = Transaction::new(
+                inputs,
+                outputs,
+                vec![TransactionKernel::default()],
+                PrivateKey::default(),
+                PrivateKey::default(),
+            );
+            let params = RawValue::from_string(serde_json::json!({ "transaction": tx }).to_string()).unwrap();
 
-        let (decoded, _, held) = heap::measure(|| decode_transaction(Some(&params)).ok());
-        let (decoded, _) = decoded.expect("the transaction decodes");
-        let estimate = decoded_size(&decoded);
-        assert!(
-            estimate >= held && estimate <= held.saturating_mul(3),
-            "estimate {estimate} for {held} decoded bytes"
-        );
+            let (decoded, _, held) = heap::measure(|| decode_transaction(Some(&params)).ok());
+            let (decoded, _) = decoded.unwrap_or_else(|| panic!("{name}: the transaction does not decode"));
+            let estimate = decoded_size(&decoded);
+            assert!(
+                estimate >= held && estimate <= held.saturating_mul(3),
+                "{name}: estimate {estimate} for {held} decoded bytes"
+            );
+        }
     }
 
-    /// A transaction too large for the decoded-size budget gets a 413; one that has to wait for it too long a 503
+    /// A decoded transaction keeps its decode slot until it is charged to the decoded budget
+    #[tokio::test]
+    async fn the_decode_slot_is_held_until_the_decoded_charge() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let body = request(transaction_json(None));
+        let (_, _, decoded) = decode_request(body.as_bytes()).ok().unwrap();
+        let size = decoded_size(&decoded);
+        let limits = Arc::new(JsonRpcLimits {
+            decoded_budget: Semaphore::new(size),
+            admission_wait: Duration::from_secs(1),
+            ..Default::default()
+        });
+        let held = limits
+            .decoded_budget
+            .acquire_many(u32::try_from(size).unwrap())
+            .await
+            .unwrap();
+
+        let submission = tokio::spawn({
+            let limits = limits.clone();
+            async move {
+                handle_request(query_service, mempool, &limits, &json_headers(), Body::from(body))
+                    .await
+                    .map(|_| ())
+                    .map_err(|(status, _)| status)
+            }
+        });
+        // By now the transaction is decoded and waiting for the decoded budget
+        sleep(Duration::from_millis(300)).await;
+        loop {
+            let available = limits.decodes.available_permits();
+            if submission.is_finished() {
+                break;
+            }
+            assert!(
+                available < MAX_CONCURRENT_JSON_RPC_DECODES,
+                "the decode slot was freed early"
+            );
+            sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(submission.await.unwrap(), Err(StatusCode::SERVICE_UNAVAILABLE));
+        assert_eq!(limits.decodes.available_permits(), MAX_CONCURRENT_JSON_RPC_DECODES);
+        assert_eq!(mempool_state.get_call_count(), 0);
+        drop(held);
+    }
+
+    /// A transaction above the per-transaction decoded-size cap gets a 413; one that has to wait for the decoded budget
+    /// too long a 503
     #[tokio::test]
     async fn the_decoded_size_budget_rejects_and_waits() {
         let shutdown = Shutdown::new();
@@ -1380,9 +1491,9 @@ mod tests {
         let body = request(transaction_json(None));
         let (_, _, decoded) = decode_request(body.as_bytes()).ok().unwrap();
         let size = decoded_size(&decoded);
-        let limits_of = |budget: usize| JsonRpcLimits {
-            decoded_budget: Semaphore::new(budget),
-            decoded_budget_bytes: budget,
+        let limits_of = |max_tx: usize| JsonRpcLimits {
+            decoded_budget: Semaphore::new(size),
+            max_decoded_tx_bytes: max_tx,
             admission_wait: Duration::from_millis(200),
             ..Default::default()
         };
