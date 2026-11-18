@@ -110,8 +110,12 @@ To set it up:
    minotari_console_wallet --command "import-payload-key --index 1 --file payload_key.json"
    ```
 
-   or `import-payload-key --index 1 --key <hex>`. Importing again replaces the key; `clear-payload-key` removes it.
-   From then on every prepared payload is signed with it.
+   or `import-payload-key --index 1 --key <hex>` (the key is then visible in shell history and `ps`, so prefer
+   `--file`). The key is stored in the wallet's database, encrypted with the wallet passphrase. Importing again
+   replaces it; `clear-payload-key` removes it. From then on every prepared payload is signed with it.
+
+   The signer holds the spend key, so it derives the payload key itself and needs no import. A view wallet cannot
+   derive it and must import it; so must any wallet that prepares payloads, since it signs with the key it imported.
 
 3. On the signer, require it:
 

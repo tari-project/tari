@@ -2947,9 +2947,7 @@ mod test {
         ))
         .unwrap();
         if let Some(index) = index {
-            let key = spend.get_private_key(&payload_key(index)).unwrap();
-            let key_id = view.create_encrypted_key(key, None).unwrap();
-            view.set_payload_auth_key(Some((index, key_id)));
+            view.set_payload_auth_key(Some((index, spend.get_private_key(&payload_key(index)).unwrap())));
         }
         (spend, view)
     }
@@ -2976,9 +2974,7 @@ mod test {
             payload.expires_at,
         )
         .unwrap();
-        let signing_key = view
-            .get_payload_auth_key()
-            .map_or(TariKeyId::ViewKey, |(_, key_id)| key_id);
+        let signing_key = view.get_payload_auth_key().map_or(TariKeyId::ViewKey, payload_key);
         payload.payload_signature = sign_payload(view, &signing_key, &canonical).unwrap();
     }
 
@@ -3013,10 +3009,38 @@ mod test {
     }
 
     #[test]
-    fn a_view_only_wallet_cannot_derive_a_payload_key() {
-        let (_, view) = wallets(None);
+    fn a_view_only_wallet_uses_only_the_payload_key_it_imported() {
+        let (spend, view) = wallets(None);
         assert!(view.get_private_key(&payload_key(1)).is_err());
         assert!(view.get_public_key_at_key_id(&payload_key(1)).is_err());
+        assert_eq!(view.get_payload_auth_key(), None);
+
+        let key = spend.get_private_key(&payload_key(1)).unwrap();
+        view.set_payload_auth_key(Some((1, key.clone())));
+        assert_eq!(view.get_payload_auth_key(), Some(1));
+        assert_eq!(view.get_private_key(&payload_key(1)).unwrap(), key);
+        assert_eq!(
+            view.get_public_key_at_key_id(&payload_key(1)).unwrap(),
+            spend.get_public_key_at_key_id(&payload_key(1)).unwrap()
+        );
+        // A clone shares the import
+        assert_eq!(view.clone().get_private_key(&payload_key(1)).unwrap(), key);
+        assert!(view.get_private_key(&payload_key(2)).is_err());
+
+        // What it prepares, the spend wallet signs under the strict policy
+        let payload = prepare(&spend, &view);
+        assert_eq!(payload.payload_key_id, Some(payload_key(1)));
+        sign_one_sided(&spend, payload, &require(&[1])).unwrap();
+
+        view.set_payload_auth_key(None);
+        assert!(view.get_private_key(&payload_key(1)).is_err());
+    }
+
+    #[test]
+    fn a_spend_wallet_without_an_import_derives_its_payload_key() {
+        let (spend, _) = wallets(None);
+        assert_eq!(spend.get_payload_auth_key(), None);
+        assert!(spend.get_private_key(&payload_key(1)).is_ok());
     }
 
     #[test]

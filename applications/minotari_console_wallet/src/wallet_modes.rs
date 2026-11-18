@@ -129,6 +129,19 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
     )
 }
 
+/// Clap's message can quote the token it could not parse, which on an `import-payload-key` line can be the private
+/// key, so neither the line nor the message is shown for one.
+fn parse_error_message(command: &str, e: &clap::Error) -> String {
+    if command.contains("import-payload-key") {
+        format!(
+            "parsing an import-payload-key command ({}); it is not shown because it can hold a private key",
+            e.kind()
+        )
+    } else {
+        format!("parsing '{command}' ({e})")
+    }
+}
+
 pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, ExitError> {
     let mut commands: Vec<CliCommands> = Vec::new();
     let cli_parse_prefix = "minotari_console_wallet --command n/a".to_string();
@@ -146,9 +159,9 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
                     }
                 },
                 Err(e) => {
-                    // The command text is not echoed: it can hold a secret (`import-payload-key --key`)
-                    println!("\nError! parsing command ({e})\n");
-                    return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
+                    let message = parse_error_message(command, &e);
+                    println!("\nError! {message}\n");
+                    return Err(ExitError::new(ExitCode::CommandError, message));
                 },
             }
         }
@@ -505,6 +518,20 @@ mod test {
     use std::path::Path;
 
     use crate::{cli::CliCommands, wallet_modes::parse_command_file};
+
+    #[test]
+    fn a_bad_import_payload_key_line_does_not_echo_the_key() {
+        let key = "0b5c1d6c8a7e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f0a";
+        for line in [
+            format!("import-payload-key --index 1 {key}"),
+            format!("import-payload-key --index x --key {key}"),
+            format!("import-payload-key --key {key} --file f --index 1"),
+        ] {
+            let err = parse_command_file(line).unwrap_err().to_string();
+            assert!(!err.contains(key), "{err}");
+            assert!(err.contains("import-payload-key"), "{err}");
+        }
+    }
 
     /// Exporting the commitment mask and script private key of any wallet output gives away the wallet's spend key,
     /// so neither export command may accept a request for private keys, in the flag form or the old positional form.

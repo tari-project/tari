@@ -692,7 +692,104 @@ mod test {
 
     #[cfg(feature = "test-keystore")]
     mod with_keystore {
+        use tari_common_types::tari_address::TariAddressFeatures;
+        use tari_transaction_components::{
+            TransactionBuilder,
+            key_manager::{TransactionKeyManagerInterface, wallet_types::ViewWallet},
+            offline_signing::prepare_one_sided_transaction_for_signing,
+            test_helpers::create_test_input,
+        };
+
         use super::*;
+
+        fn one_sided_address(key_manager: &KeyManager, network: Network) -> TariAddress {
+            TariAddress::new_dual_address(
+                key_manager.get_view_key().pub_key,
+                key_manager.get_spend_key().pub_key,
+                network,
+                TariAddressFeatures::create_one_sided_only(),
+                None,
+            )
+            .unwrap()
+        }
+
+        /// Export on the signer, import into a view-only wallet, prepare there, sign in strict mode.
+        #[test]
+        fn an_exported_payload_key_signs_payloads_the_strict_signer_accepts() {
+            let (keystore, spend) = init_keystore("end_to_end");
+            let key_file = keystore.with_file_name("payload_key.json");
+            let input = keystore.with_file_name("payload.json");
+            let output = keystore.with_file_name("signed.json");
+            run(&keystore, &[
+                "export-payload-key",
+                "--index",
+                "1",
+                "--output",
+                key_file.to_str().unwrap(),
+                "--passphrase",
+                "p",
+            ])
+            .unwrap();
+
+            // What the console wallet's `import-payload-key --file` does
+            let export: ExportedPayloadKey = serde_json::from_str(&fs::read_to_string(&key_file).unwrap()).unwrap();
+            let view = KeyManager::new(WalletType::ViewWallet(ViewWallet::new(
+                spend.get_spend_key().pub_key,
+                spend.get_private_view_key(),
+                None,
+            )))
+            .unwrap();
+            view.set_payload_auth_key(Some((export.index, PrivateKey::from_hex(&export.private_key).unwrap())));
+
+            // The binary refuses networks other than the one it was built for
+            let network = Network::get_current();
+            let consensus_manager = ConsensusManager::builder(network).build();
+            let mut tx_builder =
+                TransactionBuilder::new(consensus_manager.consensus_constants(0).clone(), view.clone(), network)
+                    .unwrap();
+            tx_builder
+                .with_fee_per_gram(MicroMinotari(20))
+                .with_input(create_test_input(MicroMinotari(100_000), 0, &spend, vec![], None))
+                .unwrap();
+            let recipient = PaymentRecipient {
+                amount: MicroMinotari(5_000),
+                output_features: OutputFeatures::default(),
+                address: one_sided_address(&KeyManager::new_random().unwrap(), network),
+                payment_id: MemoField::new_empty(),
+            };
+            let payload = prepare_one_sided_transaction_for_signing(
+                &view,
+                TxId::new_random(),
+                tx_builder,
+                &[recipient],
+                MemoField::new_empty(),
+                one_sided_address(&view, network),
+                None,
+            )
+            .unwrap();
+            fs::write(&input, payload.to_json().unwrap()).unwrap();
+
+            let out = run(&keystore, &[
+                "sign",
+                "-i",
+                input.to_str().unwrap(),
+                "-o",
+                output.to_str().unwrap(),
+                "--passphrase",
+                "p",
+                "-n",
+                &network.to_string(),
+                "--require-payload-key",
+                "--payload-key-index",
+                "1",
+            ])
+            .unwrap();
+            assert!(out.contains("Signed with    : payload key #1"), "{out}");
+            assert!(out.contains("Expires        : "), "{out}");
+            assert!(out.contains("Transaction signed successfully"), "{out}");
+            assert!(output.exists());
+            fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
+        }
 
         /// A fresh keystore holding a random wallet's keys; returns its file and that wallet.
         fn init_keystore(name: &str) -> (PathBuf, KeyManager) {

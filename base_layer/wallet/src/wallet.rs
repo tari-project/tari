@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -54,7 +54,13 @@ use tari_transaction_components::{
     MicroMinotari,
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, TariKeyId, wallet_types::KeyDigest},
+    key_manager::{
+        KeyManager,
+        RecoveryProvenance,
+        SecretTransactionKeyManagerInterface,
+        TariKeyId,
+        wallet_types::KeyDigest,
+    },
     transaction_components::{
         EncryptedData,
         OutputFeatures,
@@ -100,13 +106,57 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet";
-/// Client key under which the imported offline-signing payload key is stored, as `<index>:<encrypted key id>`.
+/// Client key under which the imported offline-signing payload key is stored, as `<index>:<private key hex>`. Client
+/// values are encrypted at rest with the wallet database cipher.
 const PAYLOAD_AUTH_KEY: &str = "payload_auth_key";
 
-/// Parses a [`PAYLOAD_AUTH_KEY`] value.
-fn parse_payload_auth_key(stored: &str) -> Option<(u64, TariKeyId)> {
-    let (index, key_id) = stored.split_once(':')?;
-    Some((index.parse().ok()?, TariKeyId::from_str(key_id).ok()?))
+/// Stores offline-signing payload key `index` in the wallet database, replacing any stored before, and gives it to
+/// `key_manager`.
+fn store_payload_auth_key<T: WalletBackend + 'static>(
+    db: &WalletDatabase<T>,
+    key_manager: &KeyManager,
+    index: u64,
+    private_key: PrivateKey,
+) -> Result<(), WalletError> {
+    db.set_client_key_value(
+        PAYLOAD_AUTH_KEY.to_string(),
+        format!("{index}:{}", private_key.to_hex()),
+    )?;
+    key_manager.set_payload_auth_key(Some((index, private_key)));
+    Ok(())
+}
+
+/// Removes the stored payload key from the database and `key_manager`. Returns whether one was stored.
+fn clear_payload_auth_key<T: WalletBackend + 'static>(
+    db: &WalletDatabase<T>,
+    key_manager: &KeyManager,
+) -> Result<bool, WalletError> {
+    let cleared = db.clear_client_value(PAYLOAD_AUTH_KEY.to_string())?;
+    key_manager.set_payload_auth_key(None);
+    Ok(cleared)
+}
+
+/// Gives the stored payload key, if any, to `key_manager`. A malformed value is logged and ignored rather than
+/// stopping the wallet, which could then not start to clear or replace it.
+fn load_payload_auth_key<T: WalletBackend + 'static>(
+    db: &WalletDatabase<T>,
+    key_manager: &KeyManager,
+) -> Result<(), WalletError> {
+    let Some(stored) = db.get_client_key_value(PAYLOAD_AUTH_KEY.to_string())? else {
+        return Ok(());
+    };
+    let parsed = stored
+        .split_once(':')
+        .and_then(|(index, key)| Some((index.parse().ok()?, PrivateKey::from_hex(key).ok()?)));
+    match parsed {
+        Some(payload_key) => key_manager.set_payload_auth_key(Some(payload_key)),
+        None => warn!(
+            target: LOG_TARGET,
+            "The stored offline-signing payload key is malformed and is ignored; payloads will be signed with the \
+             view key. Import the payload key again."
+        ),
+    }
+    Ok(())
 }
 /// How long [`Wallet::wait_until_shutdown`] waits for wallet tasks to exit after the shutdown signal fires.
 pub const WALLET_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
@@ -249,17 +299,7 @@ where
         } else {
             None
         };
-        if let Some(stored) = wallet_database.get_client_key_value(PAYLOAD_AUTH_KEY.to_string())? {
-            match parse_payload_auth_key(&stored) {
-                Some(payload_key) => key_manager_handle.key_manager().set_payload_auth_key(Some(payload_key)),
-                // Not fatal, or the wallet could not start to clear or replace it
-                None => warn!(
-                    target: LOG_TARGET,
-                    "The stored offline-signing payload key is malformed and is ignored; payloads will be signed with \
-                     the view key. Import the payload key again."
-                ),
-            }
-        }
+        load_payload_auth_key(&wallet_database, key_manager_handle.key_manager())?;
 
         let spend_key = key_manager_handle.get_spend_key();
 
@@ -399,22 +439,14 @@ where
     }
 
     /// Imports offline-signing payload key `index` (exported by the offline signer), replacing any imported before.
-    /// It is stored encrypted under the view key, and the `prepare_*` offline-signing calls sign with it from then on.
+    /// It is stored in the wallet database, and the `prepare_*` offline-signing calls sign with it from then on.
     pub fn import_payload_auth_key(&self, index: u64, private_key: PrivateKey) -> Result<(), WalletError> {
-        let key_id = self.key_manager_service.create_encrypted_key(private_key, None)?;
-        self.db
-            .set_client_key_value(PAYLOAD_AUTH_KEY.to_string(), format!("{index}:{key_id}"))?;
-        self.key_manager_service
-            .key_manager()
-            .set_payload_auth_key(Some((index, key_id)));
-        Ok(())
+        store_payload_auth_key(&self.db, self.key_manager_service.key_manager(), index, private_key)
     }
 
     /// Removes the imported payload key, so payloads are signed with the view key again. Returns whether one was set.
     pub fn clear_payload_auth_key(&self) -> Result<bool, WalletError> {
-        let cleared = self.db.clear_client_value(PAYLOAD_AUTH_KEY.to_string())?;
-        self.key_manager_service.key_manager().set_payload_auth_key(None);
-        Ok(cleared)
+        clear_payload_auth_key(&self.db, self.key_manager_service.key_manager())
     }
 
     pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
@@ -780,18 +812,57 @@ async fn persist_one_sided_payment_script_for_node_identity<KM: LegacyTransactio
 
 #[cfg(test)]
 mod test {
+    use tari_test_utils::random::string;
+    use tari_transaction_components::key_manager::{
+        TransactionKeyManagerInterface,
+        wallet_types::{ViewWallet, WalletType},
+    };
+    use tempfile::tempdir;
+
     use super::*;
+    use crate::storage::{
+        sqlite_db::wallet::WalletSqliteDatabase,
+        sqlite_utilities::run_migration_and_create_sqlite_connection,
+    };
 
     #[test]
-    fn stored_payload_auth_key_round_trips() {
-        let key_id = TariKeyId::Encrypted {
-            encrypted: vec![1, 2, 3],
-            key: TariKeyId::ViewKey.into(),
+    fn payload_auth_key_is_stored_loaded_and_cleared() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join(format!("{}.sqlite3", string(8)));
+        let connection = run_migration_and_create_sqlite_connection(path.to_str().unwrap(), 16).unwrap();
+        let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, "passphrase".to_string().into()).unwrap());
+        let spend = KeyManager::new_random().unwrap();
+        // A view-only wallet, which cannot derive the key and has to import it
+        let view_only = || {
+            KeyManager::new(WalletType::ViewWallet(ViewWallet::new(
+                spend.get_spend_key().pub_key,
+                spend.get_private_view_key(),
+                None,
+            )))
+            .unwrap()
         };
-        let stored = format!("7:{key_id}");
-        assert_eq!(parse_payload_auth_key(&stored), Some((7, key_id)));
-        assert_eq!(parse_payload_auth_key("7"), None);
-        assert_eq!(parse_payload_auth_key("x:view_key"), None);
-        assert_eq!(parse_payload_auth_key("7:not_a_key"), None);
+        let payload_key = TariKeyId::PayloadAuth { index: 1 };
+        let key = spend.get_private_key(&payload_key).unwrap();
+
+        store_payload_auth_key(&db, &view_only(), 1, key.clone()).unwrap();
+        // As on the next start
+        let reloaded = view_only();
+        load_payload_auth_key(&db, &reloaded).unwrap();
+        assert_eq!(reloaded.get_payload_auth_key(), Some(1));
+        assert_eq!(reloaded.get_private_key(&payload_key).unwrap(), key);
+
+        assert!(clear_payload_auth_key(&db, &reloaded).unwrap());
+        assert_eq!(reloaded.get_payload_auth_key(), None);
+        let reloaded = view_only();
+        load_payload_auth_key(&db, &reloaded).unwrap();
+        assert_eq!(reloaded.get_payload_auth_key(), None);
+
+        for malformed in ["1", "x:00", "1:not hex"] {
+            db.set_client_key_value(PAYLOAD_AUTH_KEY.to_string(), malformed.to_string())
+                .unwrap();
+            let reloaded = view_only();
+            load_payload_auth_key(&db, &reloaded).unwrap();
+            assert_eq!(reloaded.get_payload_auth_key(), None);
+        }
     }
 }

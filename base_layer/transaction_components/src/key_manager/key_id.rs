@@ -212,7 +212,8 @@ pub enum TariKeyId {
         handle: u64,
     },
     /// The key that authenticates offline-signing payloads, derived from the spend key at `index`. Only a wallet
-    /// holding the spend key can derive it; a view-only wallet imports it as an `Encrypted` key.
+    /// holding the spend key can derive it; other wallets import it, and the key manager resolves this id to the
+    /// imported key when the index matches.
     ///
     /// String form: `payload_auth.<index>`
     ///

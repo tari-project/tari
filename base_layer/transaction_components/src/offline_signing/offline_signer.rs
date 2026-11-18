@@ -130,17 +130,13 @@ fn authenticate_payload<KM: TransactionKeyManagerInterface>(
     lifetime: Option<Duration>,
     canonical: impl FnOnce(Option<&TariKeyId>, u64) -> Result<Vec<u8>, TransactionError>,
 ) -> Result<(Option<TariKeyId>, u64, PayloadIntegritySignature), TransactionBuilderError> {
-    let payload_key = key_manager.get_payload_auth_key();
-    let payload_key_id = payload_key
-        .as_ref()
-        .map(|(index, _)| TariKeyId::PayloadAuth { index: *index });
+    let payload_key_id = key_manager
+        .get_payload_auth_key()
+        .map(|index| TariKeyId::PayloadAuth { index });
     let expires_at = unix_now().saturating_add(lifetime.unwrap_or(DEFAULT_PAYLOAD_LIFETIME).as_secs());
     let canonical = canonical(payload_key_id.as_ref(), expires_at)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
-    let signing_key_id = match payload_key {
-        Some((_, key_id)) => key_id,
-        None => key_manager.get_view_key().key_id,
-    };
+    let signing_key_id = payload_key_id.clone().unwrap_or(TariKeyId::ViewKey);
     let payload_signature = sign_payload(key_manager, &signing_key_id, &canonical)?;
     Ok((payload_key_id, expires_at, payload_signature))
 }
