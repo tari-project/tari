@@ -77,9 +77,10 @@
 //! # Decoding untrusted data
 //!
 //! * [`ExclusionProof::validate`] recomputes the leaf hash from the proof leaf's key and value.
-//! * Deserialized [`LeafNode`]s recompute their hash; deserialized [`BranchNode`]s apply the child-shape rules of
-//!   [`BranchNode::new`], reject heights above 256, and recompute their hash on first use. The tree `size` is not
-//!   checked.
+//! * Deserialized nodes have their hash recomputed during decoding. [`BranchNode`]s apply the child-shape rules of
+//!   [`BranchNode::new`], reject heights of 256 or more and keys with bits beyond their height, and require each child
+//!   to sit on the side its key selects, with child branches exactly one level down. A root branch must have height 0.
+//!   The tree `size` is not checked.
 //! * `TryFrom<&[u8]>` for [`NodeHash`], [`ValueHash`] and [`NodeKey`] requires exactly 32 bytes.
 //! * Branch heights are hashed as 8 little-endian bytes, so roots match on 32- and 64-bit targets.
 //!

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::sparse_merkle_tree::{
     Node::*,
     SMTError,
-    bit_utils::{TraverseDirection, bit_to_dir, count_common_prefix, get_bit, height_key},
+    bit_utils::{TraverseDirection, bit_to_dir, count_common_prefix, get_bit, height_key, traverse_direction},
 };
 
 pub const KEY_LENGTH: usize = 32;
@@ -401,8 +401,8 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
 }
 
 //-------------------------------------       Branch Node     ----------------------------------------------------------
-/// On deserialization the child shape and height are validated as in [`BranchNode::new`], and the stored hash is
-/// discarded, so it is recomputed on the first call to [`BranchNode::hash`].
+/// On deserialization the child shape is validated as in [`BranchNode::new`], the key, height and children must be
+/// consistent with an honestly built tree, and the stored hash is discarded and recomputed.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "RawBranchNode<H>")]
 #[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
@@ -441,13 +441,37 @@ impl<H: Digest<OutputSize = U32>> TryFrom<RawBranchNode<H>> for BranchNode<H> {
     type Error = SMTError;
 
     fn try_from(raw: RawBranchNode<H>) -> Result<Self, Self::Error> {
-        if raw.height > KEY_LENGTH * 8 {
-            return Err(SMTError::InvalidBranch(format!(
-                "Height {} exceeds the key length",
-                raw.height
-            )));
+        let height = raw.height;
+        // height_key is None for heights >= 256, which no real branch can have
+        if height_key(&raw.key, height).as_ref() != Some(&raw.key) {
+            return Err(SMTError::InvalidBranch(format!("Invalid key for height {height}")));
         }
-        Self::new(raw.height, raw.key, *raw.left, *raw.right)
+        for (child, side) in [
+            (&*raw.left, TraverseDirection::Left),
+            (&*raw.right, TraverseDirection::Right),
+        ] {
+            let child_key = match child {
+                Empty(_) => continue,
+                Leaf(leaf) => leaf.key(),
+                // Trees are not path-compressed: every branch sits exactly one level below its parent
+                Branch(branch) if Some(branch.height) == height.checked_add(1) => branch.key(),
+                Branch(branch) => {
+                    return Err(SMTError::InvalidBranch(format!(
+                        "Child branch height {} under height {height}",
+                        branch.height
+                    )));
+                },
+            };
+            if traverse_direction(height, &raw.key, child_key)? != side {
+                return Err(SMTError::InvalidBranch(format!(
+                    "Child on the wrong side at height {height}"
+                )));
+            }
+        }
+        let mut branch = Self::new(height, raw.key, *raw.left, *raw.right)?;
+        // Children are decoded first and are already hashed, so this is one hash per node
+        branch.recalculate_hash();
+        Ok(branch)
     }
 }
 
@@ -796,10 +820,28 @@ mod test {
     #[test]
     fn deserialized_branch_rejects_invalid_children() {
         type H = Blake2b<U32>;
-        let leaf = || Node::Leaf(LeafNode::<H>::new(random_key(), random_value_hash()));
-        let valid = BranchNode::<H>::new(0, NodeKey::default(), leaf(), leaf()).unwrap();
+        let leaf = |b: u8| Node::Leaf(LeafNode::<H>::new(NodeKey::from([b; 32]), random_value_hash()));
+        let decode =
+            |branch: &BranchNode<H>| serde_json::from_value::<BranchNode<H>>(serde_json::to_value(branch).unwrap());
+        let mut valid = BranchNode::<H>::new(0, NodeKey::default(), leaf(0x00), leaf(0x80)).unwrap();
         let json = serde_json::to_value(&valid).unwrap();
-        assert!(serde_json::from_value::<BranchNode<H>>(json.clone()).is_ok());
+        let decoded = serde_json::from_value::<BranchNode<H>>(json.clone()).unwrap();
+        assert!(!decoded.is_stale());
+        assert_eq!(decoded.unsafe_hash(), valid.hash());
+
+        // Leaves on the wrong sides of a height-0 branch
+        let swapped = BranchNode::<H>::new(0, NodeKey::default(), leaf(0x80), leaf(0x00)).unwrap();
+        assert!(decode(&swapped).is_err());
+
+        // A child branch that skips a height
+        let inner = BranchNode::<H>::new(2, NodeKey::default(), leaf(0x00), leaf(0x20)).unwrap();
+        assert!(decode(&inner).is_ok());
+        let skipped = BranchNode::<H>::new(0, NodeKey::default(), Node::Branch(inner), leaf(0x80)).unwrap();
+        assert!(decode(&skipped).is_err());
+
+        let mut stray_bits = json.clone();
+        stray_bits["key"] = serde_json::to_value(NodeKey::from([0xffu8; 32])).unwrap();
+        assert!(serde_json::from_value::<BranchNode<H>>(stray_bits).is_err());
 
         let empty = serde_json::to_value(Node::<H>::Empty(EmptyNode {})).unwrap();
         let mut both_empty = json.clone();
@@ -811,9 +853,11 @@ mod test {
         empty_leaf["left"] = empty;
         assert!(serde_json::from_value::<BranchNode<H>>(empty_leaf).is_err());
 
-        let mut too_high = json;
-        too_high["height"] = 300.into();
-        assert!(serde_json::from_value::<BranchNode<H>>(too_high).is_err());
+        for height in [256, 300] {
+            let mut too_high = json.clone();
+            too_high["height"] = height.into();
+            assert!(serde_json::from_value::<BranchNode<H>>(too_high).is_err());
+        }
     }
 
     #[test]

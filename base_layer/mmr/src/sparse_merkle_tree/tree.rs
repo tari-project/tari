@@ -32,11 +32,34 @@ pub enum DeleteResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(try_from = "RawSparseMerkleTree<H>")]
 #[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
 #[serde(bound(serialize = "H:"))]
 pub struct SparseMerkleTree<H> {
     size: u64,
     root: Node<H>,
+}
+
+/// Wire shape of [`SparseMerkleTree`], used to check the root before accepting a decoded tree.
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "H: Digest<OutputSize = U32>"))]
+struct RawSparseMerkleTree<H> {
+    size: u64,
+    root: Node<H>,
+}
+
+impl<H> TryFrom<RawSparseMerkleTree<H>> for SparseMerkleTree<H> {
+    type Error = SMTError;
+
+    fn try_from(raw: RawSparseMerkleTree<H>) -> Result<Self, Self::Error> {
+        if raw.root.as_branch().is_some_and(|b| b.height() != 0) {
+            return Err(SMTError::InvalidBranch("Root branch must have height 0".into()));
+        }
+        Ok(Self {
+            size: raw.size,
+            root: raw.root,
+        })
+    }
 }
 
 impl<H> SparseMerkleTree<H> {
@@ -437,7 +460,11 @@ mod test {
     use digest::{Digest, consts::U32, generic_array::GenericArray};
 
     use crate::sparse_merkle_tree::{
+        BranchNode,
         EMPTY_NODE_HASH,
+        ExclusionProof,
+        LeafNode,
+        Node,
         NodeKey,
         SMTError,
         UpdateResult,
@@ -942,13 +969,30 @@ mod test {
             tree.upsert(NodeKey::from(key), ValueHash::from(value)).unwrap();
         }
         let root = tree.hash().clone();
+        let key = NodeKey::from([7u8; 32]);
+        assert!(!tree.contains(&key));
 
         let json = serde_json::to_string(&tree).unwrap();
-        let mut from_json: SparseMerkleTree<Blake2b<U32>> = serde_json::from_str(&json).unwrap();
-        assert_eq!(from_json.hash(), &root);
-
+        let from_json: SparseMerkleTree<Blake2b<U32>> = serde_json::from_str(&json).unwrap();
         let bytes = bincode::serialize(&tree).unwrap();
-        let mut from_bincode: SparseMerkleTree<Blake2b<U32>> = bincode::deserialize(&bytes).unwrap();
-        assert_eq!(from_bincode.hash(), &root);
+        let from_bincode: SparseMerkleTree<Blake2b<U32>> = bincode::deserialize(&bytes).unwrap();
+        for decoded in [from_json, from_bincode] {
+            // Hashes are fresh straight after decoding, without calling `hash()`
+            assert_eq!(decoded.unsafe_hash(), &root);
+            let proof = ExclusionProof::from_tree(&decoded, &key).unwrap();
+            assert!(proof.validate(&key, &root));
+        }
+    }
+
+    #[test]
+    fn deserialized_tree_rejects_root_branch_above_height_0() {
+        type H = Blake2b<U32>;
+        let leaf = |b: u8| Node::Leaf(LeafNode::<H>::new(NodeKey::from([b; 32]), ValueHash::from([1u8; 32])));
+        let root = BranchNode::<H>::new(3, NodeKey::default(), leaf(0x00), leaf(0x10)).unwrap();
+        // The branch on its own is well formed; only its position as the root is wrong
+        let root_json = serde_json::to_value(&root).unwrap();
+        assert!(serde_json::from_value::<BranchNode<H>>(root_json.clone()).is_ok());
+        let tree_json = serde_json::json!({ "size": 2, "root": { "Branch": root_json } });
+        assert!(serde_json::from_value::<SparseMerkleTree<H>>(tree_json).is_err());
     }
 }
