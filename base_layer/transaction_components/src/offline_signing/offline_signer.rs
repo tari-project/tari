@@ -214,13 +214,22 @@ fn check_payload_key_policy(
 
 /// Checks a `Prepare*` result's expiry, signing key and [`PayloadIntegritySignature`] against the signer's own
 /// clock and keys. Call it before presenting the payload's summary, so the summary only ever shows a payload the
-/// signer would sign, signed with the key it names; the `sign_locked_*` functions check again.
+/// signer would sign, signed with the key it names; the `sign_locked_*` functions check again. A refusal is logged.
 pub fn verify_offline_payload<KM: TransactionKeyManagerInterface, P: OfflinePayload>(
     key_manager: &KM,
     policy: &PayloadKeyPolicy,
     payload: &P,
 ) -> Result<(), TransactionBuilderError> {
-    verify_payload(key_manager, policy, payload, unix_now())
+    let result = verify_payload(key_manager, policy, payload, unix_now());
+    if let Err(e) = &result {
+        warn!(
+            target: LOG_TARGET,
+            "Offline payload {} ({}) refused before review: {e}",
+            payload.tx_id(),
+            payload_log_context(payload, policy)
+        );
+    }
+    result
 }
 
 /// Verifies a `Prepare*` result's expiry, signing key and [`PayloadIntegritySignature`], at time `now`.

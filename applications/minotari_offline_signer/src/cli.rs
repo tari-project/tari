@@ -562,7 +562,8 @@ fn export_payload_key(args: ExportPayloadKeyArgs, out: &mut dyn Write) -> Result
 fn retire_payload_key(args: RetirePayloadKeyArgs) -> Result<()> {
     keystore::retire_payload_key_index(args.index, &args.passphrase)?;
     println!(
-        "✓ Payload key #{} retired: `sign` no longer accepts payloads signed with it",
+        "✓ Payload key #{} retired: `sign` no longer accepts payloads signed with it, unless the index is passed \
+         explicitly with --payload-key-index",
         args.index
     );
     Ok(())
@@ -587,6 +588,10 @@ fn clear_keystore() -> Result<()> {
 
     // Prompt for confirmation
     println!("WARNING: This will permanently delete all stored keys!");
+    println!(
+        "It also resets payload key strict mode: after 'init', the signer accepts view key payloads again until a \
+         payload key is exported (or --require-payload-key is given)."
+    );
     print!("Are you sure you want to continue? [y/N]: ");
     std::io::Write::flush(&mut std::io::stdout())?;
 

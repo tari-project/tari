@@ -102,6 +102,7 @@ mod sealed {
 pub trait OfflinePayload: sealed::Sealed + HasVersion + Clone + std::fmt::Debug + Send + Sync + 'static {
     /// The canonical bytes the payload signature covers.
     fn canonical_bytes(&self) -> Result<Vec<u8>, TransactionError>;
+    fn tx_id(&self) -> TxId;
     fn payload_key_id(&self) -> Option<&TariKeyId>;
     fn expires_at(&self) -> u64;
     fn payload_signature(&self) -> &PayloadIntegritySignature;
@@ -119,6 +120,10 @@ macro_rules! impl_offline_payload {
                     self.payload_key_id.as_ref(),
                     self.expires_at,
                 )
+            }
+
+            fn tx_id(&self) -> TxId {
+                self.tx_id
             }
 
             fn payload_key_id(&self) -> Option<&TariKeyId> {

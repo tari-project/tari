@@ -128,7 +128,8 @@ To set it up:
    minotari_offline_signer retire-payload-key --index 1
    ```
 
-   From then on `sign` refuses payloads signed with it. Retiring the last index does not turn strict mode off: the
+   From then on a plain `sign` refuses payloads signed with it (passing the index explicitly with
+   `--payload-key-index` still accepts it for that run). Retiring the last index does not turn strict mode off: the
    signer then refuses every payload until another key is exported. Exporting a retired index again brings back the same
    key, so after a leak always export a new index.
 
@@ -169,6 +170,9 @@ Remove all keys from the keystore:
 ```bash
 minotari_offline_signer clear
 ```
+
+This also removes the recorded payload key indices, so after `clear` and `init` the signer accepts view key payloads
+again. Export a payload key again (or pass `--require-payload-key`) to turn strict mode back on.
 
 ## Commands
 
