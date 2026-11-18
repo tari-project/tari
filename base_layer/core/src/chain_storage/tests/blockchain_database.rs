@@ -2645,6 +2645,13 @@ mod read_on_requested_chain {
         let c = chain.get("C").unwrap();
         let b2 = fork.get("B2").unwrap();
         let c2 = fork.get("C2").unwrap();
+        // D and E are stored as headers only, above the block tip C, as header sync does
+        let (_, headers_only) = create_chained_blocks(&db, block_specs!(["D->GB"], ["E->D"]), c.clone());
+        let d = headers_only.get("D").unwrap();
+        let e = headers_only.get("E").unwrap();
+        db.insert_valid_headers(vec![d.to_chain_header(), e.to_chain_header()])
+            .unwrap();
+        assert_eq!(db.fetch_header(5).unwrap().unwrap().hash(), *e.hash());
 
         let kernels = db.fetch_kernels_in_block_on_chain(2, *b.hash(), 3, *c.hash()).unwrap();
         assert_eq!(kernels.as_ref(), Some(b.block().body.kernels()));
@@ -2657,20 +2664,22 @@ mod read_on_requested_chain {
         assert_eq!(&inputs, b.block().body.inputs());
         assert_eq!(spent.len(), inputs.len());
 
-        // The block is not on the chain (its data reads as empty), the end block is not on the chain, or the end height
-        // is above the tip
-        for (hash, end_height, end_hash) in [
-            (b2.hash(), 3, c.hash()),
-            (b.hash(), 3, c2.hash()),
-            (b.hash(), 4, c.hash()),
+        // The block is not on the chain (its data reads as empty), the end block is not on the chain, the end height is
+        // above the header tip, or the block or end block is stored as a header only
+        for (height, hash, end_height, end_hash) in [
+            (2, b2.hash(), 3, c.hash()),
+            (2, b.hash(), 3, c2.hash()),
+            (2, b.hash(), 6, c.hash()),
+            (2, b.hash(), 5, e.hash()),
+            (4, d.hash(), 4, d.hash()),
         ] {
             assert_eq!(
-                db.fetch_kernels_in_block_on_chain(2, *hash, end_height, *end_hash)
+                db.fetch_kernels_in_block_on_chain(height, *hash, end_height, *end_hash)
                     .unwrap(),
                 None
             );
             assert!(
-                db.fetch_txos_in_block_on_chain(2, *hash, end_height, *end_hash)
+                db.fetch_txos_in_block_on_chain(height, *hash, end_height, *end_hash)
                     .unwrap()
                     .is_none()
             );

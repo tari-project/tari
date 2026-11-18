@@ -203,7 +203,8 @@ where B: BlockchainBackend + 'static
             }
 
             let height = current_header.height;
-            // Read together with the chain check, so that a block that was rewound (it reads as empty) is never served
+            // Read together with the chain check, so that a block that is not on the requested chain or has no stored
+            // body (it reads as empty) is never served
             let (outputs_with_statuses, inputs_in_block, mined_infos) = self
                 .db
                 .fetch_txos_in_block_on_chain(height, current_header_hash, end_height, end_hash)

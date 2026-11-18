@@ -3160,9 +3160,10 @@ pub fn is_on_requested_chain(
 }
 
 /// Runs `read` for block `hash` and checks under the same read lock, so that no write can commit in between, that the
-/// block is at `height` and the end header `end_hash` is at `end_height`. Returns `None` if not: a block that is no
-/// longer on the chain reads as empty or fails, and its data must not be served. A failed read on the chain keeps its
-/// error.
+/// block is at `height`, the end header `end_hash` is at `end_height`, and the block bodies up to `end_height` are
+/// stored. Returns `None` if not: a block that is no longer on the chain, or whose header is stored without its body
+/// (e.g. during header sync), reads as empty or fails, and its data must not be served. A failed read on the chain
+/// keeps its error.
 fn read_on_requested_chain<T: BlockchainBackend, R>(
     db: &T,
     height: u64,
@@ -3173,7 +3174,10 @@ fn read_on_requested_chain<T: BlockchainBackend, R>(
 ) -> Result<Option<R>, ChainStorageError> {
     let res = read(db);
     let (header_at_height, end_header) = fetch_header_pair(db, height, end_height)?;
-    if !is_on_requested_chain(hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) {
+    // Bodies are stored up to the best block, so a header above it may have no body
+    if !is_on_requested_chain(hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) ||
+        end_height > db.fetch_chain_metadata()?.best_block_height()
+    {
         return Ok(None);
     }
     res.map(Some)
