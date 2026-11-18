@@ -194,7 +194,10 @@ impl MonitorPeersService {
                                 match event {
                                     Ok(arc_event) => {
                                         if let LivenessEvent::ReceivedPong(pong) = &*arc_event {
-                                            if let Some(ping_pong) = peer_ping_pongs.iter_mut().find(|p| p.expected_nonce == pong.nonce) {
+                                            if let Some(ping_pong) = peer_ping_pongs
+                                                .iter_mut()
+                                                .find(|p| p.expected_nonce == pong.nonce && p.node_id == pong.node_id)
+                                            {
                                                 ping_pong.received_nonce = Some(pong.nonce);
                                             }
                                             if peer_ping_pongs.iter().all(|p| p.received_nonce.is_some()) {

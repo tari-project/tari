@@ -167,25 +167,26 @@ impl LivenessState {
     /// Records a pong. Specifically, the pong counter is incremented and
     /// a latency sample is added and calculated. The given `peer` must match the recorded peer
     pub fn record_pong(&mut self, nonce: u64, sent_by: &NodeId) -> Option<Duration> {
-        self.inc_pongs_received();
-        self.failed_pings.remove_entry(sent_by);
-
-        let (node_id, _) = self.inflight_pings.get(&nonce)?;
-        if node_id == sent_by {
-            self.inflight_pings.remove(&nonce).map(|(node_id, sent_time)| {
-                let latency = sent_time.elapsed();
-                self.add_latency_sample(node_id, latency);
-                latency
-            })
-        } else {
+        if let Some((node_id, _)) = self.inflight_pings.get(&nonce) &&
+            node_id != sent_by
+        {
             warn!(
                 target: LOG_TARGET,
                 "Peer {sent_by} sent an nonce for another peer {node_id}. This could indicate malicious behaviour or a bug. \
                  Ignoring."
 
             );
-            None
+            return None;
         }
+
+        self.inc_pongs_received();
+        self.failed_pings.remove_entry(sent_by);
+
+        self.inflight_pings.remove(&nonce).map(|(node_id, sent_time)| {
+            let latency = sent_time.elapsed();
+            self.add_latency_sample(node_id, latency);
+            latency
+        })
     }
 
     fn add_latency_sample(&mut self, node_id: NodeId, duration: Duration) -> &mut AverageLatency {
@@ -249,10 +250,13 @@ impl AverageLatency {
 
     /// Add a sample `Duration`. The number of milliseconds is capped at `u32::MAX`.
     pub fn add_sample(&mut self, sample: Duration) {
-        if self.samples.len() == self.samples.capacity() {
+        if self.samples.capacity() == 0 {
+            return;
+        }
+        if self.samples.len() >= self.samples.capacity() {
             self.samples.remove(0);
         }
-        self.samples.push(u32::try_from(sample.as_millis()).unwrap())
+        self.samples.push(u32::try_from(sample.as_millis()).unwrap_or(u32::MAX));
     }
 
     /// Calculate the average of the recorded samples
@@ -370,5 +374,38 @@ mod test {
         let n = state.failed_pings.get(&peer1).unwrap();
         assert_eq!(*n, 1);
         assert!(!state.failed_pings.contains_key(&peer2));
+    }
+
+    #[test]
+    fn record_pong_ignores_mismatched_peer_without_clearing_failures() {
+        let mut state = LivenessState::new();
+        let peer1 = NodeId::default();
+        let peer2 = NodeId::from_public_key(&Default::default());
+
+        // Expire a ping for peer2 so it has a failed ping recorded
+        state.add_inflight_ping(1, peer2.clone(), MAX_INFLIGHT_TTL);
+        state.inflight_pings.get_mut(&1).unwrap().1 = Instant::now() - (MAX_INFLIGHT_TTL + Duration::from_secs(1));
+        state.clear_stale_inflight_pings(MAX_INFLIGHT_TTL);
+        assert_eq!(state.failed_pings.get(&peer2), Some(&1));
+
+        // Add an active inflight ping for peer1
+        state.add_inflight_ping(42, peer1.clone(), MAX_INFLIGHT_TTL);
+
+        // peer2 attempts to answer peer1's inflight ping nonce
+        assert!(state.record_pong(42, &peer2).is_none());
+        assert_eq!(state.pongs_received(), 0);
+        assert_eq!(state.failed_pings.get(&peer2), Some(&1));
+        assert!(state.is_inflight(42));
+    }
+
+    #[test]
+    fn average_latency_caps_large_samples_and_handles_zero_capacity() {
+        let mut zero_cap = AverageLatency::default();
+        zero_cap.add_sample(Duration::from_millis(100));
+        assert_eq!(zero_cap.calc_average(), Duration::default());
+
+        let mut latency = AverageLatency::new(2);
+        latency.add_sample(Duration::from_millis(u64::from(u32::MAX) + 5000));
+        assert_eq!(latency.calc_average(), Duration::from_millis(u64::from(u32::MAX)));
     }
 }

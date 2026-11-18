@@ -85,41 +85,12 @@ impl DnsSoftwareUpdate {
             }
         });
 
-        let records = future::join_all(records).await;
+        let records: Vec<Vec<UpdateSpec>> = future::join_all(records).await;
 
-        let best_update = records
-            .iter()
-            .flatten()
-            .fold(Option::<&UpdateSpec>::None, |best_update, update| match best_update {
-                Some(u) if u.version < update.version => Some(update),
-                Some(u) => Some(u),
-                None => Some(update),
-            });
-
-        match best_update {
+        match select_majority_update(&records, self.config.update_uris.len()) {
             Some(best_update) => {
-                // Check that a majority of URLs agree
-                let majority = (self.config.update_uris.len() / 2).saturating_add(1);
-                let count = records
-                    .iter()
-                    .flatten()
-                    .filter(|u| u.version == best_update.version)
-                    .count();
-
-                if count < majority {
-                    log::warn!(
-                        target: LOG_TARGET,
-                        "Too few update URLs have the update to version {}. {} out of {}. {} are required",
-                        best_update.version,
-                        count,
-                        self.config.update_uris.len(),
-                        majority
-                    );
-                    return Ok(None);
-                }
-
                 log::debug!(target: LOG_TARGET, "Update found! {best_update}");
-                Ok(Some(best_update.clone()))
+                Ok(Some(best_update))
             },
             None => {
                 log::debug!(
@@ -131,6 +102,46 @@ impl DnsSoftwareUpdate {
             },
         }
     }
+}
+
+fn select_majority_update(records: &[Vec<UpdateSpec>], num_uris: usize) -> Option<UpdateSpec> {
+    if num_uris == 0 {
+        return None;
+    }
+
+    let best_update = records
+        .iter()
+        .flatten()
+        .fold(Option::<&UpdateSpec>::None, |best_update, update| match best_update {
+            Some(u) if u.version < update.version => Some(update),
+            Some(u) => Some(u),
+            None => Some(update),
+        })?;
+
+    // Check that a majority of distinct update URIs agree on both version and hash
+    let majority = (num_uris / 2).saturating_add(1);
+    let count = records
+        .iter()
+        .filter(|uri_records| {
+            uri_records
+                .iter()
+                .any(|u| u.version == best_update.version && u.hash == best_update.hash)
+        })
+        .count();
+
+    if count < majority {
+        log::warn!(
+            target: LOG_TARGET,
+            "Too few update URLs have the update to version {}. {} out of {}. {} are required",
+            best_update.version,
+            count,
+            num_uris,
+            majority
+        );
+        return None;
+    }
+
+    Some(best_update.clone())
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -213,5 +224,25 @@ mod test {
         assert_eq!(update_spec.arch, "linux-x64");
         assert_eq!(update_spec.version.to_string(), "1.0.0");
         assert_eq!(update_spec.hash, [0xBA, 0xDA, 0x55]);
+    }
+
+    #[test]
+    fn majority_check_counts_distinct_uris_and_matching_hashes() {
+        let spec_a = UpdateSpec::from_str("base-node:linux-x64:1.2.0:bada55").unwrap();
+        let spec_conflicting_hash = UpdateSpec::from_str("base-node:linux-x64:1.2.0:c0ffee").unwrap();
+
+        // A single URI returning duplicate TXT records must not satisfy a 2-of-3 URI majority
+        let duplicate_single_uri = vec![vec![spec_a.clone(), spec_a.clone()], vec![], vec![]];
+        assert!(select_majority_update(&duplicate_single_uri, 3).is_none());
+
+        // Two URIs with the same version but different hashes must not satisfy a 2-of-3 URI majority
+        let conflicting_hashes = vec![vec![spec_a.clone()], vec![spec_conflicting_hash], vec![]];
+        assert!(select_majority_update(&conflicting_hashes, 3).is_none());
+
+        // Two distinct URIs agreeing on version and hash satisfy a 2-of-3 URI majority
+        let valid_majority = vec![vec![spec_a.clone()], vec![spec_a.clone()], vec![]];
+        let selected = select_majority_update(&valid_majority, 3).unwrap();
+        assert_eq!(selected.version, spec_a.version);
+        assert_eq!(selected.hash, spec_a.hash);
     }
 }
