@@ -166,6 +166,10 @@ where
             TransactionServiceProtocolError::new(self.operation_id, TransactionServiceError::Other(e.to_string()))
         })?;
         let tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+        let unconfirmed_transactions: Vec<_> = unconfirmed_transactions
+            .into_iter()
+            .filter(|tx| should_recheck_unconfirmed(tx, tip))
+            .collect();
         let mut confirmed_burns = vec![];
         for batch in unconfirmed_transactions.chunks(self.batch_size()) {
             let (mined, unmined) = self
@@ -184,6 +188,7 @@ where
                     tx_id,
                     status,
                     burnt_outputs,
+                    mined_height: previous_mined_height,
                     ..
                 } = mined_tx;
                 debug!(
@@ -194,12 +199,15 @@ where
                 );
 
                 let num_confirmations = tip.saturating_sub(mined_height);
-                if num_confirmations >= self.config.num_confirmations_required {
+                if num_confirmations >= self.config.num_confirmations_required &&
+                    !is_already_confirmed_unlocking(status, previous_mined_height)
+                {
                     confirmed_burns.extend(burnt_outputs);
                 }
                 self.update_transaction_as_mined(
                     tx_id,
                     status,
+                    previous_mined_height,
                     &mined_in_block,
                     mined_height,
                     num_confirmations,
@@ -421,6 +429,7 @@ where
         &mut self,
         tx_id: TxId,
         status: LegacyTransactionStatus,
+        previous_mined_height: Option<u64>,
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
@@ -439,24 +448,14 @@ where
             )
             .for_protocol(self.operation_id)?;
 
-        if num_confirmations >= self.config.num_confirmations_required {
-            if status.is_coinbase() || status.is_imported_from_chain() {
-                self.publish_event(TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid: true })
-            } else {
-                self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
-            }
-        } else if status.is_coinbase() || status.is_imported_from_chain() {
-            self.publish_event(TransactionEvent::DetectedTransactionUnconfirmed {
-                tx_id,
-                num_confirmations,
-                is_valid: true,
-            })
-        } else {
-            self.publish_event(TransactionEvent::TransactionMinedUnconfirmed {
-                tx_id,
-                num_confirmations,
-                is_valid: true,
-            })
+        if let Some(event) = mined_transaction_event(
+            tx_id,
+            status,
+            previous_mined_height,
+            num_confirmations,
+            self.config.num_confirmations_required,
+        ) {
+            self.publish_event(event);
         }
 
         Ok(())
@@ -473,5 +472,101 @@ where
 
         self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
         Ok(())
+    }
+}
+
+fn is_already_confirmed_unlocking(status: LegacyTransactionStatus, previous_mined_height: Option<u64>) -> bool {
+    status == LegacyTransactionStatus::MinedConfirmedLocked && previous_mined_height.is_some()
+}
+
+fn should_recheck_unconfirmed(tx: &UnconfirmedTransactionInfo, tip: u64) -> bool {
+    !(is_already_confirmed_unlocking(tx.status, tx.mined_height) && tip < tx.lock_height)
+}
+
+fn mined_transaction_event(
+    tx_id: TxId,
+    previous_status: LegacyTransactionStatus,
+    previous_mined_height: Option<u64>,
+    num_confirmations: u64,
+    num_confirmations_required: u64,
+) -> Option<TransactionEvent> {
+    if num_confirmations >= num_confirmations_required {
+        if is_already_confirmed_unlocking(previous_status, previous_mined_height) {
+            // Already confirmed earlier (`MinedConfirmedLocked` with `mined_height.is_some()` unlocking to
+            // `MinedConfirmed`); do not emit a duplicate `TransactionMined` event.
+            None
+        } else if previous_status.is_coinbase() || previous_status.is_imported_from_chain() {
+            Some(TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid: true })
+        } else {
+            Some(TransactionEvent::TransactionMined { tx_id, is_valid: true })
+        }
+    } else if previous_status.is_coinbase() || previous_status.is_imported_from_chain() {
+        Some(TransactionEvent::DetectedTransactionUnconfirmed {
+            tx_id,
+            num_confirmations,
+            is_valid: true,
+        })
+    } else {
+        Some(TransactionEvent::TransactionMinedUnconfirmed {
+            tx_id,
+            num_confirmations,
+            is_valid: true,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_transaction_components::transaction_components::MemoField;
+
+    use super::*;
+
+    fn sample_info(
+        status: LegacyTransactionStatus,
+        lock_height: u64,
+        mined_height: Option<u64>,
+    ) -> UnconfirmedTransactionInfo {
+        UnconfirmedTransactionInfo {
+            tx_id: 42u64.into(),
+            signature: CompressedSignature::default(),
+            status,
+            payment_id: MemoField::default(),
+            burnt_outputs: Vec::new(),
+            lock_height,
+            mined_height,
+        }
+    }
+
+    #[test]
+    fn locked_confirmed_tx_is_skipped_until_lock_expires_and_emits_mined_once() {
+        let tx_id = TxId::from(42u64);
+        // 1. Entering MinedConfirmedLocked from MinedUnconfirmed emits TransactionMined once.
+        assert!(matches!(
+            mined_transaction_event(tx_id, LegacyTransactionStatus::MinedUnconfirmed, Some(10), 3, 3),
+            Some(TransactionEvent::TransactionMined { tx_id: id, is_valid: true }) if id == tx_id
+        ));
+
+        // 2. While tip < lock_height, an already-mined MinedConfirmedLocked row is skipped by check_unconfirmed.
+        let locked = sample_info(LegacyTransactionStatus::MinedConfirmedLocked, 20, Some(10));
+        assert!(!should_recheck_unconfirmed(&locked, 15));
+        assert!(!should_recheck_unconfirmed(&locked, 19));
+
+        // 3. Once tip >= lock_height, it is re-checked to unlock and does not emit a duplicate TransactionMined.
+        assert!(should_recheck_unconfirmed(&locked, 20));
+        assert!(
+            mined_transaction_event(tx_id, LegacyTransactionStatus::MinedConfirmedLocked, Some(10), 10, 3).is_none()
+        );
+
+        // 4. After revalidate-all (`mined_height == None`), confirmed/locked rows are NOT skipped and DO re-emit/queue.
+        let revalidated_locked = sample_info(LegacyTransactionStatus::MinedConfirmedLocked, 20, None);
+        assert!(should_recheck_unconfirmed(&revalidated_locked, 15));
+        assert!(matches!(
+            mined_transaction_event(tx_id, LegacyTransactionStatus::MinedConfirmedLocked, None, 10, 3),
+            Some(TransactionEvent::TransactionMined { tx_id: id, is_valid: true }) if id == tx_id
+        ));
+        assert!(matches!(
+            mined_transaction_event(tx_id, LegacyTransactionStatus::MinedConfirmed, None, 10, 3),
+            Some(TransactionEvent::TransactionMined { tx_id: id, is_valid: true }) if id == tx_id
+        ));
     }
 }

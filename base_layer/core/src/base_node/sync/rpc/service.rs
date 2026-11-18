@@ -48,6 +48,7 @@ use crate::base_node::metrics;
 use crate::{
     base_node::{
         LocalNodeCommsInterface,
+        RPC_STREAM_MAX_BUFFERED_BYTES,
         sync::{
             header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
             rpc::{
@@ -72,18 +73,12 @@ use crate::{
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
-/// The byte budget of one `sync_blocks` session. It counts the blocks queued for the RPC server and the last block the
-/// server took, and the next block is fetched only while that is below this. So a session holds at most this plus two
-/// blocks: the block being fetched, and the block the RPC server is still writing while it holds the next one
-/// prefetched. Typical mainnet blocks still fill the whole `block_batch_size` queue.
-const SYNC_BLOCKS_MAX_BUFFERED_BYTES: usize = 16 * 1024 * 1024;
-
 pub struct BaseNodeSyncRpcService<B> {
     db: AsyncBlockchainDb<B>,
     active_sessions: Mutex<Vec<Weak<NodeId>>>,
     /// The most blocks queued for the RPC server per `sync_blocks` session
     block_batch_size: usize,
-    /// The most bytes of blocks buffered per `sync_blocks` session (see [SYNC_BLOCKS_MAX_BUFFERED_BYTES])
+    /// The most bytes of blocks buffered per `sync_blocks` session (see [RPC_STREAM_MAX_BUFFERED_BYTES])
     max_buffered_block_bytes: usize,
 }
 
@@ -101,7 +96,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
             db,
             active_sessions: Mutex::new(Vec::new()),
             block_batch_size: cmp::max(block_batch_size, 1),
-            max_buffered_block_bytes: SYNC_BLOCKS_MAX_BUFFERED_BYTES,
+            max_buffered_block_bytes: RPC_STREAM_MAX_BUFFERED_BYTES,
         }
     }
 
@@ -139,7 +134,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 /// Returns true if the chain whose headers at the fetched block's height and at the end height are `header_at_height`
 /// and `end_header` has the fetched block at its height and the requested end block at the end height. Both headers
 /// must come from the same chain state; the fetched block is then an ancestor of the requested end block.
-pub(super) fn is_on_requested_chain(
+pub(crate) fn is_on_requested_chain(
     block_hash: &FixedHash,
     header_at_height: Option<&BlockHeader>,
     end_header: Option<&BlockHeader>,

@@ -64,6 +64,9 @@ pub enum TxSubmissionRejectionReason {
     /// Another mempool transaction already registers or exits the same validator node with an equal or higher fee.
     /// Not a validation failure: the submission should be retried later rather than cancelled.
     ValidatorNodeSlotTaken,
+    /// Refused by a mempool policy, not a validation failure (e.g. too many mempool transactions already spend one of
+    /// its inputs). The submission should be retried later rather than cancelled.
+    MempoolPolicy,
 }
 
 impl Display for TxSubmissionRejectionReason {
@@ -77,6 +80,7 @@ impl Display for TxSubmissionRejectionReason {
             TxSubmissionRejectionReason::ValidationFailed => write!(f, "Validation Failed"),
             TxSubmissionRejectionReason::FeeTooLow => write!(f, "Fee Too Low"),
             TxSubmissionRejectionReason::ValidatorNodeSlotTaken => write!(f, "Validator Node Slot Taken"),
+            TxSubmissionRejectionReason::MempoolPolicy => write!(f, "Mempool Policy"),
         }
     }
 }

@@ -27,6 +27,11 @@ use crate::{
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature},
 };
 
+/// The maximum number of hashes accepted in the `path` or `peaks` of an ingested `MmrInclusionProof`. The longest
+/// honest path is 63 (the height of a usize-sized MMR). tari_mmr's serde uses the same cap, and Ootle's
+/// `MAX_MMR_PROOF_HASHES` must stay equal to this.
+pub const MAX_MMR_PROOF_HASHES: usize = 64;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialBurnClaimProof {
     /// The L2 account public key (`P`) the burn is intended for. Lets the L2 wallet route the

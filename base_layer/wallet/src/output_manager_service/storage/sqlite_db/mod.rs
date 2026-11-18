@@ -1962,7 +1962,7 @@ mod test {
                 to_send.push(output);
             }
             let trigger_calls = calls.clone();
-            fail_once_utils::register_nondeterministic_impl(&conn, move || {
+            fail_once_utils::register_nondeterministic_impl(&mut conn, move || {
                 i32::from(trigger_calls.fetch_add(1, Ordering::SeqCst) == 0)
             })
             .unwrap();
