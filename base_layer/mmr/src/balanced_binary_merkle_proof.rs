@@ -33,6 +33,9 @@ use thiserror::Error;
 
 use crate::{BalancedBinaryMerkleTree, Hash, common::hash_together};
 
+/// Node indices are `u32`, so no balanced tree has more than 32 levels.
+const MAX_HEIGHT: u32 = 32;
+
 fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleProofError> {
     u32::try_from(value).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)
 }
@@ -157,6 +160,7 @@ pub struct MergedBalancedBinaryMerkleProof<D> {
 impl<D> MergedBalancedBinaryMerkleProof<D>
 where D: Digest
 {
+    /// Merges proofs for distinct leaves of the same tree. Rejects heights above 32 and duplicate leaves.
     pub fn create_from_proofs(proofs: &[BalancedBinaryMerkleProof<D>]) -> Result<Self, BalancedBinaryMerkleProofError> {
         let heights = proofs
             .iter()
@@ -166,6 +170,10 @@ where D: Digest
             .iter()
             .max()
             .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
+        let mut seen = HashSet::new();
+        if max_height > MAX_HEIGHT || !proofs.iter().all(|proof| seen.insert(proof.node_index)) {
+            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+        }
 
         let mut indices = proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>();
         let mut paths = vec![Vec::new(); proofs.len()];
@@ -232,7 +240,7 @@ where D: Digest
             .iter()
             .max()
             .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
-        if max_height > 32 {
+        if max_height > MAX_HEIGHT {
             return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }
         let mut consumed = HashSet::new();
@@ -248,6 +256,9 @@ where D: Digest
                     Some(MergedBalancedBinaryMerkleIndexOrHash::Index(i)) => usize::try_from(*i).ok(),
                     _ => None,
                 })
+                // Dedup before cloning so a repeated index clones its hash only once
+                .collect::<HashSet<_>>()
+                .into_iter()
                 .filter_map(|i| computed_hashes.get(i).map(|hash| (i, hash.clone())))
                 .collect::<HashMap<_, _>>();
             let mut dangling_paths = HashSet::new();
@@ -593,6 +604,47 @@ mod test {
         };
         assert!(matches!(
             proof.verify_consume(&vec![0u8; 32], vec![vec![0u8; 32]]).unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merged_rejects_repeated_index() {
+        let n = 1000;
+        let proof = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths: vec![vec![MergedBalancedBinaryMerkleIndexOrHash::Index(1)]; n],
+            node_indices: vec![1; n],
+            heights: vec![1; n],
+            _phantom: PhantomData,
+        };
+        assert!(matches!(
+            proof
+                .verify_consume(&vec![0u8; 32], vec![vec![0u8; 32]; n])
+                .unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merge_rejects_height_above_32() {
+        let proof = BalancedBinaryMerkleProof::<TestHasher> {
+            path: vec![vec![0u8; 32]; 33],
+            node_index: 0,
+            _phantom: PhantomData,
+        };
+        assert!(matches!(
+            MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof]).unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merge_rejects_duplicate_leaf() {
+        let leaves = (0..4u8).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves);
+        let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
+        assert!(matches!(
+            MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof.clone(), proof]).unwrap_err(),
             BalancedBinaryMerkleProofError::BadProofSemantics
         ));
     }
