@@ -180,6 +180,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         "verify_horizon_sync_output_root"
     );
 
+    make_async_fn!(fetch_output_smt_leaf_count() -> u64, "fetch_output_smt_leaf_count");
+
     //---------------------------------- TXO --------------------------------------------//
 
     make_async_fn!(
