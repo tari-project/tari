@@ -296,6 +296,8 @@ impl ExecutionStack {
                 None => return Err(ScriptError::InvalidInput),
             }
         }
+        // Pushing one item at a time can leave up to twice the capacity needed
+        stack.items.shrink_to_fit();
         Ok(stack)
     }
 
@@ -412,6 +414,14 @@ mod test {
         let bytes = stack.to_bytes();
         let stack2 = ExecutionStack::from_bytes(&bytes).unwrap();
         assert_eq!(stack, stack2);
+    }
+
+    #[test]
+    fn from_bytes_has_exact_capacity() {
+        let stack = ExecutionStack::new(vec![StackItem::Number(1); 129]);
+        let decoded = ExecutionStack::from_bytes(&stack.to_bytes()).unwrap();
+        assert_eq!(decoded.items.capacity(), 129);
+        assert_eq!(decoded, stack);
     }
 
     #[test]

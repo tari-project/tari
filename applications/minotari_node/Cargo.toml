@@ -20,6 +20,7 @@ tari_comms_dht = { workspace = true }
 tari_core = { workspace = true }
 tari_libtor = { workspace = true, optional = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }
+tari_script = { workspace = true }
 tari_storage = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
@@ -65,7 +66,7 @@ nom = "7.1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["raw_value"] }
 strum = { version = "0.22", features = ["derive"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal"] }
@@ -109,7 +110,6 @@ ignored = [
 ]
 
 [dev-dependencies]
-tari_script = { workspace = true }
 toml = { version = "0.5" }
 serde_json = "1.0.108"
 tempfile = "3.1.0"
