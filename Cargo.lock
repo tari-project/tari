@@ -4071,9 +4071,9 @@ dependencies = [
 
 [[package]]
 name = "libz-sys"
-version = "1.1.31"
+version = "1.1.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff20308ecabd635a2dc1dd5834a86c462cca20efba1d5d3ddab1f8aea3455cb2"
+checksum = "fee3f59f4321dab0c78d828942e7aa09d0bd8ad6e78a501977e6bf3d02938045"
 dependencies = [
  "cc",
  "libc",
@@ -4356,9 +4356,13 @@ dependencies = [
  "tari_common",
  "tari_common_types",
  "tari_comms",
+ "tari_core",
  "tari_crypto",
  "tari_features",
+ "tari_mmr",
  "tari_p2p",
+ "tari_script",
+ "tari_transaction_components",
  "tari_utilities",
  "thiserror 2.0.21",
  "tokio",
@@ -10000,16 +10004,15 @@ dependencies = [
 
 [[package]]
 name = "yamux"
-version = "0.13.10"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1991f6690292030e31b0144d73f5e8368936c58e45e7068254f7138b23b00672"
+checksum = "4f4e661d6ba6f09a768e31c6f3d88f9fac596ad5d376515d598a37b62d220b34"
 dependencies = [
  "futures 0.3.32",
  "log",
  "nohash-hasher",
  "parking_lot 0.12.5",
  "pin-project",
- "rand 0.9.4",
  "static_assertions",
  "web-time",
 ]

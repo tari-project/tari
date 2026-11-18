@@ -37,10 +37,11 @@ use tari_transaction_components::{
     BanReason,
     helpers::borsh::SerializedSize,
     rpc::models::FeePerGramStat,
-    transaction_components::{Transaction, TransactionError},
+    transaction_components::{OutputType, Transaction, TransactionError},
     validation::{
         AggregatedBodyValidationError,
         aggregate_body::{run_height_reading_scripts, validate_covenants},
+        helpers::check_no_coinbase_kernels,
     },
     weight::TransactionWeight,
 };
@@ -59,6 +60,7 @@ use crate::{
         reorg_pool::ReorgPool,
         unconfirmed_pool::{
             HeightValidation,
+            InsertOutcome,
             MAX_BLOCK_TEMPLATE_BODY_BYTES,
             MAX_SPENDS_PER_OUTPUT,
             RetrieveResults,
@@ -207,8 +209,8 @@ impl MempoolStorage {
             let timer = Instant::now();
             let (validator, generation) = {
                 let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
-                if let Some(response) = lock.pre_check(&tx) {
-                    return Ok((response, None));
+                if let Some(rejection) = lock.pre_check(&tx) {
+                    return Ok(rejection);
                 }
                 (lock.validator.clone(), lock.chain_generation)
             };
@@ -302,33 +304,51 @@ impl MempoolStorage {
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
-    /// The cheap checks done before a new transaction is validated: its inputs, fee, weight, body size, kernel
-    /// excesses and the spend cap. Returns the response if the transaction is not to be validated.
+    /// The cheap checks done before a new transaction is validated: no coinbase, its inputs, fee, weight, body size,
+    /// kernel excesses and the spend cap. Returns the response, and a ban reason for a coinbase, if the transaction is
+    /// not to be validated.
     ///
     /// This does no kernel deduplication. Callers drop an exact kernel-set match or a union of pool transactions before
     /// validation with [MempoolStorage::has_transaction], and `insert_into_unconfirmed_pool` does not store one; any
     /// other reuse of pooled kernels is validated.
-    pub fn pre_check(&self, tx: &Transaction) -> Option<TxStorageResponse> {
+    pub fn pre_check(&self, tx: &Transaction) -> Option<(TxStorageResponse, Option<BanReason>)> {
+        // Coinbase kernels carry no weight, so the weight check below only bounds validation work without them. They
+        // are rejected (and banned) as internal consistency validation would.
+        let no_coinbase = if tx.body.outputs().iter().any(|o| o.is_coinbase()) {
+            Err(AggregatedBodyValidationError::OutputTypeNotPermitted {
+                output_type: OutputType::Coinbase,
+            })
+        } else {
+            check_no_coinbase_kernels(&tx.body)
+        };
+        if let Err(e) = no_coinbase {
+            let error = ValidationError::from(e);
+            let ban_reason = internal_failure_ban_reason(&error);
+            return Some((validation_error_to_response(error), ban_reason));
+        }
         if let Some(response) = Self::check_inputs(tx).or_else(|| self.check_fee(tx)) {
-            return Some(response);
+            return Some((response, None));
         }
         let constants = self.rules.consensus_constants(self.last_seen_height);
         match tx.calculate_weight(constants.transaction_weight_params()) {
             Ok(weight) if weight <= constants.max_block_transaction_weight() => {},
             Ok(_) => {
-                return Some(TxStorageResponse::NotStored(Some(
-                    ValidationError::MaxTransactionWeightExceeded.to_string(),
-                )));
+                return Some((
+                    TxStorageResponse::NotStored(Some(ValidationError::MaxTransactionWeightExceeded.to_string())),
+                    None,
+                ));
             },
             Err(e) => {
-                return Some(TxStorageResponse::NotStored(Some(format!(
-                    "Unable to calculate the transaction weight: {e}"
-                ))));
+                return Some((
+                    TxStorageResponse::NotStored(Some(format!("Unable to calculate the transaction weight: {e}"))),
+                    None,
+                ));
             },
         }
         Self::check_body_size(tx)
             .or_else(|| Self::check_kernel_excesses(tx))
             .or_else(|| self.check_spend_cap(tx))
+            .map(|response| (response, None))
     }
 
     /// Refuses a transaction spending an output that [MAX_SPENDS_PER_OUTPUT] pool transactions already spend, if it
@@ -505,15 +525,30 @@ impl MempoolStorage {
         // Evicting first also keeps a full pool from evicting its lowest priority transaction for `tx`. Descendants are
         // kept: their inputs may also be produced by the transaction `tx` is a subset of.
         self.unconfirmed_pool.remove_transactions(victims)?;
-        self.unconfirmed_pool
-            .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?;
-        debug!(
-            target: LOG_TARGET,
-            "Transaction {} inserted in {:.2?}",
-            tx_id,
-            timer.elapsed()
-        );
-        Ok(TxStorageResponse::UnconfirmedPool)
+        match self
+            .unconfirmed_pool
+            .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?
+        {
+            InsertOutcome::Inserted => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction {} inserted in {:.2?}",
+                    tx_id,
+                    timer.elapsed()
+                );
+                Ok(TxStorageResponse::UnconfirmedPool)
+            },
+            InsertOutcome::AlreadyStored => Ok(TxStorageResponse::UnconfirmedPool),
+            InsertOutcome::PoolFull => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({tx_id}) not stored: the unconfirmed pool is full and cannot store it"
+                );
+                #[cfg(feature = "metrics")]
+                metrics::policy_refused_transactions("pool_full").inc();
+                Ok(TxStorageResponse::NotStoredFeeTooLow)
+            },
+        }
     }
 
     fn get_transaction_weighting(&self) -> TransactionWeight {
@@ -1278,11 +1313,14 @@ mod test {
         MicroMinotari,
         covenant,
         key_manager::KeyManager,
-        test_helpers::create_kernel_only_transaction,
+        test_helpers::{create_kernel_only_transaction, create_test_kernel},
         transaction_components::{
             KernelFeatures,
+            OutputFeatures,
+            RangeProofType,
             SpentOutput,
             TransactionKernel,
+            TransactionOutput,
             WalletOutput,
             covenants::{Covenant, CovenantError},
         },
@@ -1539,7 +1577,7 @@ mod test {
             other.offset.clone(),
             other.script_offset.clone(),
         ));
-        assert_eq!(storage.read().unwrap().pre_check(&reusing), None);
+        assert!(storage.read().unwrap().pre_check(&reusing).is_none());
         for locked in [false, true] {
             *validator.internal_results.lock().unwrap() = vec![Err(ValidationError::InvalidAccountingBalance)].into();
             let internal_calls = validator.internal_calls();
@@ -2000,6 +2038,44 @@ mod test {
         );
         assert_eq!(validator.chain_linked_calls(), 1);
         assert_eq!(validator.internal_calls(), 1);
+    }
+
+    #[test]
+    fn pre_check_rejects_a_coinbase_with_a_ban_before_validation() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let tx = create_tx(&key_manager);
+
+        let mut kernels = tx.body.kernels().clone();
+        kernels.push(create_test_kernel(0.into(), 0, KernelFeatures::COINBASE_KERNEL));
+        let coinbase_kernel = Transaction::new(
+            tx.body.inputs().clone(),
+            tx.body.outputs().clone(),
+            kernels,
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        );
+        let mut outputs = tx.body.outputs().clone();
+        outputs.push(TransactionOutput {
+            features: OutputFeatures::create_coinbase(0, None, RangeProofType::RevealedValue),
+            ..Default::default()
+        });
+        let coinbase_output = Transaction::new(
+            tx.body.inputs().clone(),
+            outputs,
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        );
+
+        for tx in [coinbase_kernel, coinbase_output] {
+            let (response, ban) = MempoolStorage::insert_unlocked_with_ban_reason(&storage, Arc::new(tx)).unwrap();
+            assert!(matches!(response, TxStorageResponse::NotStored(_)));
+            assert_eq!(ban.unwrap().ban_duration, BanPeriod::Long);
+        }
+        assert_eq!(validator.chain_linked_calls(), 0);
+        assert_eq!(validator.internal_calls(), 0);
     }
 
     #[test]
@@ -2672,7 +2748,7 @@ mod test {
         }
         let again = copies[0].clone();
 
-        assert_eq!(storage.read().unwrap().pre_check(&again), None);
+        assert!(storage.read().unwrap().pre_check(&again).is_none());
         assert_eq!(
             MempoolStorage::insert_unlocked(&storage, again.clone()).unwrap(),
             TxStorageResponse::UnconfirmedPool
