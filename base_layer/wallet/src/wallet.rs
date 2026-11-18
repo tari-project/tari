@@ -137,13 +137,34 @@ fn clear_payload_auth_key<T: WalletBackend + 'static>(
     db: &WalletDatabase<T>,
     key_manager: &KeyManager,
 ) -> Result<bool, WalletError> {
+    let removed = read_stored_payload_auth_key(db)?;
     let cleared = db.clear_client_value(PAYLOAD_AUTH_KEY.to_string())?;
     key_manager.set_payload_auth_key(None);
-    info!(
-        target: LOG_TARGET,
-        "Cleared the offline-signing payload key (one was stored: {cleared})"
-    );
+    match (cleared, removed) {
+        (true, Some(Some((index, key)))) => info!(
+            target: LOG_TARGET,
+            "Cleared offline-signing payload key #{index} (public key {})",
+            CompressedPublicKey::from_secret_key(&key).to_hex()
+        ),
+        (true, _) => info!(target: LOG_TARGET, "Cleared a malformed stored offline-signing payload key"),
+        (false, _) => info!(target: LOG_TARGET, "No offline-signing payload key was stored to clear"),
+    }
     Ok(cleared)
+}
+
+/// The stored payload key: `None` if none is stored, `Some(None)` if the stored value is malformed.
+fn read_stored_payload_auth_key<T: WalletBackend + 'static>(
+    db: &WalletDatabase<T>,
+) -> Result<Option<Option<(u64, PrivateKey)>>, WalletError> {
+    let Some(stored) = db
+        .get_client_key_value(PAYLOAD_AUTH_KEY.to_string())?
+        .map(Zeroizing::new)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(stored.split_once(':').and_then(|(index, key)| {
+        Some((index.parse().ok()?, PrivateKey::from_hex(key).ok()?))
+    })))
 }
 
 /// Gives the stored payload key, if any, to `key_manager`. A malformed value is logged and ignored rather than
@@ -152,18 +173,10 @@ fn load_payload_auth_key<T: WalletBackend + 'static>(
     db: &WalletDatabase<T>,
     key_manager: &KeyManager,
 ) -> Result<(), WalletError> {
-    let Some(stored) = db
-        .get_client_key_value(PAYLOAD_AUTH_KEY.to_string())?
-        .map(Zeroizing::new)
-    else {
-        return Ok(());
-    };
-    let parsed = stored
-        .split_once(':')
-        .and_then(|(index, key)| Some((index.parse().ok()?, PrivateKey::from_hex(key).ok()?)));
-    match parsed {
-        Some(payload_key) => key_manager.set_payload_auth_key(Some(payload_key)),
-        None => warn!(
+    match read_stored_payload_auth_key(db)? {
+        None => {},
+        Some(Some(payload_key)) => key_manager.set_payload_auth_key(Some(payload_key)),
+        Some(None) => warn!(
             target: LOG_TARGET,
             "The stored offline-signing payload key is malformed and is ignored; payloads will be signed with the \
              view key. Import the payload key again."

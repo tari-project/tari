@@ -129,7 +129,8 @@ To set it up:
    ```
 
    From then on `sign` refuses payloads signed with it. Retiring the last index does not turn strict mode off: the
-   signer then refuses every payload until another key is exported.
+   signer then refuses every payload until another key is exported. Exporting a retired index again brings back the same
+   key, so after a leak always export a new index.
 
    The signer holds the spend key, so it derives the payload key itself and needs no import. A wallet that prepares
    payloads needs the import to know which index to sign with: a view wallet signs with the imported key, while a

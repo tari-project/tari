@@ -104,7 +104,7 @@ pub enum Commands {
     /// Stop accepting payloads signed with an exported payload key, for example one that may have leaked
     ///
     /// The signer stays strict even when no recorded index is left: it then refuses every payload until another key
-    /// is exported.
+    /// is exported. Exporting the same index again brings back the same key, so after a leak export a new index.
     RetirePayloadKey(RetirePayloadKeyArgs),
 
     /// Check if the signer has been initialized
@@ -531,6 +531,12 @@ fn export_payload_key(args: ExportPayloadKeyArgs, out: &mut dyn Write) -> Result
         public_key: CompressedPublicKey::from_secret_key(&private_key).to_hex(),
     };
     let json = Zeroizing::new(serde_json::to_string_pretty(&export)?);
+    // Recorded before the key leaves the signer, so a key is never out without strict mode on
+    keystore::record_payload_key_index(args.index, &args.passphrase)?;
+    eprintln!(
+        "Payload key #{} recorded: `sign` now requires a payload key unless --allow-view-key is given",
+        args.index
+    );
     match args.output {
         Some(path) => {
             // A new file only: an existing one could already be readable by others
@@ -550,11 +556,6 @@ fn export_payload_key(args: ExportPayloadKeyArgs, out: &mut dyn Write) -> Result
         // Only the key goes to stdout, so it can be redirected straight into a file
         None => writeln!(out, "{}", *json)?,
     }
-    keystore::record_payload_key_index(args.index, &args.passphrase)?;
-    eprintln!(
-        "Payload key #{} recorded: `sign` now requires a payload key unless --allow-view-key is given",
-        args.index
-    );
     Ok(())
 }
 
@@ -1107,6 +1108,48 @@ mod test {
             let err = sign(&payload, &["--require-payload-key", "--payload-key-index", "1"]);
             assert!(err.contains("integrity check failed"), "{err}");
             assert!(!output.exists());
+            fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
+        }
+
+        /// If the index cannot be recorded, the key is not exported at all.
+        #[test]
+        fn export_writes_nothing_when_the_index_cannot_be_recorded() {
+            let (keystore, _) = init_keystore("unrecorded");
+            // An indices entry that does not decrypt
+            let mut entries: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&fs::read_to_string(&keystore).unwrap()).unwrap();
+            let mut corrupt = entries.get("spend_key").unwrap().clone();
+            corrupt
+                .as_object_mut()
+                .unwrap()
+                .insert("ciphertext".to_string(), "00".repeat(48).into());
+            entries.insert("payload_key_indices".to_string(), corrupt);
+            fs::write(&keystore, serde_json::Value::Object(entries).to_string()).unwrap();
+
+            let file = keystore.with_file_name("payload_key.json");
+            let path = file.to_str().unwrap();
+            let (result, out) = run_with_output(&keystore, &[
+                "export-payload-key",
+                "--index",
+                "1",
+                "--output",
+                path,
+                "--passphrase",
+                "p",
+            ]);
+            assert!(result.is_err());
+            assert!(out.is_empty(), "{out}");
+            assert!(!file.exists());
+            let (result, out) = run_with_output(&keystore, &[
+                "export-payload-key",
+                "--index",
+                "1",
+                "--stdout",
+                "--passphrase",
+                "p",
+            ]);
+            assert!(result.is_err());
+            assert!(out.is_empty(), "{out}");
             fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
         }
 
