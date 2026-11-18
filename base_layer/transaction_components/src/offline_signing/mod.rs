@@ -34,6 +34,7 @@ pub use offline_signer::{
     sign_locked_deposit_multisig_transaction,
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
+    verify_offline_payload,
 };
 pub use payload_summary::{
     Confirmation,
@@ -2981,32 +2982,6 @@ mod test {
         payload.payload_signature = sign_payload(view, &signing_key, &canonical).unwrap();
     }
 
-    fn verify_at(
-        spend: &KeyManager,
-        payload: &PrepareOneSidedTransactionForSigningResult,
-        policy: &PayloadKeyPolicy,
-        now: u64,
-    ) -> Result<(), TransactionBuilderError> {
-        let canonical = borsh_canonical_one_sided(
-            &payload.version,
-            payload.tx_id,
-            &payload.info,
-            payload.payload_key_id.as_ref(),
-            payload.expires_at,
-        )
-        .unwrap();
-        verify_payload(
-            spend,
-            policy,
-            &payload.version,
-            payload.payload_key_id.as_ref(),
-            payload.expires_at,
-            &payload.payload_signature,
-            &canonical,
-            now,
-        )
-    }
-
     fn refusal(result: Result<SignedOneSidedTransactionResult, TransactionBuilderError>) -> String {
         match result {
             Ok(_) => panic!("the payload was signed"),
@@ -3052,7 +3027,9 @@ mod test {
         payload.expires_at = 0;
         resign(&view, &mut payload);
 
-        sign_one_sided(&spend, payload.clone(), &PayloadKeyPolicy::AcceptViewKey).unwrap();
+        // An online wallet that only knows version 5 must be able to read the result
+        let signed = sign_one_sided(&spend, payload.clone(), &PayloadKeyPolicy::AcceptViewKey).unwrap();
+        assert_eq!(signed.version, semver::Version::new(5, 0, 0));
         let err = refusal(sign_one_sided(&spend, payload, &require(&[1])));
         assert!(err.contains("version 5.0.0 payload"), "{err}");
     }
@@ -3118,8 +3095,8 @@ mod test {
         let payload = prepare(&spend, &view);
         let expires_at = payload.expires_at;
         for policy in [PayloadKeyPolicy::AcceptViewKey, require(&[1])] {
-            verify_at(&spend, &payload, &policy, expires_at.saturating_sub(1)).unwrap();
-            let err = verify_at(&spend, &payload, &policy, expires_at.saturating_add(1))
+            verify_payload(&spend, &policy, &payload, expires_at.saturating_sub(1)).unwrap();
+            let err = verify_payload(&spend, &policy, &payload, expires_at.saturating_add(1))
                 .unwrap_err()
                 .to_string();
             assert!(err.contains("expired"), "{err}");
@@ -3174,5 +3151,142 @@ mod test {
             .unwrap_err()
             .to_string();
         assert!(err.contains("payload_auth"), "{err}");
+    }
+
+    /// Mutable access to the authenticated fields of every payload type.
+    trait AuthFields {
+        fn auth_fields(&mut self) -> (&mut Option<TariKeyId>, &mut u64);
+    }
+
+    macro_rules! impl_auth_fields {
+        ($($payload:ty),*) => {$(
+            impl AuthFields for $payload {
+                fn auth_fields(&mut self) -> (&mut Option<TariKeyId>, &mut u64) {
+                    (&mut self.payload_key_id, &mut self.expires_at)
+                }
+            }
+        )*};
+    }
+    impl_auth_fields!(
+        PrepareOneSidedTransactionForSigningResult,
+        crate::offline_signing::models::PrepareDepositMultisigTransactionResult,
+        crate::offline_signing::models::PrepareWithdrawMultisigTransactionResult
+    );
+
+    /// `payload` was prepared with payload key #1; `sign` signs it under a policy.
+    fn assert_payload_key_rules<P: OfflinePayload + AuthFields>(
+        spend: &KeyManager,
+        payload: P,
+        sign: impl Fn(P, &PayloadKeyPolicy) -> Result<(), TransactionBuilderError>,
+    ) {
+        assert_eq!(payload.payload_key_id(), Some(&payload_key(1)));
+        sign(payload.clone(), &require(&[1])).unwrap();
+        let err = sign(payload.clone(), &require(&[2])).unwrap_err().to_string();
+        assert!(err.contains("payload key #1 is not an accepted index"), "{err}");
+
+        let mut other_key = payload.clone();
+        *other_key.auth_fields().0 = Some(payload_key(2));
+        let err = sign(other_key, &PayloadKeyPolicy::AcceptViewKey)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("integrity check failed"), "{err}");
+        let mut later = payload.clone();
+        *later.auth_fields().1 = payload.expires_at().saturating_add(1);
+        let err = sign(later, &PayloadKeyPolicy::AcceptViewKey).unwrap_err().to_string();
+        assert!(err.contains("integrity check failed"), "{err}");
+
+        let expires_at = payload.expires_at();
+        verify_payload(spend, &require(&[1]), &payload, expires_at).unwrap();
+        let err = verify_payload(spend, &require(&[1]), &payload, expires_at.saturating_add(1))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("expired"), "{err}");
+    }
+
+    /// A builder for the view wallet `view` over one 100 000 µT input of `spend`'s.
+    fn view_builder(spend: &KeyManager, view: &KeyManager) -> TransactionBuilder<KeyManager> {
+        let mut tx_builder = TransactionBuilder::new(
+            create_consensus_manager().consensus_constants(0).clone(),
+            view.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(create_test_input(MicroMinotari(100_000), 0, spend, vec![], None))
+            .unwrap();
+        tx_builder
+    }
+
+    #[test]
+    fn deposit_multisig_payload_key_rules() {
+        let (spend, view) = wallets(Some(1));
+        let bob = KeyManager::new_random().unwrap();
+        let payload = prepare_deposit_multisig_transaction(
+            &view,
+            TxId::new_random(),
+            view_builder(&spend, &view),
+            MicroMinotari(5000),
+            MemoField::new_empty(),
+            OutputFeatures::default(),
+            2,
+            vec![spend.get_spend_key().pub_key, bob.get_spend_key().pub_key],
+            one_sided_address(&view),
+            one_sided_address(&bob),
+            None,
+        )
+        .unwrap();
+        assert_payload_key_rules(&spend, payload, |payload, policy| {
+            sign_locked_deposit_multisig_transaction(
+                &spend,
+                create_consensus_manager().consensus_constants(0).clone(),
+                Network::LocalNet,
+                confirmed(PayloadSummary::from_multisig(payload)),
+                policy,
+            )
+            .map(|_| ())
+        });
+    }
+
+    #[test]
+    fn withdraw_multisig_payload_key_rules() {
+        let (spend, view) = wallets(Some(1));
+        let bob_address = one_sided_address(&KeyManager::new_random().unwrap());
+        let payload = prepare_withdraw_multisig_transaction(
+            &view,
+            TxId::new_random(),
+            view_builder(&spend, &view),
+            MicroMinotari(50_000),
+            addressed_output_memo(
+                MemoField::default(),
+                bob_address.clone(),
+                MicroMinotari::zero(),
+                TxType::PaymentToOther,
+            )
+            .unwrap(),
+            OutputFeatures::default(),
+            one_sided_address(&view),
+            bob_address,
+            None,
+        )
+        .unwrap();
+        assert_payload_key_rules(&spend, payload, |payload, policy| {
+            sign_locked_withdraw_multisig_transaction(
+                &spend,
+                create_consensus_manager().consensus_constants(0).clone(),
+                Network::LocalNet,
+                confirmed(PayloadSummary::from_withdraw_multisig(payload)),
+                policy,
+            )
+            .map(|_| ())
+        });
+    }
+
+    #[test]
+    fn one_sided_payload_key_rules() {
+        let (spend, view) = wallets(Some(1));
+        assert_payload_key_rules(&spend, prepare(&spend, &view), |payload, policy| {
+            sign_one_sided(&spend, payload, policy).map(|_| ())
+        });
     }
 }

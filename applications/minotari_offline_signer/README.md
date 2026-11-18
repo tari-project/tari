@@ -90,6 +90,9 @@ the view key could produce a payload the signer accepts. A payload key closes th
 key on the signer, so only the signer can create it, and only the wallet it is given to can sign with it.
 
 Nothing changes unless you set it up; payloads signed with the view key, and older version 5 payloads, keep working.
+Upgrade the signer before the online wallet: an older signer cannot read the version 6 payloads a new online wallet
+prepares, while a new signer signs version 5 payloads and returns the result as version 5, which an older online
+wallet can broadcast.
 To set it up:
 
 1. On the signer, export payload key 1 (any index works; a key is retired by no longer accepting its index):
@@ -122,7 +125,9 @@ To set it up:
    With no index given it refuses everything. A console wallet that signs offline payloads does the same with
    `require_payload_key = true` and `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config.
 
-The summary says which key signed the payload: `payload key #<index>` or `view key (shared key)`.
+Before showing the summary the signer checks the payload's expiry, checks its signing key against these settings,
+and verifies its signature, so a payload it would refuse is never shown for approval. The summary then says which key
+signed the payload: `payload key #<index>` or `view key (shared key)`.
 
 ### Payload Expiry
 

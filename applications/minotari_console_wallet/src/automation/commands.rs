@@ -98,6 +98,7 @@ use tari_transaction_components::{
             TransactionResult,
         },
         present_payload_summary,
+        verify_offline_payload,
     },
     rpc::models::TxLocation,
     tari_amount::{MicroMinotari, Minotari},
@@ -797,6 +798,7 @@ pub async fn command_runner(
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
     let key_manager_service = wallet.key_manager_service.clone();
+    let payload_key_policy = config.transaction_service_config.payload_key_policy();
 
     let mut tx_ids = Vec::new();
 
@@ -2951,12 +2953,17 @@ pub async fn command_runner(
                 let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
-                let review = review_offline_payload(
-                    PayloadSummary::from_one_sided(request),
-                    mode,
-                    &mut offline_summary_output(mode),
-                    &mut io::stdin().lock(),
-                );
+                // A payload this wallet would refuse is never shown for approval
+                let review = verify_offline_payload(&key_manager_service, &payload_key_policy, &request)
+                    .map_err(|e| CommandError::General(e.to_string()))
+                    .and_then(|()| {
+                        review_offline_payload(
+                            PayloadSummary::from_one_sided(request),
+                            mode,
+                            &mut offline_summary_output(mode),
+                            &mut io::stdin().lock(),
+                        )
+                    });
                 let confirmed = match review {
                     Ok(confirmed) => confirmed,
                     Err(e) => {
@@ -2990,12 +2997,17 @@ pub async fn command_runner(
                 let request = PrepareDepositMultisigTransactionResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
-                let review = review_offline_payload(
-                    PayloadSummary::from_multisig(request),
-                    mode,
-                    &mut offline_summary_output(mode),
-                    &mut io::stdin().lock(),
-                );
+                // A payload this wallet would refuse is never shown for approval
+                let review = verify_offline_payload(&key_manager_service, &payload_key_policy, &request)
+                    .map_err(|e| CommandError::General(e.to_string()))
+                    .and_then(|()| {
+                        review_offline_payload(
+                            PayloadSummary::from_multisig(request),
+                            mode,
+                            &mut offline_summary_output(mode),
+                            &mut io::stdin().lock(),
+                        )
+                    });
                 let confirmed = match review {
                     Ok(confirmed) => confirmed,
                     Err(e) => {
@@ -3029,12 +3041,17 @@ pub async fn command_runner(
                 let request = PrepareWithdrawMultisigTransactionResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
-                let review = review_offline_payload(
-                    PayloadSummary::from_withdraw_multisig(request),
-                    mode,
-                    &mut offline_summary_output(mode),
-                    &mut io::stdin().lock(),
-                );
+                // A payload this wallet would refuse is never shown for approval
+                let review = verify_offline_payload(&key_manager_service, &payload_key_policy, &request)
+                    .map_err(|e| CommandError::General(e.to_string()))
+                    .and_then(|()| {
+                        review_offline_payload(
+                            PayloadSummary::from_withdraw_multisig(request),
+                            mode,
+                            &mut offline_summary_output(mode),
+                            &mut io::stdin().lock(),
+                        )
+                    });
                 let confirmed = match review {
                     Ok(confirmed) => confirmed,
                     Err(e) => {

@@ -146,7 +146,8 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
                     }
                 },
                 Err(e) => {
-                    println!("\nError! parsing '{command}' ({e})\n");
+                    // The command text is not echoed: it can hold a secret (`import-payload-key --key`)
+                    println!("\nError! parsing command ({e})\n");
                     return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
                 },
             }

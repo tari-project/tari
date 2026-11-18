@@ -51,6 +51,7 @@ use tari_transaction_components::{
         models::{ExportedPayloadKey, PrepareOneSidedTransactionForSigningResult, TransactionResult},
         present_payload_summary,
         sign_locked_transaction,
+        verify_offline_payload,
     },
 };
 use tari_utilities::{SafePassword, hex::Hex};
@@ -417,15 +418,7 @@ fn sign_transaction_with_io(
     let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)
         .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse transaction: {}", e)))?;
 
-    // Show the operator what is about to be signed and get their confirmation, before any key material is touched
-    let confirmed = review_payload(PayloadSummary::from_one_sided(request), mode, out, input)?;
-
     let key_manager = open_key_manager(&passphrase)?;
-
-    // Get consensus constants for the network
-    let consensus_manager = ConsensusManager::builder(network).build();
-    let consensus_constants = consensus_manager.consensus_constants(0).clone();
-
     let policy = if args.require_payload_key {
         PayloadKeyPolicy::RequirePayloadKey {
             accepted_indices: args.payload_key_indices,
@@ -433,6 +426,16 @@ fn sign_transaction_with_io(
     } else {
         PayloadKeyPolicy::AcceptViewKey
     };
+    // A payload the signer would refuse is never shown for approval, and "Signed with" in the summary is verified
+    verify_offline_payload(&key_manager, &policy, &request)
+        .map_err(|e| OfflineSignerError::SigningError(format!("Payload not accepted: {}", e)))?;
+
+    // Show the operator what is about to be signed and get their confirmation, before the spend key signs anything
+    let confirmed = review_payload(PayloadSummary::from_one_sided(request), mode, out, input)?;
+
+    // Get consensus constants for the network
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_constants = consensus_manager.consensus_constants(0).clone();
 
     // Sign the transaction
     let result = sign_locked_transaction(&key_manager, consensus_constants, network, confirmed, &policy)
@@ -718,6 +721,11 @@ mod test {
         }
 
         fn run(keystore: &Path, args: &[&str]) -> Result<String> {
+            run_with_output(keystore, args).0
+        }
+
+        /// The result, and everything written to the output whether it succeeded or not.
+        fn run_with_output(keystore: &Path, args: &[&str]) -> (Result<String>, String) {
             let mut all = vec![
                 "minotari_offline_signer",
                 "--test-keystore-file",
@@ -725,8 +733,9 @@ mod test {
             ];
             all.extend_from_slice(args);
             let mut out = Vec::new();
-            execute_from_args_with_output(all, &mut out)?;
-            Ok(String::from_utf8(out).unwrap())
+            let result = execute_from_args_with_output(all, &mut out);
+            let out = String::from_utf8(out).unwrap();
+            (result.map(|()| out.clone()), out)
         }
 
         #[test]
@@ -779,9 +788,10 @@ mod test {
             fs::remove_dir_all(keystore.parent().unwrap()).unwrap();
         }
 
-        /// The payload's signature is not valid, so these only get as far as the key policy, which runs first.
+        /// The payload's signature is not valid, so the last case is a payload claiming a key that did not sign it.
+        /// Every case is refused before the summary is shown.
         #[test]
-        fn sign_applies_the_payload_key_policy() {
+        fn sign_applies_the_payload_key_policy_before_the_summary() {
             let (keystore, _) = init_keystore("policy");
             let input = keystore.with_file_name("payload.json");
             let output = keystore.with_file_name("signed.json");
@@ -799,7 +809,9 @@ mod test {
                     "localnet",
                 ];
                 args.extend_from_slice(extra);
-                run(&keystore, &args).unwrap_err().to_string()
+                let (result, out) = run_with_output(&keystore, &args);
+                assert!(!out.contains("about to be signed"), "{out}");
+                result.unwrap_err().to_string()
             };
             let mut payload = payload_with_memo(b"memo");
 

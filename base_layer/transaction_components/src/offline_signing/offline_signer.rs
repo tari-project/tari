@@ -39,6 +39,7 @@ use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     offline_signing::{
         ConfirmedPayload,
+        OfflinePayload,
         models::{
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
@@ -187,6 +188,17 @@ fn check_payload_key_policy(
     Ok(())
 }
 
+/// Checks a `Prepare*` result's expiry, signing key and [`PayloadIntegritySignature`] against the signer's own
+/// clock and keys. Call it before presenting the payload's summary, so the summary only ever shows a payload the
+/// signer would sign, signed with the key it names; the `sign_locked_*` functions check again.
+pub fn verify_offline_payload<KM: TransactionKeyManagerInterface, P: OfflinePayload>(
+    key_manager: &KM,
+    policy: &PayloadKeyPolicy,
+    payload: &P,
+) -> Result<(), TransactionBuilderError> {
+    verify_payload(key_manager, policy, payload, unix_now())
+}
+
 /// Verifies a `Prepare*` result's expiry, signing key and [`PayloadIntegritySignature`], at time `now`.
 ///
 /// The nonce public key R is recovered from the embedded signature. The signing public key P is derived by the
@@ -202,17 +214,15 @@ fn check_payload_key_policy(
 /// [`crate::offline_signing::ConfirmedPayload`], which can only be obtained by presenting a
 /// [`crate::offline_signing::PayloadSummary`] of the payload and confirming it.  See the docs on
 /// [`PayloadIntegritySignature`] for the full rationale.
-pub(crate) fn verify_payload<KM: TransactionKeyManagerInterface>(
+pub(crate) fn verify_payload<KM: TransactionKeyManagerInterface, P: OfflinePayload>(
     key_manager: &KM,
     policy: &PayloadKeyPolicy,
-    version: &Version,
-    payload_key_id: Option<&TariKeyId>,
-    expires_at: u64,
-    payload_sig: &PayloadIntegritySignature,
-    canonical: &[u8],
+    payload: &P,
     now: u64,
 ) -> Result<(), TransactionBuilderError> {
-    check_payload_expiry(has_payload_auth_fields(version).then_some(expires_at), now)?;
+    let version = payload.get_version();
+    let payload_key_id = payload.payload_key_id();
+    check_payload_expiry(has_payload_auth_fields(version).then_some(payload.expires_at()), now)?;
     check_payload_key_policy(policy, version, payload_key_id)?;
     let signing_pub = match payload_key_id {
         None => key_manager.get_view_key().pub_key,
@@ -223,9 +233,13 @@ pub(crate) fn verify_payload<KM: TransactionKeyManagerInterface>(
             ));
         },
     };
+    let canonical = payload
+        .canonical_bytes()
+        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
+    let payload_sig = payload.payload_signature();
     // R is the nonce public key embedded in the signature.
     let nonce_pub = payload_sig.signature.get_compressed_public_nonce();
-    let challenge = payload_challenge(nonce_pub, &signing_pub, canonical);
+    let challenge = payload_challenge(nonce_pub, &signing_pub, &canonical);
     let pub_key = signing_pub
         .to_public_key()
         .map_err(|e| TransactionBuilderError::Other(format!("Invalid signing public key: {e}")))?;
@@ -458,32 +472,14 @@ fn verify_and_sign_one_sided<KM: TransactionKeyManagerInterface>(
     request: PrepareOneSidedTransactionForSigningResult,
     policy: &PayloadKeyPolicy,
 ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
-    // Verify the payload was not tampered with between prepare and sign.
-    let key_id = request.payload_key_id.as_ref();
-    let canonical = borsh_canonical_one_sided(
-        &request.version,
-        request.tx_id,
-        &request.info,
-        key_id,
-        request.expires_at,
-    )
-    .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
-    verify_payload(
-        key_manager,
-        policy,
-        &request.version,
-        key_id,
-        request.expires_at,
-        &request.payload_signature,
-        &canonical,
-        unix_now(),
-    )?;
+    // Checked again here, as time passes at the prompt
+    verify_payload(key_manager, policy, &request, unix_now())?;
 
     let signed_transaction =
         build_and_sign_transaction(key_manager, consensus_constants, network, request.info.clone())?;
 
     Ok(SignedOneSidedTransactionResult {
-        version: get_latest_version(),
+        version: request.version.clone(),
         request,
         signed_transaction,
     })
@@ -511,32 +507,14 @@ fn verify_and_sign_deposit_multisig<KM: TransactionKeyManagerInterface>(
     request: PrepareDepositMultisigTransactionResult,
     policy: &PayloadKeyPolicy,
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
-    // Verify the payload was not tampered with between prepare and sign.
-    let key_id = request.payload_key_id.as_ref();
-    let canonical = borsh_canonical_multisig(
-        &request.version,
-        request.tx_id,
-        &request.info,
-        key_id,
-        request.expires_at,
-    )
-    .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
-    verify_payload(
-        key_manager,
-        policy,
-        &request.version,
-        key_id,
-        request.expires_at,
-        &request.payload_signature,
-        &canonical,
-        unix_now(),
-    )?;
+    // Checked again here, as time passes at the prompt
+    verify_payload(key_manager, policy, &request, unix_now())?;
 
     let signed_transaction =
         sign_multisig_transaction(key_manager, consensus_constants, network, request.info.clone())?;
 
     Ok(SignedOneSidedDepositMultisigTransactionResult {
-        version: get_latest_version(),
+        version: request.version.clone(),
         request,
         signed_transaction,
     })
@@ -564,32 +542,14 @@ fn verify_and_sign_withdraw_multisig<KM: TransactionKeyManagerInterface>(
     request: PrepareWithdrawMultisigTransactionResult,
     policy: &PayloadKeyPolicy,
 ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
-    // Verify the payload was not tampered with between prepare and sign.
-    let key_id = request.payload_key_id.as_ref();
-    let canonical = borsh_canonical_one_sided(
-        &request.version,
-        request.tx_id,
-        &request.info,
-        key_id,
-        request.expires_at,
-    )
-    .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
-    verify_payload(
-        key_manager,
-        policy,
-        &request.version,
-        key_id,
-        request.expires_at,
-        &request.payload_signature,
-        &canonical,
-        unix_now(),
-    )?;
+    // Checked again here, as time passes at the prompt
+    verify_payload(key_manager, policy, &request, unix_now())?;
 
     let signed_transaction =
         sign_multisig_withdraw_transaction(key_manager, consensus_constants, network, request.info.clone())?;
 
     Ok(SignedOneSidedWithdrawMultisigTransactionResult {
-        version: get_latest_version(),
+        version: request.version.clone(),
         request,
         signed_transaction,
     })

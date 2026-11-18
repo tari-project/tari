@@ -60,16 +60,20 @@ use crate::{
     key_manager::TariKeyId,
     offline_signing::{
         models::{
+            HasVersion,
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
+            PayloadIntegritySignature,
             PrepareDepositMultisigTransactionResult,
             PrepareOneSidedTransactionForSigningResult,
             PrepareWithdrawMultisigTransactionResult,
+            borsh_canonical_multisig,
+            borsh_canonical_one_sided,
             has_payload_auth_fields,
         },
         offline_signer::{check_payload_expiry, unix_now},
     },
-    transaction_components::{MemoField, OutputFeatures, OutputType, RangeProofType, WalletOutput},
+    transaction_components::{MemoField, OutputFeatures, OutputType, RangeProofType, TransactionError, WalletOutput},
     weight::TransactionWeight,
 };
 
@@ -95,14 +99,46 @@ mod sealed {
 }
 
 /// A payload that can be signed offline. Implemented only for the three `Prepare*` results.
-pub trait OfflinePayload: sealed::Sealed + Clone + std::fmt::Debug + Send + Sync + 'static {}
+pub trait OfflinePayload: sealed::Sealed + HasVersion + Clone + std::fmt::Debug + Send + Sync + 'static {
+    /// The canonical bytes the payload signature covers.
+    fn canonical_bytes(&self) -> Result<Vec<u8>, TransactionError>;
+    fn payload_key_id(&self) -> Option<&TariKeyId>;
+    fn expires_at(&self) -> u64;
+    fn payload_signature(&self) -> &PayloadIntegritySignature;
+}
 
-impl sealed::Sealed for PrepareOneSidedTransactionForSigningResult {}
-impl OfflinePayload for PrepareOneSidedTransactionForSigningResult {}
-impl sealed::Sealed for PrepareDepositMultisigTransactionResult {}
-impl OfflinePayload for PrepareDepositMultisigTransactionResult {}
-impl sealed::Sealed for PrepareWithdrawMultisigTransactionResult {}
-impl OfflinePayload for PrepareWithdrawMultisigTransactionResult {}
+macro_rules! impl_offline_payload {
+    ($payload:ty, $canonical:ident) => {
+        impl sealed::Sealed for $payload {}
+        impl OfflinePayload for $payload {
+            fn canonical_bytes(&self) -> Result<Vec<u8>, TransactionError> {
+                $canonical(
+                    &self.version,
+                    self.tx_id,
+                    &self.info,
+                    self.payload_key_id.as_ref(),
+                    self.expires_at,
+                )
+            }
+
+            fn payload_key_id(&self) -> Option<&TariKeyId> {
+                self.payload_key_id.as_ref()
+            }
+
+            fn expires_at(&self) -> u64 {
+                self.expires_at
+            }
+
+            fn payload_signature(&self) -> &PayloadIntegritySignature {
+                &self.payload_signature
+            }
+        }
+    };
+}
+
+impl_offline_payload!(PrepareOneSidedTransactionForSigningResult, borsh_canonical_one_sided);
+impl_offline_payload!(PrepareDepositMultisigTransactionResult, borsh_canonical_multisig);
+impl_offline_payload!(PrepareWithdrawMultisigTransactionResult, borsh_canonical_one_sided);
 
 /// Which kind of payload a summary describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -258,17 +294,12 @@ impl PayloadDetails {
     }
 
     /// Records which key the payload claims to be signed with and when it expires.
-    fn with_payload_auth(
-        mut self,
-        version: &semver::Version,
-        payload_key_id: Option<&TariKeyId>,
-        expires_at: u64,
-    ) -> Self {
+    fn with_payload_auth<P: OfflinePayload>(mut self, payload: &P) -> Self {
         // Anything other than `PayloadAuth` is refused when the payload is parsed
-        if let Some(TariKeyId::PayloadAuth { index }) = payload_key_id {
+        if let Some(TariKeyId::PayloadAuth { index }) = payload.payload_key_id() {
             self.payload_key_index = Some(*index);
         }
-        self.expires_at = has_payload_auth_fields(version).then_some(expires_at);
+        self.expires_at = has_payload_auth_fields(payload.get_version()).then_some(payload.expires_at());
         self
     }
 
@@ -646,7 +677,7 @@ pub struct PayloadSummary<P: OfflinePayload> {
 impl<P: OfflinePayload> PayloadSummary<P> {
     fn new(details: PayloadDetails, payload: P) -> Self {
         Self {
-            details,
+            details: details.with_payload_auth(&payload),
             payload,
             id: NEXT_SUMMARY_ID.fetch_add(1, Ordering::Relaxed),
         }
@@ -671,30 +702,21 @@ impl<P: OfflinePayload> PayloadSummary<P> {
 
 impl PayloadSummary<PrepareOneSidedTransactionForSigningResult> {
     pub fn from_one_sided(request: PrepareOneSidedTransactionForSigningResult) -> Self {
-        let details = PayloadDetails::one_sided(PayloadKind::OneSided, request.tx_id, &request.info).with_payload_auth(
-            &request.version,
-            request.payload_key_id.as_ref(),
-            request.expires_at,
-        );
+        let details = PayloadDetails::one_sided(PayloadKind::OneSided, request.tx_id, &request.info);
         Self::new(details, request)
     }
 }
 
 impl PayloadSummary<PrepareDepositMultisigTransactionResult> {
     pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Self {
-        let details = PayloadDetails::multisig(request.tx_id, &request.info).with_payload_auth(
-            &request.version,
-            request.payload_key_id.as_ref(),
-            request.expires_at,
-        );
+        let details = PayloadDetails::multisig(request.tx_id, &request.info);
         Self::new(details, request)
     }
 }
 
 impl PayloadSummary<PrepareWithdrawMultisigTransactionResult> {
     pub fn from_withdraw_multisig(request: PrepareWithdrawMultisigTransactionResult) -> Self {
-        let mut details = PayloadDetails::one_sided(PayloadKind::MultisigWithdrawal, request.tx_id, &request.info)
-            .with_payload_auth(&request.version, request.payload_key_id.as_ref(), request.expires_at);
+        let mut details = PayloadDetails::one_sided(PayloadKind::MultisigWithdrawal, request.tx_id, &request.info);
         details.use_top_level_memo_for_recipients();
         Self::new(details, request)
     }

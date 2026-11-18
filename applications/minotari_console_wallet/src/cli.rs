@@ -282,7 +282,7 @@ pub struct ImportPayloadKeyArgs {
     /// The payload key index given to `minotari_offline_signer export-payload-key`
     #[clap(long)]
     pub index: u64,
-    /// The payload private key in hex
+    /// The payload private key in hex. Visible in shell history and to `ps`; prefer --file
     #[clap(long, conflicts_with = "file", required_unless_present = "file")]
     pub key: Option<String>,
     /// The file written by `minotari_offline_signer export-payload-key --output`

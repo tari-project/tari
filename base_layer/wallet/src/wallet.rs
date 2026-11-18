@@ -54,13 +54,7 @@ use tari_transaction_components::{
     MicroMinotari,
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{
-        RecoveryProvenance,
-        SecretTransactionKeyManagerInterface,
-        TariKeyId,
-        error::KeyManagerError,
-        wallet_types::KeyDigest,
-    },
+    key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, TariKeyId, wallet_types::KeyDigest},
     transaction_components::{
         EncryptedData,
         OutputFeatures,
@@ -256,9 +250,15 @@ where
             None
         };
         if let Some(stored) = wallet_database.get_client_key_value(PAYLOAD_AUTH_KEY.to_string())? {
-            let payload_key = parse_payload_auth_key(&stored)
-                .ok_or_else(|| KeyManagerError::InvalidKeyId("The stored payload auth key is malformed".to_string()))?;
-            key_manager_handle.key_manager().set_payload_auth_key(Some(payload_key));
+            match parse_payload_auth_key(&stored) {
+                Some(payload_key) => key_manager_handle.key_manager().set_payload_auth_key(Some(payload_key)),
+                // Not fatal, or the wallet could not start to clear or replace it
+                None => warn!(
+                    target: LOG_TARGET,
+                    "The stored offline-signing payload key is malformed and is ignored; payloads will be signed with \
+                     the view key. Import the payload key again."
+                ),
+            }
         }
 
         let spend_key = key_manager_handle.get_spend_key();
