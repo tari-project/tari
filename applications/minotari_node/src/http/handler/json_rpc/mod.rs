@@ -24,6 +24,7 @@ use std::{
     collections::HashMap,
     error::Error,
     fmt,
+    io,
     mem,
     net::SocketAddr,
     sync::{Arc, Mutex, PoisonError},
@@ -41,7 +42,8 @@ use axum::{
 use http_body_util::{BodyExt, LengthLimitError, Limited};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize, de};
-use serde_json::value::RawValue;
+use serde_json::{error::Category, value::RawValue};
+use tari_common_types::types::CompressedPublicKey;
 use tari_comms::{decode_budget::check_decode_budget, message::MessageExt, utils::text::sanitize_for_display};
 use tari_core::{
     base_node::rpc::query_service,
@@ -49,7 +51,11 @@ use tari_core::{
     mempool::service::MempoolHandle,
     proto,
 };
-use tari_transaction_components::{rpc::models::TxSubmissionResponseV1, transaction_components::Transaction};
+use tari_script::{Opcode, StackItem, TariScript};
+use tari_transaction_components::{
+    rpc::models::TxSubmissionResponseV1,
+    transaction_components::{SpentOutput, Transaction, TransactionInput, TransactionKernel, TransactionOutput},
+};
 use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore},
     task,
@@ -72,18 +78,21 @@ const JSON_RPC_BODY_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 const JSON_RPC_ADMISSION_WAIT: Duration = Duration::from_secs(5);
 const MAX_CONCURRENT_JSON_RPC_DECODES: usize = 2;
 /// Every window must deliver `JSON_RPC_BODY_MIN_WINDOW_BYTES` of body (or the end of it), or the request gets a 408,
-/// so a trickle can not hold budget indefinitely. There is no overall deadline, so a large transaction uploaded
-/// slowly but steadily (e.g. over Tor) still gets through.
+/// so a trickle can not hold budget indefinitely. Time spent waiting for budget is not counted.
 const JSON_RPC_BODY_PROGRESS_WINDOW: Duration = Duration::from_secs(10);
 const JSON_RPC_BODY_MIN_WINDOW_BYTES: usize = 64 * 1024;
-/// A body still unfinished this long after its first chunk was charged to the budget gets a 408
+/// A body still unfinished this long (wall clock, budget waits included) after its first chunk was charged to the
+/// budget gets a 408. A steady upload of a ~5 MB transaction at about 42 KiB/s or more (e.g. over Tor) gets through.
 const JSON_RPC_BODY_MAX_HOLD: Duration = Duration::from_secs(120);
+/// The estimated heap all decoded transactions waiting on the mempool may hold together (see `decoded_size`)
+const JSON_RPC_DECODED_BUDGET_BYTES: usize = 256 * 1024 * 1024;
 /// Decoded transactions waiting on the mempool, whose local request queue is unbounded
 const MAX_PENDING_JSON_RPC_SUBMISSIONS: usize = 16;
 const REJECTION_WARN_INTERVAL: Duration = Duration::from_secs(60);
 const MAX_JSONRPC_BYTES: usize = 16;
 const MAX_ID_BYTES: usize = 256;
 const MAX_METHOD_BYTES: usize = 128;
+const MAX_ERROR_DETAIL_BYTES: usize = 256;
 
 type Rejection = (StatusCode, Json<ErrorResponse>);
 
@@ -100,6 +109,8 @@ pub struct JsonRpcLimits {
     body_budget: Arc<Semaphore>,
     decodes: Arc<Semaphore>,
     pending_submissions: Semaphore,
+    decoded_budget: Semaphore,
+    decoded_budget_bytes: usize,
     admission_wait: Duration,
     progress_window: Duration,
     min_window_bytes: usize,
@@ -114,6 +125,8 @@ impl Default for JsonRpcLimits {
             body_budget: Arc::new(Semaphore::new(JSON_RPC_BODY_BUDGET_BYTES)),
             decodes: Arc::new(Semaphore::new(MAX_CONCURRENT_JSON_RPC_DECODES)),
             pending_submissions: Semaphore::new(MAX_PENDING_JSON_RPC_SUBMISSIONS),
+            decoded_budget: Semaphore::new(JSON_RPC_DECODED_BUDGET_BYTES),
+            decoded_budget_bytes: JSON_RPC_DECODED_BUDGET_BYTES,
             admission_wait: JSON_RPC_ADMISSION_WAIT,
             progress_window: JSON_RPC_BODY_PROGRESS_WINDOW,
             min_window_bytes: JSON_RPC_BODY_MIN_WINDOW_BYTES,
@@ -191,8 +204,11 @@ async fn handle_request<B: BlockchainBackend + 'static>(
         .ok_or_else(busy)?;
     // The blocking task owns the body and the permits, so a client that disconnects mid-decode frees them only once
     // the decode is done
-    let (id, version, transaction) = task::spawn_blocking(move || {
-        let decoded = decode_request(&body);
+    let (id, version, transaction, size) = task::spawn_blocking(move || {
+        let decoded = decode_request(&body).map(|(id, version, transaction)| {
+            let size = decoded_size(&transaction);
+            (id, version, transaction, size)
+        });
         drop((body, budget, decode_permit));
         decoded
     })
@@ -202,14 +218,25 @@ async fn handle_request<B: BlockchainBackend + 'static>(
         reject(StatusCode::INTERNAL_SERVER_ERROR, "Internal error decoding the request")
     })??;
 
-    // Only a pending slot is held while the mempool handles the transaction
+    // Only the decoded-size charge and a pending slot are held while the mempool handles the transaction. Every request
+    // takes them in this order, so they can not deadlock.
+    let too_large = || reject(StatusCode::PAYLOAD_TOO_LARGE, "The decoded transaction is too large");
+    if size > limits.decoded_budget_bytes {
+        return Err(too_large());
+    }
+    let size = u32::try_from(size).map_err(|_| too_large())?;
+    let decoded_charge = timeout(limits.admission_wait, limits.decoded_budget.acquire_many(size))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .ok_or_else(busy)?;
     let pending = timeout(limits.admission_wait, limits.pending_submissions.acquire())
         .await
         .ok()
         .and_then(Result::ok)
         .ok_or_else(busy)?;
     let submitted = submit_transaction::handle(query_service, &mut mempool_service, transaction).await;
-    drop(pending);
+    drop((pending, decoded_charge));
     match submitted {
         Ok(response) => {
             // Version defaults to 1 for backward compatibility with older wallets.
@@ -277,29 +304,30 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
         .clone()
         .try_acquire_many_owned(0)
         .map_err(|_| busy())?;
-    // Both clocks leave out the time this request spent waiting for budget: that is the server's delay, not the
-    // client's
+    let too_slow = || {
+        reject(
+            StatusCode::REQUEST_TIMEOUT,
+            "The JSON-RPC request body is arriving too slowly",
+        )
+    };
+    // The progress window leaves out the time this request spent waiting for budget, which is the server's delay; the
+    // hold cap is wall clock, so a contended budget can not stretch it
     let mut window_start = Instant::now();
     let mut window_waited = Duration::ZERO;
     let mut window_bytes = 0usize;
-    let mut hold_start = None;
-    let mut hold_waited = Duration::ZERO;
+    let mut hold_start: Option<Instant> = None;
+    let hold_left = |hold_start: Option<Instant>| {
+        hold_start.map_or(Duration::MAX, |start| limits.max_hold.saturating_sub(start.elapsed()))
+    };
     loop {
+        if hold_left(hold_start).is_zero() {
+            return Err(too_slow());
+        }
         let window_left = limits
             .progress_window
             .saturating_sub(window_start.elapsed().saturating_sub(window_waited));
-        let hold_left = hold_start.map_or(Duration::MAX, |start: Instant| {
-            limits
-                .max_hold
-                .saturating_sub(start.elapsed().saturating_sub(hold_waited))
-        });
-        let frame = match timeout(window_left.min(hold_left), body.frame()).await {
-            Err(_) => {
-                return Err(reject(
-                    StatusCode::REQUEST_TIMEOUT,
-                    "The JSON-RPC request body is arriving too slowly",
-                ));
-            },
+        let frame = match timeout(window_left.min(hold_left(hold_start)), body.frame()).await {
+            Err(_) => return Err(too_slow()),
             Ok(None) => return Ok((bytes, charged)),
             Ok(Some(Err(e))) => {
                 let mut sources = std::iter::successors(Some(&*e as &(dyn Error + 'static)), |&e| e.source());
@@ -308,7 +336,10 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
                 }
                 return Err(reject(
                     StatusCode::BAD_REQUEST,
-                    format!("Failed to read the JSON-RPC request body: {e}"),
+                    format!(
+                        "Failed to read the JSON-RPC request body: {}",
+                        sanitize_for_display(&e.to_string(), MAX_ERROR_DETAIL_BYTES)
+                    ),
                 ));
             },
             Ok(Some(Ok(frame))) => frame,
@@ -324,22 +355,19 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
         }
         let len = u32::try_from(data.len()).map_err(|_| too_large())?;
         let wait_start = Instant::now();
-        let permit = timeout(
-            limits.admission_wait,
+        let permit = match timeout(
+            limits.admission_wait.min(hold_left(hold_start)),
             limits.body_budget.clone().acquire_many_owned(len),
         )
         .await
-        .ok()
-        .and_then(Result::ok)
-        .ok_or_else(busy)?;
+        {
+            Ok(Ok(permit)) => permit,
+            _ if hold_left(hold_start).is_zero() => return Err(too_slow()),
+            _ => return Err(busy()),
+        };
         charged.merge(permit);
-        let waited = wait_start.elapsed();
-        window_waited = window_waited.saturating_add(waited);
-        hold_waited = hold_waited.saturating_add(waited);
-        if hold_start.is_none() {
-            hold_start = Some(Instant::now());
-            hold_waited = Duration::ZERO;
-        }
+        window_waited = window_waited.saturating_add(wait_start.elapsed());
+        hold_start.get_or_insert_with(Instant::now);
         // shortcut: the budget counts body bytes, not the Vec's capacity, which growth can double; charge capacity if
         // the budget is ever sized close to available memory
         bytes.extend_from_slice(&data);
@@ -348,8 +376,7 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
 
 /// Parses the envelope and, only for `submit_transaction`, its params
 fn decode_request(body: &[u8]) -> Result<(String, u64, Transaction), Rejection> {
-    let request =
-        serde_json::from_slice::<JsonRpcRequest>(body).map_err(|e| reject(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let request = serde_json::from_slice::<JsonRpcRequest>(body).map_err(|e| invalid_json("request", &e))?;
     debug!(
         target: LOG_TARGET,
         "Received JSON-RPC request: method={}, id={}",
@@ -374,14 +401,19 @@ fn decode_transaction(params: Option<&RawValue>) -> Result<(Transaction, u64), R
     let bad_request = |e: String| reject(StatusCode::BAD_REQUEST, e);
     let missing = || bad_request("Missing transaction parameter".to_string());
     let params = serde_json::from_str::<SubmitTransactionParams>(params.ok_or_else(missing)?.get())
-        .map_err(|e| bad_request(e.to_string()))?;
+        .map_err(|e| invalid_json("submit_transaction params", &e))?;
     // Older wallets send no version, and the old decoder read anything but an unsigned integer as 1
     let version = params
         .version
         .and_then(|v| serde_json::from_str::<u64>(v.get()).ok())
         .unwrap_or(1);
     let transaction = params.transaction.ok_or_else(missing)?;
-    let proto = proto::types::Transaction::try_from(transaction).map_err(bad_request)?;
+    let proto = proto::types::Transaction::try_from(transaction).map_err(|e| {
+        bad_request(format!(
+            "Invalid transaction: {}",
+            sanitize_for_display(&e, MAX_ERROR_DETAIL_BYTES)
+        ))
+    })?;
     check_decode_budget::<proto::types::Transaction>(&proto.to_encoded_bytes(), proto::BODY_MAX_DECODE_ITEMS).map_err(
         |e| {
             bad_request(format!(
@@ -390,8 +422,74 @@ fn decode_transaction(params: Option<&RawValue>) -> Result<(Transaction, u64), R
             ))
         },
     )?;
-    let transaction = Transaction::try_from(proto).map_err(|e| bad_request(e.to_string()))?;
+    let transaction = Transaction::try_from(proto).map_err(|_| bad_request("Invalid transaction".to_string()))?;
     Ok((transaction, version))
+}
+
+/// A 400 that names where a JSON decode failed, without serde's message: that quotes the offending value in full
+fn invalid_json(what: &str, e: &serde_json::Error) -> Rejection {
+    let category = match e.classify() {
+        Category::Io => "I/O",
+        Category::Syntax => "syntax",
+        Category::Data => "data",
+        Category::Eof => "unexpected end of input",
+    };
+    reject(
+        StatusCode::BAD_REQUEST,
+        format!(
+            "Invalid JSON-RPC {what}: {category} error at line {} column {}",
+            e.line(),
+            e.column()
+        ),
+    )
+}
+
+/// An upper bound, within about 2x, on the heap a decoded transaction holds:
+/// - each input, output and kernel struct, and each execution stack item and script opcode, counted twice because the
+///   vectors holding them may have up to twice their length in capacity;
+/// - the borsh length of each input, output and kernel, as every buffer they own is at least as long encoded;
+/// - for scripts, `size_of::<CompressedPublicKey>()` per 32 encoded bytes on top, as an opcode can box its keys.
+fn decoded_size(transaction: &Transaction) -> usize {
+    let encoded = |len: io::Result<usize>| len.unwrap_or(usize::MAX);
+    let script = |script: &TariScript| {
+        script
+            .size()
+            .saturating_mul(size_of::<Opcode>().saturating_mul(2))
+            .saturating_add(
+                encoded(borsh::object_length(script)).saturating_mul(size_of::<CompressedPublicKey>().div_ceil(32)),
+            )
+    };
+    let inputs = transaction.body.inputs().iter().map(|input| {
+        let spent_script = match &input.spent_output {
+            SpentOutput::OutputData { script: s, .. } => script(s),
+            SpentOutput::OutputHash(_) => 0,
+        };
+        size_of::<TransactionInput>()
+            .saturating_mul(2)
+            .saturating_add(
+                input
+                    .input_data
+                    .size()
+                    .saturating_mul(size_of::<StackItem>().saturating_mul(2)),
+            )
+            .saturating_add(encoded(borsh::object_length(input)))
+            .saturating_add(spent_script)
+    });
+    let outputs = transaction.body.outputs().iter().map(|output| {
+        size_of::<TransactionOutput>()
+            .saturating_mul(2)
+            .saturating_add(encoded(borsh::object_length(output)))
+            .saturating_add(script(&output.script))
+    });
+    let kernels = transaction.body.kernels().iter().map(|kernel| {
+        size_of::<TransactionKernel>()
+            .saturating_mul(2)
+            .saturating_add(encoded(borsh::object_length(kernel)))
+    });
+    inputs
+        .chain(outputs)
+        .chain(kernels)
+        .fold(size_of::<Transaction>(), usize::saturating_add)
 }
 
 /// The JSON-RPC envelope. `params` is kept as raw text, so no JSON tree is built for it.
@@ -552,7 +650,7 @@ mod tests {
         let (status, Json(err)) = call(query_service, mempool, request(tx)).await.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let err = serde_json::to_string(&err).unwrap();
-        assert!(err.contains("at least"), "{}", err);
+        assert!(err.contains("Invalid JSON-RPC submit_transaction params"), "{}", err);
         assert_eq!(mempool_state.get_call_count(), 0, "the mempool must not be called");
     }
 
@@ -732,14 +830,15 @@ mod tests {
         #[global_allocator]
         static ALLOCATOR: CountingAllocator = CountingAllocator;
 
-        /// Runs `f` and returns the most heap it allocated at any one time on this thread
-        pub fn peak_during<R>(f: impl FnOnce() -> R) -> (R, usize) {
+        /// Runs `f` and returns the most heap it allocated at any one time on this thread, and the heap it still
+        /// holds when it returns (including its result)
+        pub fn measure<R>(f: impl FnOnce() -> R) -> (R, usize, usize) {
             LIVE.with(|live| live.set(0));
             PEAK.with(|peak| peak.set(0));
             TRACKING.with(|tracking| tracking.set(true));
             let result = f();
             TRACKING.with(|tracking| tracking.set(false));
-            (result, PEAK.with(Cell::get))
+            (result, PEAK.with(Cell::get), LIVE.with(Cell::get))
         }
     }
 
@@ -751,7 +850,7 @@ mod tests {
         let body = format!(r#"{{"jsonrpc":"2.0","id":"1","method":"unknown","params":{params}}}"#);
         assert!(body.len() > 9_000_000 && body.len() <= MAX_JSON_RPC_BODY_BYTES);
 
-        let (result, peak) = heap::peak_during(|| decode_request(body.as_bytes()).map(|_| ()));
+        let (result, peak, _) = heap::measure(|| decode_request(body.as_bytes()).map(|_| ()));
         let (status, Json(err)) = result.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(serde_json::to_string(&err).unwrap().contains("Method not found"));
@@ -782,7 +881,11 @@ mod tests {
             let body = serde_json::json!({ "jsonrpc": jsonrpc, "id": id, "method": method }).to_string();
             let (status, Json(err)) = decode_request(body.as_bytes()).unwrap_err();
             assert_eq!(status, StatusCode::BAD_REQUEST);
-            assert!(serde_json::to_string(&err).unwrap().contains("at most"));
+            assert!(
+                serde_json::to_string(&err)
+                    .unwrap()
+                    .contains("Invalid JSON-RPC request")
+            );
         }
     }
 
@@ -1211,5 +1314,131 @@ mod tests {
         assert!(response.error.is_none(), "{:?}", response.error);
         assert_eq!(limits.pending_submissions.available_permits(), 1);
         assert_eq!(mempool_state.get_call_count(), 1);
+    }
+
+    /// A decode error names where it failed, but does not quote the offending value
+    #[tokio::test]
+    async fn decode_errors_do_not_echo_the_request() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let long = "\u{7f}".repeat(10_000_000);
+        for body in [
+            format!(r#""{long}""#),
+            format!(r#"{{"jsonrpc":"2.0","id":"1","method":"submit_transaction","params":"{long}"}}"#),
+            format!(
+                r#"{{"jsonrpc":"2.0","id":"1","method":"submit_transaction","params":{{"transaction":"{long}"}}}}"#
+            ),
+        ] {
+            assert!(body.len() <= MAX_JSON_RPC_BODY_BYTES);
+            let (status, Json(err)) = call(query_service.clone(), mempool.clone(), body).await.unwrap_err();
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            let err = serde_json::to_string(&err).unwrap();
+            assert!(err.len() < 1024, "{} byte error", err.len());
+            assert!(err.contains("Invalid JSON-RPC"), "{err}");
+        }
+        assert_eq!(mempool_state.get_call_count(), 0);
+    }
+
+    /// The decoded-size estimate covers the heap a decoded transaction holds, without overstating it much. Compact
+    /// inputs with full `input_data` stacks are where a transaction is largest decoded relative to its JSON.
+    #[test]
+    fn decoded_size_bounds_the_decoded_heap() {
+        let stack = ExecutionStack::new((0..255).map(StackItem::Number).collect());
+        let inputs = (0..200)
+            .map(|_| {
+                TransactionInput::new_with_output_hash(FixedHash::zero(), stack.clone(), ComAndPubSignature::default())
+            })
+            .collect();
+        let tx = Transaction::new(
+            inputs,
+            vec![TransactionOutput::default()],
+            vec![TransactionKernel::default()],
+            PrivateKey::default(),
+            PrivateKey::default(),
+        );
+        let params = RawValue::from_string(serde_json::json!({ "transaction": tx }).to_string()).unwrap();
+
+        let (decoded, _, held) = heap::measure(|| decode_transaction(Some(&params)).ok());
+        let (decoded, _) = decoded.expect("the transaction decodes");
+        let estimate = decoded_size(&decoded);
+        assert!(
+            estimate >= held && estimate <= held.saturating_mul(3),
+            "estimate {estimate} for {held} decoded bytes"
+        );
+    }
+
+    /// A transaction too large for the decoded-size budget gets a 413; one that has to wait for it too long a 503
+    #[tokio::test]
+    async fn the_decoded_size_budget_rejects_and_waits() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let body = request(transaction_json(None));
+        let (_, _, decoded) = decode_request(body.as_bytes()).ok().unwrap();
+        let size = decoded_size(&decoded);
+        let limits_of = |budget: usize| JsonRpcLimits {
+            decoded_budget: Semaphore::new(budget),
+            decoded_budget_bytes: budget,
+            admission_wait: Duration::from_millis(200),
+            ..Default::default()
+        };
+        let submit = |limits: Arc<JsonRpcLimits>| {
+            let (query_service, mempool, body) = (query_service.clone(), mempool.clone(), body.clone());
+            async move { handle_request(query_service, mempool, &limits, &json_headers(), Body::from(body)).await }
+        };
+
+        let (status, _) = submit(Arc::new(limits_of(size.checked_sub(1).unwrap())))
+            .await
+            .unwrap_err();
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+
+        let limits = Arc::new(limits_of(size));
+        let held = limits.decoded_budget.acquire().await.unwrap();
+        let (status, _) = submit(limits.clone()).await.unwrap_err();
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(mempool_state.get_call_count(), 0);
+
+        drop(held);
+        let Json(response) = submit(limits.clone()).await.ok().unwrap();
+        assert!(response.error.is_none(), "{:?}", response.error);
+        assert_eq!(limits.decoded_budget.available_permits(), size);
+        assert_eq!(mempool_state.get_call_count(), 1);
+    }
+
+    /// The hold cap is wall clock: a body whose chunk keeps waiting for budget still ends at it
+    #[tokio::test]
+    async fn a_body_waiting_for_budget_still_hits_the_hold_cap() {
+        const BUDGET: usize = 64 * 1024;
+        let shutdown = Shutdown::new();
+        let (mempool, _mempool_state) = create_mempool_service_mock();
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits {
+            body_budget: Arc::new(Semaphore::new(BUDGET)),
+            admission_wait: Duration::from_secs(5),
+            progress_window: Duration::from_secs(5),
+            max_hold: Duration::from_secs(1),
+            ..Default::default()
+        });
+        let address = serve(query_service, mempool, limits.clone()).await;
+
+        let started = Instant::now();
+        let mut stream = post(address, 4096, &[b' '; 1024]).await;
+        wait_for_budget(&limits, BUDGET - 1024, LONG).await;
+        let held = limits
+            .body_budget
+            .clone()
+            .acquire_many_owned(u32::try_from(BUDGET - 1024).unwrap())
+            .await
+            .unwrap();
+        stream.write_all(&[b' '; 1024]).await.unwrap();
+        let response = read_response(&mut stream).await;
+        assert!(response.starts_with("HTTP/1.1 408"), "{response}");
+        assert!(started.elapsed() < Duration::from_secs(4), "ended by the hold cap");
+        drop(held);
+        wait_for_budget(&limits, BUDGET, LONG).await;
     }
 }
