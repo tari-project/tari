@@ -71,9 +71,11 @@ const JSON_RPC_BODY_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 /// How long a chunk waits for body budget, and a received body for a decode slot, before the request gets a 503
 const JSON_RPC_ADMISSION_WAIT: Duration = Duration::from_secs(5);
 const MAX_CONCURRENT_JSON_RPC_DECODES: usize = 2;
-/// A body that sends nothing for this long gets a 408. There is no overall deadline, so that a large transaction
-/// uploaded slowly (e.g. over Tor) still gets through.
-const JSON_RPC_BODY_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Every window must deliver `JSON_RPC_BODY_MIN_WINDOW_BYTES` of body (or the end of it), or the request gets a 408,
+/// so a trickle can not hold budget indefinitely. There is no overall deadline, so a large transaction uploaded
+/// slowly but steadily (e.g. over Tor) still gets through.
+const JSON_RPC_BODY_PROGRESS_WINDOW: Duration = Duration::from_secs(10);
+const JSON_RPC_BODY_MIN_WINDOW_BYTES: usize = 64 * 1024;
 const REJECTION_WARN_INTERVAL: Duration = Duration::from_secs(60);
 const MAX_JSONRPC_BYTES: usize = 16;
 const MAX_ID_BYTES: usize = 256;
@@ -94,7 +96,8 @@ pub struct JsonRpcLimits {
     body_budget: Arc<Semaphore>,
     decodes: Arc<Semaphore>,
     admission_wait: Duration,
-    idle_timeout: Duration,
+    progress_window: Duration,
+    min_window_bytes: usize,
     /// Per status: when a rejection was last logged, and how many were not logged since
     rejection_warnings: Mutex<HashMap<StatusCode, (Option<Instant>, u64)>>,
 }
@@ -104,18 +107,25 @@ impl Default for JsonRpcLimits {
         Self::new(
             JSON_RPC_BODY_BUDGET_BYTES,
             JSON_RPC_ADMISSION_WAIT,
-            JSON_RPC_BODY_IDLE_TIMEOUT,
+            JSON_RPC_BODY_PROGRESS_WINDOW,
+            JSON_RPC_BODY_MIN_WINDOW_BYTES,
         )
     }
 }
 
 impl JsonRpcLimits {
-    fn new(body_budget_bytes: usize, admission_wait: Duration, idle_timeout: Duration) -> Self {
+    fn new(
+        body_budget_bytes: usize,
+        admission_wait: Duration,
+        progress_window: Duration,
+        min_window_bytes: usize,
+    ) -> Self {
         Self {
             body_budget: Arc::new(Semaphore::new(body_budget_bytes)),
             decodes: Arc::new(Semaphore::new(MAX_CONCURRENT_JSON_RPC_DECODES)),
             admission_wait,
-            idle_timeout,
+            progress_window,
+            min_window_bytes,
             rejection_warnings: Mutex::new(HashMap::new()),
         }
     }
@@ -266,12 +276,19 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
         .clone()
         .try_acquire_many_owned(0)
         .map_err(|_| busy())?;
+    let mut window_start = Instant::now();
+    let mut window_bytes = 0usize;
     loop {
-        let frame = match timeout(limits.idle_timeout, body.frame()).await {
+        let frame = match timeout(
+            limits.progress_window.saturating_sub(window_start.elapsed()),
+            body.frame(),
+        )
+        .await
+        {
             Err(_) => {
                 return Err(reject(
                     StatusCode::REQUEST_TIMEOUT,
-                    "Timed out waiting for the JSON-RPC request body",
+                    "The JSON-RPC request body is arriving too slowly",
                 ));
             },
             Ok(None) => return Ok((bytes, charged)),
@@ -290,6 +307,11 @@ async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, Owned
         let Ok(data) = frame.into_data() else {
             continue;
         };
+        window_bytes = window_bytes.saturating_add(data.len());
+        if window_bytes >= limits.min_window_bytes {
+            window_start = Instant::now();
+            window_bytes = 0;
+        }
         let len = u32::try_from(data.len()).map_err(|_| too_large())?;
         let permit = timeout(
             limits.admission_wait,
@@ -426,7 +448,7 @@ mod tests {
     };
     use tari_utilities::hex::to_hex;
     use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
+        io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
         net::{TcpListener, TcpStream},
         sync::{broadcast, watch},
         time::sleep,
@@ -656,8 +678,12 @@ mod tests {
 
         struct CountingAllocator;
 
+        // SAFETY: every call is forwarded unchanged to `System` under the caller's `GlobalAlloc` contract. `record`
+        // neither allocates nor panics: its thread-locals are const-initialised `Cell`s without destructors, reached
+        // through `try_with`, and the counts saturate.
         unsafe impl GlobalAlloc for CountingAllocator {
             unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+                // SAFETY: `layout` is forwarded unchanged under the caller's `GlobalAlloc::alloc` contract
                 let ptr = unsafe { System.alloc(layout) };
                 if !ptr.is_null() {
                     record(|live| live.saturating_add(layout.size()));
@@ -666,11 +692,16 @@ mod tests {
             }
 
             unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+                // SAFETY: `ptr` and `layout` are forwarded unchanged under the caller's `GlobalAlloc::dealloc`
+                // contract; every allocation came from `System`
                 unsafe { System.dealloc(ptr, layout) };
+                // Saturating: the memory may have been allocated before tracking started
                 record(|live| live.saturating_sub(layout.size()));
             }
 
             unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+                // SAFETY: the arguments are forwarded unchanged under the caller's `GlobalAlloc::realloc` contract;
+                // every allocation came from `System`
                 let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
                 if !new_ptr.is_null() {
                     record(|live| live.saturating_sub(layout.size()).saturating_add(new_size));
@@ -829,8 +860,7 @@ mod tests {
         mempool: MempoolHandle,
         limits: Arc<JsonRpcLimits>,
     ) -> SocketAddr {
-        let router = axum::Router::new()
-            .route("/json_rpc", axum::routing::post(handle::<TempDatabase>))
+        let router = crate::http::server::routes::<TempDatabase>()
             .layer(Extension(query_service))
             .layer(Extension(mempool))
             .layer(Extension(limits));
@@ -855,7 +885,7 @@ mod tests {
     }
 
     /// Reads the response up to the server closing the connection
-    async fn read_response(stream: &mut TcpStream) -> String {
+    async fn read_response(stream: &mut (impl AsyncRead + Unpin)) -> String {
         let mut response = Vec::new();
         let _ignore = timeout(Duration::from_secs(10), stream.read_to_end(&mut response)).await;
         String::from_utf8_lossy(&response).into_owned()
@@ -871,7 +901,8 @@ mod tests {
         .unwrap_or_else(|_| panic!("body budget never reached {available}"));
     }
 
-    /// Stalled uploads hold only the bytes they sent and no slot, so a submission still gets through
+    /// Stalled uploads hold only the bytes they sent and no slot, so a submission still gets through; each stalled one
+    /// gets a 408 after one progress window
     #[tokio::test]
     async fn stalled_uploads_do_not_starve_a_submission() {
         let shutdown = Shutdown::new();
@@ -884,6 +915,7 @@ mod tests {
             JSON_RPC_BODY_BUDGET_BYTES,
             JSON_RPC_ADMISSION_WAIT,
             Duration::from_millis(500),
+            JSON_RPC_BODY_MIN_WINDOW_BYTES,
         ));
         let address = serve(query_service, mempool, limits.clone()).await;
 
@@ -920,6 +952,7 @@ mod tests {
             BUDGET,
             Duration::from_millis(200),
             Duration::from_secs(2),
+            JSON_RPC_BODY_MIN_WINDOW_BYTES,
         ));
         let address = serve(query_service, mempool, limits.clone()).await;
 
@@ -951,5 +984,96 @@ mod tests {
         wait_for_budget(&limits, BUDGET).await;
         assert_eq!(limits.decodes.available_permits(), MAX_CONCURRENT_JSON_RPC_DECODES);
         assert_eq!(mempool_state.get_call_count(), 1);
+    }
+
+    /// A fast prefix followed by a trickle below the per-window minimum gets a 408 and frees its budget
+    #[tokio::test]
+    async fn a_trickle_after_a_fast_prefix_times_out_and_frees_the_budget() {
+        const BUDGET: usize = 256 * 1024;
+        const PREFIX: usize = BUDGET - 1024;
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits::new(
+            BUDGET,
+            Duration::from_millis(200),
+            Duration::from_millis(500),
+            JSON_RPC_BODY_MIN_WINDOW_BYTES,
+        ));
+        let address = serve(query_service, mempool, limits.clone()).await;
+
+        let (mut reader, mut writer) = post(address, 2 * BUDGET, &[b' '; PREFIX]).await.into_split();
+        wait_for_budget(&limits, BUDGET - PREFIX).await;
+        let trickle = tokio::spawn(async move {
+            while writer.write_all(b" ").await.is_ok() {
+                sleep(Duration::from_millis(50)).await;
+            }
+        });
+        // While the trickle holds the budget, a submission does not fit
+        let body = request(transaction_json(None));
+        assert!(body.len() > BUDGET - PREFIX);
+        let response = read_response(&mut post(address, body.len(), body.as_bytes()).await).await;
+        assert!(response.starts_with("HTTP/1.1 503"), "{response}");
+
+        let response = read_response(&mut reader).await;
+        assert!(response.starts_with("HTTP/1.1 408"), "{response}");
+        trickle.abort();
+        wait_for_budget(&limits, BUDGET).await;
+        let response = read_response(&mut post(address, body.len(), body.as_bytes()).await).await;
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert_eq!(mempool_state.get_call_count(), 1);
+    }
+
+    /// The router-wide body limit does not cover `/json_rpc`, so its handler rejects (and logs) an oversized body
+    #[tokio::test]
+    async fn an_oversized_content_length_is_rejected_by_the_handler() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits::default());
+        let address = serve(query_service, mempool, limits.clone()).await;
+
+        let response = read_response(&mut post(address, 11 * 1024 * 1024, b"").await).await;
+        assert!(response.starts_with("HTTP/1.1 413"), "{response}");
+        assert!(response.contains("exceeds the maximum"), "{response}");
+        let warnings = limits.rejection_warnings.lock().unwrap();
+        assert!(warnings.contains_key(&StatusCode::PAYLOAD_TOO_LARGE));
+        assert_eq!(mempool_state.get_call_count(), 0);
+    }
+
+    #[test]
+    fn decode_transaction_applies_the_p2p_decode_budget() {
+        let decode_items = |outputs: usize| {
+            let tx = Transaction::new(
+                vec![],
+                vec![TransactionOutput::default(); outputs],
+                vec![],
+                PrivateKey::default(),
+                PrivateKey::default(),
+            );
+            let encoded = proto::types::Transaction::try_from(tx).unwrap().to_encoded_bytes();
+            check_decode_budget::<proto::types::Transaction>(&encoded, usize::MAX).unwrap()
+        };
+        let per_output = decode_items(2).checked_sub(decode_items(1)).unwrap();
+        let outputs = proto::BODY_MAX_DECODE_ITEMS
+            .checked_div(per_output)
+            .unwrap()
+            .saturating_add(1);
+        let tx = Transaction::new(
+            vec![],
+            vec![TransactionOutput::default(); outputs],
+            vec![],
+            PrivateKey::default(),
+            PrivateKey::default(),
+        );
+        let params = RawValue::from_string(serde_json::json!({ "transaction": tx }).to_string()).unwrap();
+
+        let (status, Json(err)) = decode_transaction(Some(&params)).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let err = serde_json::to_string(&err).unwrap();
+        assert!(err.contains("P2P decode budget"), "{err}");
     }
 }
