@@ -44,7 +44,7 @@ use tokio::sync::{broadcast, mpsc};
 use super::{
     BaseNodeSyncRpcService,
     SyncUtxosTask,
-    service::{REORG_DETECTED, check_chain_on_err},
+    service::{END_BODY_NOT_STORED, REORG_DETECTED, check_chain_on_err},
 };
 use crate::{
     base_node::{
@@ -793,5 +793,41 @@ mod sync_kernels {
                 "kernel from the new chain sent"
             );
         }
+    }
+
+    /// An end block stored as a header only (above the block tip, e.g. during this node's own header sync) is not a
+    /// reorg: both streams end with a Conflict that says its body is not stored
+    #[tokio::test]
+    async fn header_only_end_block_ends_both_streams_with_body_not_stored() {
+        let (service, db, rpc_request_mock) = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let (_, headers_only) = create_chained_blocks(&db, block_specs!(["C->GB"]), chain.get("B").unwrap().clone());
+        let c = headers_only.get("C").unwrap();
+        db.insert_valid_headers(vec![c.to_chain_header()]).unwrap();
+
+        let genesis = db.fetch_header(0).unwrap().unwrap();
+        let msg = SyncKernelsRequest {
+            start: genesis.kernel_mmr_size,
+            end_header_hash: c.hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_kernels(req).await.unwrap().into_inner();
+        let kernels = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        assert_eq!(kernels.len(), 1, "{kernels:?}");
+        let err = kernels.into_iter().next().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), END_BODY_NOT_STORED);
+
+        let msg = SyncUtxosRequest {
+            start_header_hash: chain.get("A").unwrap().hash().to_vec(),
+            end_header_hash: c.hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_utxos(req).await.unwrap().into_inner();
+        let txos = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        assert_eq!(txos.len(), 1, "{txos:?}");
+        let err = txos.into_iter().next().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), END_BODY_NOT_STORED);
     }
 }

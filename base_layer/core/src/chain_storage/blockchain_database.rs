@@ -1575,15 +1575,14 @@ where B: BlockchainBackend
     }
 
     /// The TXOs of block `hash` at `height`: its outputs with their spend state at `end_hash`, its inputs, and for
-    /// each input the stored instance it spent. Returns `None` if the block or the end header `end_hash` at
-    /// `end_height` is not on the chain (see [`read_on_requested_chain`]).
+    /// each input the stored instance it spent, or why they are not served (see [`read_on_requested_chain`]).
     pub fn fetch_txos_in_block_on_chain(
         &self,
         height: u64,
         hash: HashOutput,
         end_height: u64,
         end_hash: HashOutput,
-    ) -> Result<Option<BlockTxos>, ChainStorageError> {
+    ) -> Result<Result<BlockTxos, NotServed>, ChainStorageError> {
         let db = self.db_read_access()?;
         read_on_requested_chain(&*db, height, &hash, end_height, &end_hash, |db| {
             let outputs = db.fetch_outputs_in_block_with_spend_state(&hash, Some(&end_hash))?;
@@ -1602,15 +1601,14 @@ where B: BlockchainBackend
         })
     }
 
-    /// The kernels of block `hash` at `height`, or `None` if the block or the end header `end_hash` at `end_height` is
-    /// not on the chain (see [`read_on_requested_chain`]).
+    /// The kernels of block `hash` at `height`, or why they are not served (see [`read_on_requested_chain`]).
     pub fn fetch_kernels_in_block_on_chain(
         &self,
         height: u64,
         hash: HashOutput,
         end_height: u64,
         end_hash: HashOutput,
-    ) -> Result<Option<Vec<TransactionKernel>>, ChainStorageError> {
+    ) -> Result<Result<Vec<TransactionKernel>, NotServed>, ChainStorageError> {
         let db = self.db_read_access()?;
         read_on_requested_chain(&*db, height, &hash, end_height, &end_hash, |db| {
             db.fetch_kernels_in_block(&hash)
@@ -3159,11 +3157,21 @@ pub fn is_on_requested_chain(
         end_header.is_some_and(|header| header.hash() == *end_hash)
 }
 
+/// Why a block's data read with [`BlockchainDatabase::fetch_kernels_in_block_on_chain`] or
+/// [`BlockchainDatabase::fetch_txos_in_block_on_chain`] is not served
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotServed {
+    /// The block or the requested end block is not on the chain
+    NotOnChain,
+    /// The requested end block is above the best block, so the bodies up to it are not all stored
+    BodyNotStored,
+}
+
 /// Runs `read` for block `hash` and checks under the same read lock, so that no write can commit in between, that the
 /// block is at `height`, the end header `end_hash` is at `end_height`, and the block bodies up to `end_height` are
-/// stored. Returns `None` if not: a block that is no longer on the chain, or whose header is stored without its body
-/// (e.g. during header sync), reads as empty or fails, and its data must not be served. A failed read on the chain
-/// keeps its error.
+/// stored. Returns why not otherwise: a block that is no longer on the chain, or whose header is stored without its
+/// body (e.g. during header sync), reads as empty or fails, and its data must not be served. A failed read that is
+/// served keeps its error.
 fn read_on_requested_chain<T: BlockchainBackend, R>(
     db: &T,
     height: u64,
@@ -3171,16 +3179,17 @@ fn read_on_requested_chain<T: BlockchainBackend, R>(
     end_height: u64,
     end_hash: &FixedHash,
     read: impl FnOnce(&T) -> Result<R, ChainStorageError>,
-) -> Result<Option<R>, ChainStorageError> {
+) -> Result<Result<R, NotServed>, ChainStorageError> {
     let res = read(db);
     let (header_at_height, end_header) = fetch_header_pair(db, height, end_height)?;
-    // Bodies are stored up to the best block, so a header above it may have no body
-    if !is_on_requested_chain(hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) ||
-        end_height > db.fetch_chain_metadata()?.best_block_height()
-    {
-        return Ok(None);
+    if !is_on_requested_chain(hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) {
+        return Ok(Err(NotServed::NotOnChain));
     }
-    res.map(Some)
+    // Bodies are stored up to the best block, so a header above it may have no body
+    if end_height > db.fetch_chain_metadata()?.best_block_height() {
+        return Ok(Err(NotServed::BodyNotStored));
+    }
+    res.map(Ok)
 }
 
 pub fn fetch_headers<T: BlockchainBackend>(

@@ -2627,11 +2627,12 @@ mod read_on_requested_chain {
     use super::*;
     use crate::{
         block_specs,
+        chain_storage::NotServed,
         test_helpers::blockchain::{create_chained_blocks, create_main_chain},
     };
 
     /// A block's data is returned only if, under the same read lock, the block and the requested end block are on the
-    /// chain
+    /// chain and the end block's body is stored, and otherwise says which of these failed
     #[test]
     fn it_returns_block_data_only_on_the_requested_chain() {
         let db = setup();
@@ -2654,7 +2655,7 @@ mod read_on_requested_chain {
         assert_eq!(db.fetch_header(5).unwrap().unwrap().hash(), *e.hash());
 
         let kernels = db.fetch_kernels_in_block_on_chain(2, *b.hash(), 3, *c.hash()).unwrap();
-        assert_eq!(kernels.as_ref(), Some(b.block().body.kernels()));
+        assert_eq!(kernels.as_ref(), Ok(b.block().body.kernels()));
         let (outputs, inputs, spent) = db
             .fetch_txos_in_block_on_chain(2, *b.hash(), 3, *c.hash())
             .unwrap()
@@ -2664,24 +2665,25 @@ mod read_on_requested_chain {
         assert_eq!(&inputs, b.block().body.inputs());
         assert_eq!(spent.len(), inputs.len());
 
-        // The block is not on the chain (its data reads as empty), the end block is not on the chain, the end height is
-        // above the header tip, or the block or end block is stored as a header only
-        for (height, hash, end_height, end_hash) in [
-            (2, b2.hash(), 3, c.hash()),
-            (2, b.hash(), 3, c2.hash()),
-            (2, b.hash(), 6, c.hash()),
-            (2, b.hash(), 5, e.hash()),
-            (4, d.hash(), 4, d.hash()),
+        // The block is not on the chain (its data reads as empty), the end block is not on the chain, or the end height
+        // is above the header tip; or the end block (and maybe the block) is stored as a header only
+        for (height, hash, end_height, end_hash, reason) in [
+            (2, b2.hash(), 3, c.hash(), NotServed::NotOnChain),
+            (2, b.hash(), 3, c2.hash(), NotServed::NotOnChain),
+            (2, b.hash(), 6, c.hash(), NotServed::NotOnChain),
+            (2, b.hash(), 5, e.hash(), NotServed::BodyNotStored),
+            (4, d.hash(), 4, d.hash(), NotServed::BodyNotStored),
         ] {
             assert_eq!(
                 db.fetch_kernels_in_block_on_chain(height, *hash, end_height, *end_hash)
                     .unwrap(),
-                None
+                Err(reason)
             );
-            assert!(
+            assert_eq!(
                 db.fetch_txos_in_block_on_chain(height, *hash, end_height, *end_hash)
                     .unwrap()
-                    .is_none()
+                    .unwrap_err(),
+                reason
             );
         }
     }

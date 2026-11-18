@@ -70,6 +70,7 @@ use crate::{
         HorizonStateTreeUpdate,
         HorizonSyncOutputCheckpoint,
         MmrTree,
+        NotServed,
         PendingChainRewind,
         ResetPermission,
         TargetDifficulties,
@@ -216,7 +217,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        fetch_txos_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Option<BlockTxos>,
+        fetch_txos_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Result<BlockTxos, NotServed>,
         "fetch_txos_in_block_on_chain"
     );
 
@@ -252,7 +253,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        fetch_kernels_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Option<Vec<TransactionKernel>>,
+        fetch_kernels_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Result<Vec<TransactionKernel>, NotServed>,
         "fetch_kernels_in_block_on_chain"
     );
 

@@ -56,7 +56,13 @@ use crate::{
             },
         },
     },
-    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb, is_on_requested_chain},
+    chain_storage::{
+        BlockchainBackend,
+        ChainStorageError,
+        NotServed,
+        async_db::AsyncBlockchainDb,
+        is_on_requested_chain,
+    },
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
@@ -131,6 +137,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 }
 
 pub(super) const REORG_DETECTED: &str = "Reorg detected: the requested end block is no longer on the chain";
+pub(super) const END_BODY_NOT_STORED: &str = "The requested end block's body is not stored on this node";
+
+/// The Conflict sent when a block's data is not served
+pub(super) fn not_served_status(reason: NotServed) -> RpcStatus {
+    match reason {
+        NotServed::NotOnChain => RpcStatus::conflict(REORG_DETECTED),
+        NotServed::BodyNotStored => RpcStatus::conflict(END_BODY_NOT_STORED),
+    }
+}
+
+/// True if `status` reports that the chain changed below the requested end block
+pub(super) fn is_reorg(status: &RpcStatus) -> bool {
+    status.as_status_code() == RpcStatusCode::Conflict && status.details() == REORG_DETECTED
+}
 
 /// Returns a Conflict if the block `hash` at `height` is no longer an ancestor of the requested end block, so that a
 /// stream never sends data from two chains.
@@ -153,9 +173,9 @@ pub(super) async fn ensure_on_requested_chain<B: BlockchainBackend + 'static>(
 }
 
 /// Logs that a stream ends with `status` because the block at `height` is no longer an ancestor of the requested end
-/// block, if `status` is a Conflict
+/// block, if `status` reports that
 fn warn_if_reorg(status: &RpcStatus, height: u64, end_height: u64, peer_node_id: &NodeId) {
-    if status.as_status_code() == RpcStatusCode::Conflict {
+    if is_reorg(status) {
         warn!(
             target: LOG_TARGET,
             "Block #{height} is no longer an ancestor of the requested end block #{end_height} during sync, letting \
@@ -582,7 +602,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     .fetch_kernels_in_block_on_chain(current_height, current_header_hash, end_height, end_hash)
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET))
-                    .and_then(|kernels| kernels.ok_or_else(|| RpcStatus::conflict(REORG_DETECTED)));
+                    .and_then(|kernels| kernels.map_err(not_served_status));
 
                 if tx.is_closed() {
                     debug!(
@@ -618,6 +638,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     },
                     Err(err) => {
                         warn_if_reorg(&err, current_height, end_height, &peer_node_id);
+                        debug!(target: LOG_TARGET, "Kernel sync for peer '{peer_node_id}' ended: {err}");
                         let _result = tx.send(Err(err)).await;
                         break;
                     },

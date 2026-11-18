@@ -29,14 +29,14 @@ use std::{
 use log::*;
 use tari_comms::{
     peer_manager::NodeId,
-    protocol::rpc::{Request, RpcStatus, RpcStatusCode, RpcStatusResultExt},
+    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
     utils,
 };
 use tari_node_components::blocks::BlockHeader;
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::mpsc, task};
 
-use super::service::{REORG_DETECTED, check_chain_on_err};
+use super::service::{check_chain_on_err, is_reorg, not_served_status};
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
@@ -106,7 +106,7 @@ where B: BlockchainBackend + 'static
                 "Starting UTXO stream for peer '{}'", self.peer_node_id
             );
             if let Err(err) = self.start_streaming(&mut tx, start_header, end_header).await {
-                if err.as_status_code() == RpcStatusCode::Conflict {
+                if is_reorg(&err) {
                     warn!(
                         target: LOG_TARGET,
                         "The chain changed below the requested end block #{end_height} during TXO sync from block \
@@ -210,7 +210,7 @@ where B: BlockchainBackend + 'static
                 .fetch_txos_in_block_on_chain(height, current_header_hash, end_height, end_hash)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
-                .ok_or_else(|| RpcStatus::conflict(REORG_DETECTED))?;
+                .map_err(not_served_status)?;
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                 break;
