@@ -57,7 +57,7 @@ use tari_transaction_components::{
     transaction_components::{SpentOutput, Transaction, TransactionInput, TransactionKernel, TransactionOutput},
 };
 use tokio::{
-    sync::{OwnedSemaphorePermit, Semaphore},
+    sync::{OwnedSemaphorePermit, Semaphore, oneshot},
     task,
     time::timeout,
 };
@@ -111,8 +111,8 @@ fn busy() -> Rejection {
 pub struct JsonRpcLimits {
     body_budget: Arc<Semaphore>,
     decodes: Arc<Semaphore>,
-    pending_submissions: Semaphore,
-    decoded_budget: Semaphore,
+    pending_submissions: Arc<Semaphore>,
+    decoded_budget: Arc<Semaphore>,
     max_decoded_tx_bytes: usize,
     admission_wait: Duration,
     progress_window: Duration,
@@ -127,8 +127,8 @@ impl Default for JsonRpcLimits {
         Self {
             body_budget: Arc::new(Semaphore::new(JSON_RPC_BODY_BUDGET_BYTES)),
             decodes: Arc::new(Semaphore::new(MAX_CONCURRENT_JSON_RPC_DECODES)),
-            pending_submissions: Semaphore::new(MAX_PENDING_JSON_RPC_SUBMISSIONS),
-            decoded_budget: Semaphore::new(JSON_RPC_DECODED_BUDGET_BYTES),
+            pending_submissions: Arc::new(Semaphore::new(MAX_PENDING_JSON_RPC_SUBMISSIONS)),
+            decoded_budget: Arc::new(Semaphore::new(JSON_RPC_DECODED_BUDGET_BYTES)),
             max_decoded_tx_bytes: JSON_RPC_MAX_DECODED_TX_BYTES,
             admission_wait: JSON_RPC_ADMISSION_WAIT,
             progress_window: JSON_RPC_BODY_PROGRESS_WINDOW,
@@ -230,19 +230,38 @@ async fn handle_request<B: BlockchainBackend + 'static>(
         return Err(too_large());
     }
     let size = u32::try_from(size).map_err(|_| too_large())?;
-    let decoded_charge = timeout(limits.admission_wait, limits.decoded_budget.acquire_many(size))
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .ok_or_else(busy)?;
+    let decoded_charge = timeout(
+        limits.admission_wait,
+        limits.decoded_budget.clone().acquire_many_owned(size),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .ok_or_else(busy)?;
     drop(decode_permit);
-    let pending = timeout(limits.admission_wait, limits.pending_submissions.acquire())
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .ok_or_else(busy)?;
-    let submitted = submit_transaction::handle(query_service, &mut mempool_service, transaction).await;
-    drop((pending, decoded_charge));
+    let pending = timeout(
+        limits.admission_wait,
+        limits.pending_submissions.clone().acquire_owned(),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .ok_or_else(busy)?;
+    // The submission runs in its own task that holds the decoded charge and the pending slot, so a client that
+    // disconnects can not free them while the mempool is still validating. The task outlives an abandoned request, but
+    // each one holds a pending slot, so there are at most `MAX_PENDING_JSON_RPC_SUBMISSIONS` of them.
+    let (reply, submitted) = oneshot::channel();
+    task::spawn(async move {
+        let submitted = submit_transaction::handle(query_service, &mut mempool_service, transaction).await;
+        drop((pending, decoded_charge));
+        let _ignore = reply.send(submitted);
+    });
+    let submitted = submitted.await.map_err(|_| {
+        reject(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal error submitting the transaction",
+        )
+    })?;
     match submitted {
         Ok(response) => {
             // Version defaults to 1 for backward compatibility with older wallets.
@@ -1287,7 +1306,7 @@ mod tests {
         mempool_state.set_submit_transaction_delay(Duration::from_secs(2)).await;
         let query_service = make_query_service(&shutdown, mempool.clone());
         let limits = Arc::new(JsonRpcLimits {
-            pending_submissions: Semaphore::new(1),
+            pending_submissions: Arc::new(Semaphore::new(1)),
             admission_wait: Duration::from_millis(200),
             ..Default::default()
         });
@@ -1351,6 +1370,8 @@ mod tests {
     #[test]
     fn decoded_size_bounds_the_decoded_heap() {
         let stack_of = |item: StackItem| ExecutionStack::new(vec![item; 255]);
+        // A stack just over a power of two, where pushing one item at a time leaves the most spare capacity
+        let partial_stack = ExecutionStack::new(vec![StackItem::Number(1); 129]);
         let compact_inputs = |stack: ExecutionStack| -> Vec<TransactionInput> {
             (0..100)
                 .map(|_| {
@@ -1389,26 +1410,49 @@ mod tests {
                 })
                 .collect()
         };
-        let cases: Vec<(&str, Vec<TransactionInput>, Vec<TransactionOutput>)> = vec![
-            ("number stacks", compact_inputs(stack_of(StackItem::Number(1))), vec![]),
+        let multisig_output = |n: u8| TransactionOutput {
+            script: TariScript::new(vec![Opcode::CheckMultiSig(
+                1,
+                n,
+                vec![CompressedPublicKey::default(); usize::from(n)],
+                Box::new([0u8; 32]),
+            )])
+            .unwrap(),
+            ..Default::default()
+        };
+        let mut cases: Vec<(String, Vec<TransactionInput>, Vec<TransactionOutput>)> = vec![
             (
-                "public key stacks",
+                "number stacks".into(),
+                compact_inputs(stack_of(StackItem::Number(1))),
+                vec![],
+            ),
+            ("129-item number stacks".into(), compact_inputs(partial_stack), vec![]),
+            (
+                "public key stacks".into(),
                 compact_inputs(stack_of(StackItem::PublicKey(CompressedPublicKey::default()))),
                 vec![],
             ),
             (
-                "signature stacks",
+                "signature stacks".into(),
                 compact_inputs(stack_of(StackItem::Signature(Default::default()))),
                 vec![],
             ),
             (
-                "commitment stacks",
+                "commitment stacks".into(),
                 compact_inputs(stack_of(StackItem::Commitment(Default::default()))),
                 vec![],
             ),
-            ("full spent outputs", full_inputs(), vec![]),
-            ("rich outputs", vec![], (0..50).map(|_| rich_output()).collect()),
+            ("full spent outputs".into(), full_inputs(), vec![]),
+            ("rich outputs".into(), vec![], (0..50).map(|_| rich_output()).collect()),
         ];
+        // Decode does not enforce the 32-key multisig limit
+        for n in [1, 5, 17, 33, 65] {
+            cases.push((
+                format!("{n}-key multisig scripts"),
+                vec![],
+                (0..100).map(|_| multisig_output(n)).collect(),
+            ));
+        }
         for (name, inputs, mut outputs) in cases {
             outputs.push(TransactionOutput::default());
             let tx = Transaction::new(
@@ -1440,7 +1484,7 @@ mod tests {
         let (_, _, decoded) = decode_request(body.as_bytes()).ok().unwrap();
         let size = decoded_size(&decoded);
         let limits = Arc::new(JsonRpcLimits {
-            decoded_budget: Semaphore::new(size),
+            decoded_budget: Arc::new(Semaphore::new(size)),
             admission_wait: Duration::from_secs(1),
             ..Default::default()
         });
@@ -1492,7 +1536,7 @@ mod tests {
         let (_, _, decoded) = decode_request(body.as_bytes()).ok().unwrap();
         let size = decoded_size(&decoded);
         let limits_of = |max_tx: usize| JsonRpcLimits {
-            decoded_budget: Semaphore::new(size),
+            decoded_budget: Arc::new(Semaphore::new(size)),
             max_decoded_tx_bytes: max_tx,
             admission_wait: Duration::from_millis(200),
             ..Default::default()
@@ -1551,5 +1595,50 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(4), "ended by the hold cap");
         drop(held);
         wait_for_budget(&limits, BUDGET, LONG).await;
+    }
+
+    /// A client that goes away while the mempool handles its transaction does not free the decoded charge or the
+    /// pending slot before the mempool replies
+    #[tokio::test]
+    async fn an_abandoned_submission_keeps_its_charges_until_the_mempool_replies() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        mempool_state.set_submit_transaction_delay(Duration::from_secs(1)).await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits::default());
+
+        let client = tokio::spawn({
+            let limits = limits.clone();
+            async move {
+                let body = Body::from(request(transaction_json(None)));
+                let _ignore = handle_request(query_service, mempool, &limits, &json_headers(), body).await;
+            }
+        });
+        let pending_in_use = || MAX_PENDING_JSON_RPC_SUBMISSIONS - limits.pending_submissions.available_permits();
+        timeout(LONG, async {
+            while pending_in_use() == 0 {
+                sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the submission never took a pending slot");
+        client.abort();
+        assert!(client.await.unwrap_err().is_cancelled());
+
+        sleep(Duration::from_millis(300)).await;
+        assert_eq!(pending_in_use(), 1);
+        assert!(limits.decoded_budget.available_permits() < JSON_RPC_DECODED_BUDGET_BYTES);
+
+        timeout(LONG, async {
+            while pending_in_use() != 0 || limits.decoded_budget.available_permits() != JSON_RPC_DECODED_BUDGET_BYTES {
+                sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the charges never came back");
+        assert_eq!(mempool_state.get_call_count(), 1);
     }
 }
