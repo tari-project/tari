@@ -564,7 +564,8 @@ curl -X POST http://localhost:9000/json_rpc \
 | `FeeTooLow` | Transaction fee is below the minimum threshold |
 | `TimeLocked` | Transaction is time-locked and not yet valid |
 | `ValidationFailed` | Transaction failed consensus validation |
-| `AlreadyMined` | Transaction has already been mined or spent |
+| `AlreadyMined` | This exact transaction's kernel is already in the chain |
+| `DoubleSpend` | An input is already spent by a different transaction (mined or in the mempool), or the transaction was rejected as already spent or in the reorg pool and its kernel is not in the chain |
 | `ValidatorNodeSlotTaken` | Another mempool transaction registers or exits the same validator node with an equal or higher fee; retry later |
 | `MempoolPolicy` | Refused by a mempool policy, not a validation failure (e.g. too many mempool transactions already spend one of its inputs); retry later |
 
