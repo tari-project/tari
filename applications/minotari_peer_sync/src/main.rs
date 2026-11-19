@@ -48,7 +48,7 @@ use futures::{StreamExt, future, stream};
 use log::*;
 use minotari_app_utilities::{
     consts,
-    identity_management::{load_tor_identity, setup_node_identity},
+    identity_management::{load_node_identity_read_only, load_tor_identity},
     utilities::setup_runtime,
 };
 use tari_common::{
@@ -372,10 +372,9 @@ fn with_tcp_port(addr: &Multiaddr, port: u16) -> Multiaddr {
 /// accept an address-less identity claim, and we never expect inbound connections.
 fn build_node_identity(cli: &Cli, config: &PeerSyncConfig) -> Result<Arc<NodeIdentity>, ExitError> {
     if cli.use_node_identity {
-        return setup_node_identity(
+        return load_node_identity_read_only(
             &config.base_node.identity_file,
             config.base_node.p2p.public_addresses.clone().into_vec(),
-            true,
             PeerFeatures::COMMUNICATION_NODE,
             config.base_node.p2p.transport.transport_type,
         );
@@ -1991,5 +1990,80 @@ mod test {
         assert_eq!(escape_untrusted("a\u{202e}b"), "a\\u{202e}b");
         assert_eq!(escape_untrusted("a\u{200b}b"), "a\\u{200b}b");
         assert_eq!(escape_untrusted("a\u{feff}b"), "a\\u{feff}b");
+    }
+
+    #[cfg(target_family = "unix")]
+    fn set_readonly(path: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o400)).unwrap();
+    }
+
+    #[cfg(target_family = "unix")]
+    fn set_writable(path: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let _unused = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    #[cfg(not(target_family = "unix"))]
+    fn set_readonly(path: &std::path::Path) {
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mut perms = meta.permissions();
+            perms.set_readonly(true);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
+    }
+
+    #[cfg(not(target_family = "unix"))]
+    #[allow(clippy::permissions_set_readonly_false)]
+    fn set_writable(path: &std::path::Path) {
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mut perms = meta.permissions();
+            perms.set_readonly(false);
+            let _unused = std::fs::set_permissions(path, perms);
+        }
+    }
+
+    #[test]
+    fn use_node_identity_performs_no_write_on_read_only_file() {
+        let dir = std::env::temp_dir().join("peer_sync_test_use_node_identity_ro");
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                set_writable(&entry.path());
+            }
+        }
+        let _unused = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("node_identity.json");
+
+        let node_identity = NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/127.0.0.1/tcp/18141".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        minotari_app_utilities::identity_management::save_as_json(&path, &node_identity).unwrap();
+
+        let past = std::time::SystemTime::now() - StdDuration::from_secs(60);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(past)
+            .unwrap();
+        let mtime_before = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let bytes_before = std::fs::read(&path).unwrap();
+
+        set_readonly(&path);
+
+        let cli = Cli::parse_from(["minotari_peer_sync", "--use-node-identity"]);
+        let mut config = PeerSyncConfig::default();
+        config.base_node.identity_file = path.clone();
+
+        let loaded = super::build_node_identity(&cli, &config).unwrap();
+
+        set_writable(&path);
+
+        assert_eq!(loaded.node_id(), node_identity.node_id());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes_before);
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), mtime_before);
     }
 }
