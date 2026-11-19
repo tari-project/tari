@@ -214,13 +214,14 @@ fn main_inner() -> Result<(), ExitError> {
         }
     })?;
     #[cfg(not(all(unix, feature = "libtor")))]
-    let config = ApplicationConfig::load_from(&cfg).inspect_err(|e| {
+    let config = ApplicationConfig::load_from(&cfg).map_err(|e| {
         if e.is_unknown_field_error() {
             eprintln!(
                 "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
                  field.\n    Run with --print-env to inspect active environment variables and -p overrides."
             );
         }
+        e
     })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
 
@@ -270,17 +271,14 @@ fn main_inner() -> Result<(), ExitError> {
     Ok(())
 }
 
-fn home_fallback_in_use(fallback: Option<&Path>, cli_base_path: &Path) -> bool {
-    match fallback {
-        Some(fallback_dir) => tari_common::dir_utils::absolute_path(cli_base_path) == fallback_dir.join(".tari"),
-        None => false,
-    }
+fn home_fallback_in_use(fallback_dir: &Path, cli_base_path: &Path) -> bool {
+    tari_common::dir_utils::absolute_path(cli_base_path) == fallback_dir.join(".tari")
 }
 
 fn log_effective_paths_and_warnings(cli: &Cli, config: &ApplicationConfig, config_path: &Path) {
     let fallback_dir = tari_common::dir_utils::get_fallback_home_dir();
     if let Some(fallback) = fallback_dir.as_deref() &&
-        home_fallback_in_use(Some(fallback), Path::new(&cli.common.base_path))
+        home_fallback_in_use(fallback, Path::new(&cli.common.base_path))
     {
         let fallback_shown = display_path(fallback);
         tari_common::emit_warning(&format!(
@@ -326,15 +324,11 @@ mod test {
         let cwd = std::env::current_dir().expect("failed to get current dir");
 
         // Case 1: Fallback was used (cli_base_path matches fallback_dir.join(".tari"))
-        let fallback_recorded = Some(cwd.as_path());
         let default_cli_path = Path::new(".tari");
-        assert!(home_fallback_in_use(fallback_recorded, default_cli_path));
+        assert!(home_fallback_in_use(cwd.as_path(), default_cli_path));
 
         // Case 2: Explicit base path provided (cli_base_path differs from fallback)
         let explicit_cli_path = Path::new("/custom/base/path");
-        assert!(!home_fallback_in_use(fallback_recorded, explicit_cli_path));
-
-        // Case 3: No fallback recorded (home was successfully resolved)
-        assert!(!home_fallback_in_use(None, default_cli_path));
+        assert!(!home_fallback_in_use(cwd.as_path(), explicit_cli_path));
     }
 }
