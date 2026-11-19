@@ -28,7 +28,8 @@ use crate::{
     transaction_components::{TransactionError, one_sided::diffie_hellman_stealth_domain_hasher},
 };
 
-/// Maximum number of public keys permitted in a `CheckMultiSig*` opcode (`tari_script` enforces `n <= 32`).
+/// Maximum number of public keys permitted in a `CheckMultiSig*` opcode. Mirrors the private `MAX_MULTISIG_LIMIT` in
+/// `infrastructure/tari_script/src/script.rs`, which is the consensus rule; keep the two in step.
 pub const MAX_MULTISIG_LIMIT: u8 = 32;
 
 /// Validates multisig threshold `party_number` (`m`) and participant count `key_count` (`n`) against `TariScript`
@@ -52,23 +53,32 @@ pub fn validate_multisig_bounds(party_number: u8, key_count: usize) -> Result<u8
     Ok(key_count_u8)
 }
 
-/// Validates multisig threshold `party_number` (`m`), participant count (`n <= MAX_MULTISIG_LIMIT`), and public key
-/// uniqueness so that a deposit cannot create an unspendable UTXO or duplicate a participant's threshold slot.
+/// Validates the parameters of a new multisig deposit: threshold `party_number` (`m`) and participant count
+/// (`n <= MAX_MULTISIG_LIMIT`), so that a deposit cannot create an unspendable UTXO.
 pub fn validate_multisig_parameters(
     party_number: u8,
     public_keys: &[CompressedPublicKey],
 ) -> Result<u8, TransactionError> {
-    let key_count = validate_multisig_bounds(party_number, public_keys.len())?;
-    for (idx, key) in public_keys.iter().enumerate() {
-        if let Some(rest) = public_keys.get(idx.saturating_add(1)..) &&
-            rest.contains(key)
-        {
-            return Err(TransactionError::BuilderError(
-                "Duplicate public keys are not allowed in multisig parameters".to_string(),
-            ));
-        }
+    validate_multisig_bounds(party_number, public_keys.len())
+}
+
+/// Validates that a multisig spend supplies exactly the script's threshold `m` signatures and returns `m`.
+///
+/// Every supplied signature is pushed onto the input stack and `CheckMultiSigVerify` consumes exactly `m` of them,
+/// so any excess is left on the stack and consensus rejects the spend.
+pub fn validate_multisig_spend_signature_count(
+    script: &TariScript,
+    signature_count: usize,
+) -> Result<u8, TransactionError> {
+    let (_keys, threshold) = get_multi_sig_script_components(script)
+        .ok_or_else(|| TransactionError::BuilderError("no keys found".to_string()))?;
+    if signature_count != usize::from(threshold) {
+        return Err(TransactionError::BuilderError(format!(
+            "Invalid signature count for multisig spend: expected exactly {}, got {}",
+            threshold, signature_count
+        )));
     }
-    Ok(key_count)
+    Ok(threshold)
 }
 
 pub fn is_multisig_utxo(tari_script: &TariScript) -> bool {
@@ -133,6 +143,7 @@ mod test {
         is_multisig_utxo,
         validate_multisig_bounds,
         validate_multisig_parameters,
+        validate_multisig_spend_signature_count,
     };
 
     fn sample_keys(count: usize) -> Vec<CompressedPublicKey> {
@@ -141,21 +152,39 @@ mod test {
             .collect()
     }
 
+    fn err_text<T: std::fmt::Debug>(res: Result<T, super::TransactionError>) -> String {
+        res.unwrap_err().to_string()
+    }
+
     #[test]
-    fn validate_multisig_parameters_enforces_bounds_and_uniqueness() {
+    fn validate_multisig_parameters_enforces_bounds() {
         let keys = sample_keys(3);
         assert_eq!(validate_multisig_parameters(2, &keys).unwrap(), 3);
-        assert!(validate_multisig_bounds(0, 3).is_err());
-        assert!(validate_multisig_bounds(4, 3).is_err());
-        assert!(validate_multisig_bounds(1, 0).is_err());
-        assert!(validate_multisig_bounds(1, usize::from(MAX_MULTISIG_LIMIT) + 1).is_err());
-
-        let mut dup_keys = keys.clone();
-        dup_keys.push(keys[0].clone());
-        assert!(validate_multisig_parameters(2, &dup_keys).is_err());
+        assert_eq!(
+            validate_multisig_bounds(MAX_MULTISIG_LIMIT, usize::from(MAX_MULTISIG_LIMIT)).unwrap(),
+            MAX_MULTISIG_LIMIT
+        );
+        assert!(err_text(validate_multisig_bounds(0, 3)).contains("Invalid multisig threshold party_number=0"));
+        assert!(err_text(validate_multisig_bounds(4, 3)).contains("Invalid multisig threshold party_number=4"));
+        assert!(err_text(validate_multisig_bounds(1, 0)).contains("expected 1..=32, got 0"));
+        assert!(
+            err_text(validate_multisig_bounds(1, usize::from(MAX_MULTISIG_LIMIT) + 1))
+                .contains("expected 1..=32, got 33")
+        );
 
         let too_many_keys = sample_keys(usize::from(MAX_MULTISIG_LIMIT) + 1);
-        assert!(validate_multisig_parameters(2, &too_many_keys).is_err());
+        assert!(err_text(validate_multisig_parameters(2, &too_many_keys)).contains("expected 1..=32, got 33"));
+    }
+
+    #[test]
+    fn spend_signature_count_must_equal_threshold() {
+        let keys = sample_keys(3);
+        let script = TariScript::new(vec![Opcode::CheckMultiSigVerify(2, 3, keys, Box::new([0u8; 32]))]).unwrap();
+        assert_eq!(validate_multisig_spend_signature_count(&script, 2).unwrap(), 2);
+        assert!(err_text(validate_multisig_spend_signature_count(&script, 1)).contains("expected exactly 2, got 1"));
+        assert!(err_text(validate_multisig_spend_signature_count(&script, 3)).contains("expected exactly 2, got 3"));
+        let not_multisig = TariScript::new(vec![Opcode::Nop]).unwrap();
+        assert!(err_text(validate_multisig_spend_signature_count(&not_multisig, 1)).contains("no keys found"));
     }
 
     #[test]
@@ -190,16 +219,18 @@ mod test {
         .unwrap();
         assert_eq!(get_multi_sig_script_components(&threshold_exceeds_n), None);
 
+        // Spend side accepts whatever consensus accepts, including duplicate keys, so existing outputs stay spendable.
+        let repeated = keys.first().cloned().unwrap();
         let duplicate_keys = TariScript::new(vec![Opcode::CheckMultiSigVerify(
             2,
             2,
-            vec![keys[0].clone(), keys[0].clone()],
+            vec![repeated.clone(), repeated.clone()],
             Box::new([0u8; 32]),
         )])
         .unwrap();
         assert_eq!(
             get_multi_sig_script_components(&duplicate_keys),
-            Some((vec![keys[0].clone(), keys[0].clone()], 2))
+            Some((vec![repeated.clone(), repeated], 2))
         );
 
         let oversized_keys = sample_keys(usize::from(MAX_MULTISIG_LIMIT) + 1);

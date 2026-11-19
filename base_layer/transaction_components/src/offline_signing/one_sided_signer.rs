@@ -43,11 +43,7 @@ use crate::{
         TransactionKeyManagerInterface,
         manager::{require_mask_id, truncated_key_id},
     },
-    multisig::script::{
-        derive_multisig_ephemeral_pubkeys,
-        validate_multisig_bounds,
-        validate_multisig_parameters,
-    },
+    multisig::script::{derive_multisig_ephemeral_pubkeys, validate_multisig_bounds, validate_multisig_parameters},
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,
         OneSidedTransactionInfo,

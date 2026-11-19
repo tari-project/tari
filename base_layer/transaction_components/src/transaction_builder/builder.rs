@@ -1080,12 +1080,7 @@ where KM: TransactionKeyManagerInterface
                     .key_manager
                     .stealth_address_script_spending_key(commitment_mask_key_id, spec.destination.public_spend_key())?;
                 Ok(TariScript::new(vec![
-                    Opcode::CheckMultiSigVerify(
-                        *party_number,
-                        key_count,
-                        ephemeral_pubkeys,
-                        message.clone(),
-                    ),
+                    Opcode::CheckMultiSigVerify(*party_number, key_count, ephemeral_pubkeys, message.clone()),
                     Opcode::PushPubKey(Box::new(script_pubkey)),
                 ])?)
             },

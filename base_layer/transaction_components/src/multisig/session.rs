@@ -36,7 +36,7 @@ use crate::{
     consensus::ConsensusConstants,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::TransactionKeyManagerInterface,
-    multisig::script::{get_multi_sig_script_components, validate_multisig_parameters},
+    multisig::script::{validate_multisig_parameters, validate_multisig_spend_signature_count},
     transaction_builder::{FinalizedTransaction, RecipientSpec},
     transaction_components::{
         OutputFeatures,
@@ -134,17 +134,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         output: WalletOutput,
         consensus_constants: &ConsensusConstants,
     ) -> Result<(FinalizedTransaction, MemoField, MicroMinotari), TransactionBuilderError> {
-        // Enforce correct signature count and ordering for the multisig script
-        let (_ephemeral_pubkeys, threshold) = get_multi_sig_script_components(output.script())
-            .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
-        if signatures.len() != threshold as usize {
-            return Err(TransactionError::BuilderError(format!(
-                "Invalid signature count for multisig spend: expected exactly {}, got {}",
-                threshold,
-                signatures.len()
-            ))
-            .into());
-        }
+        validate_multisig_spend_signature_count(output.script(), signatures.len())?;
 
         let mut input_stack = ExecutionStack::default();
         for sig in signatures {
@@ -314,13 +304,10 @@ mod test {
             pin::pin,
             task::{Context, Poll, Waker},
         };
+
         use uuid::Uuid;
 
-        use crate::{
-            TransactionBuilder,
-            multisig::script::MAX_MULTISIG_LIMIT,
-            test_helpers::create_test_input,
-        };
+        use crate::{TransactionBuilder, multisig::script::MAX_MULTISIG_LIMIT, test_helpers::create_test_input};
 
         fn block_on_ready<F: Future>(fut: F) -> F::Output {
             let mut fut = pin!(fut);
@@ -348,42 +335,75 @@ mod test {
             let input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
             let mut builder =
                 TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
-            builder
-                .with_fee_per_gram(MicroMinotari(1))
-                .with_input(input)
-                .unwrap();
+            builder.with_fee_per_gram(MicroMinotari(1)).with_input(input).unwrap();
             builder
         };
 
         let mut session = MultisigSession::new(key_manager.clone());
-        let k1 = key_manager.get_random_key(None, None).unwrap().pub_key;
-        let dup_res = block_on_ready(session.create_deposit_multisig_transaction(
+        let deposit_err = |res: Result<_, super::TransactionBuilderError>| match res {
+            Ok(_) => panic!("expected the deposit to be rejected"),
+            Err(e) => e.to_string(),
+        };
+
+        // Positive control: the same builder accepts a valid 2-of-2.
+        let valid_keys = (0..2)
+            .map(|_| key_manager.get_random_key(None, None).unwrap().pub_key)
+            .collect::<Vec<_>>();
+        let valid_res = block_on_ready(session.create_deposit_multisig_transaction(
             MicroMinotari(10_000),
             2,
-            vec![k1.clone(), k1],
+            valid_keys.clone(),
             recipient.clone(),
             make_builder(),
             Uuid::nil(),
         ));
-        assert!(dup_res.is_err(), "duplicate multisig public keys must be rejected");
+        assert!(
+            valid_res.is_ok(),
+            "a valid 2-of-2 deposit must build: {:?}",
+            valid_res.err()
+        );
+
+        let zero_threshold = deposit_err(block_on_ready(session.create_deposit_multisig_transaction(
+            MicroMinotari(10_000),
+            0,
+            valid_keys.clone(),
+            recipient.clone(),
+            make_builder(),
+            Uuid::nil(),
+        )));
+        assert!(
+            zero_threshold.contains("Invalid multisig threshold party_number=0"),
+            "{zero_threshold}"
+        );
+
+        let threshold_above_n = deposit_err(block_on_ready(session.create_deposit_multisig_transaction(
+            MicroMinotari(10_000),
+            3,
+            valid_keys,
+            recipient.clone(),
+            make_builder(),
+            Uuid::nil(),
+        )));
+        assert!(
+            threshold_above_n.contains("Invalid multisig threshold party_number=3"),
+            "{threshold_above_n}"
+        );
 
         let oversized_keys = (0..=MAX_MULTISIG_LIMIT)
             .map(|_| key_manager.get_random_key(None, None).unwrap().pub_key)
             .collect::<Vec<_>>();
-        let oversized_res = block_on_ready(session.create_deposit_multisig_transaction(
+        let oversized = deposit_err(block_on_ready(session.create_deposit_multisig_transaction(
             MicroMinotari(10_000),
             2,
             oversized_keys,
             recipient.clone(),
             make_builder(),
             Uuid::nil(),
-        ));
-        assert!(
-            oversized_res.is_err(),
-            "multisig participant count > MAX_MULTISIG_LIMIT must be rejected"
-        );
+        )));
+        assert!(oversized.contains("expected 1..=32, got 33"), "{oversized}");
 
-        // Excess signatures (> threshold) must be rejected before building a transaction that would fail with StackNotEmpty
+        // Excess signatures (> threshold) must be rejected before building a transaction that would fail with
+        // StackNotEmpty
         let amount = MicroMinotari(100_000);
         let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
         let party_key = key_manager.get_random_key(None, None).unwrap();
@@ -414,7 +434,7 @@ mod test {
             .spend_multisig_utxo(excess_sigs, recipient, input, consensus_constants)
             .unwrap_err();
         assert!(
-            spend_err.to_string().contains("Invalid signature count"),
+            spend_err.to_string().contains("expected exactly 1, got 2"),
             "expected excess signatures to be rejected, got {spend_err:?}"
         );
     }
