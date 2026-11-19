@@ -2487,14 +2487,15 @@ where B: BlockchainBackend
     /// chain to the highest pow chain
     /// This is typically used after a sync, which commits blocks without linking the orphans held on them, and when
     /// an attempted sync failed to sync to the expected height and we are not sure if the new chain is higher than
-    /// the old one. Orphans that build on the main chain tip are linked first, so that they are among the tips.
+    /// the old one. Orphans that build on any main chain block with a body at or above the pruned height are linked
+    /// first, so that they are among the tips.
     ///
     /// Returns the net change to the main chain, and the blocks that failed on the way, for the caller to publish.
     pub fn swap_to_highest_pow_chain(&self) -> Result<AddBlockOutcome, ChainStorageError> {
         let mut db = self.db_write_access()?;
         // Failing to link them only delays them to the next sync, so the swap still runs
-        if let Err(e) = link_orphans_on_tip(&mut *db, &*self.validators.header, &self.consensus_manager) {
-            warn!(target: LOG_TARGET, "Failed to link the orphans held on the main chain tip: {e}");
+        if let Err(e) = link_held_orphans(&mut *db, &*self.validators.header, &self.consensus_manager) {
+            warn!(target: LOG_TARGET, "Failed to link the orphans held on main chain blocks: {e}");
         }
         // No block is being added, so a block that fails here is nobody's fault that we could act on. Each failure is
         // logged where it happens.
@@ -5244,7 +5245,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     txn.insert_orphan_chain_tip(hash, chain_block.accumulated_data().total_accumulated_difficulty);
     db.write(txn)?;
     let vm_key_height = tari_rx_vm_key_height(chain_header.height());
-    let tips = find_orphan_descendant_tips_of(
+    find_orphan_descendant_tips_of(
         db,
         chain_header,
         prev_timestamps,
@@ -5252,62 +5253,68 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         rules,
         (vm_key_height, vm_key),
         fork_height,
+        false,
     )?;
-    debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
-    let mut txn = DbTransaction::new();
-    if !tips.iter().any(|tip| *tip.hash() == hash) {
-        txn.remove_orphan_chain_tip(hash);
-    }
-    for new_tip in tips.iter().filter(|tip| *tip.hash() != hash) {
-        txn.insert_orphan_chain_tip(*new_tip.hash(), new_tip.accumulated_data().total_accumulated_difficulty);
-    }
-    db.write(txn)?;
     Ok(true)
 }
 
-/// Links the orphans held on the main chain tip and makes their descendants orphan chain tips, as
-/// `insert_orphan_and_find_new_tips` does for a new orphan. Blocks committed by block sync never walk their children.
-fn link_orphans_on_tip<T: BlockchainBackend>(
+/// Links the orphans held on main chain blocks with a body at or above the pruned height, and makes their descendants
+/// orphan chain tips, as `insert_orphan_and_find_new_tips` does for a new orphan. Blocks committed by block sync never
+/// walk their children.
+fn link_held_orphans<T: BlockchainBackend>(
     db: &mut T,
     validator: &dyn HeaderChainLinkedValidator<T>,
     rules: &BaseNodeConsensusManager,
 ) -> Result<(), ChainStorageError> {
-    let tip = db.fetch_tip_header()?;
-    let children = db.fetch_orphan_children_of(*tip.hash())?;
-    // The walk fails on a child that is linked already, such as a rewound block. The children of a block are linked
-    // together, so they are walked only when none is linked.
-    // shortcut: a tip with both linked and unlinked children keeps the unlinked ones held, upgrade if a path ever links
-    // only some of them.
-    let mut all_unlinked = !children.is_empty();
-    for child in &children {
-        all_unlinked &= db.fetch_orphan_chain_block(child.hash())?.is_none();
+    let metadata = db.fetch_chain_metadata()?;
+    let mut anchor_heights = Vec::new();
+    for parent in db.fetch_parents_of_unlinked_orphans()? {
+        // A reorg that forks below the pruned height cannot be applied, and orphans and headers above the best block
+        // have no body on the main chain
+        if let Some(header) = fetch_header_by_block_hash(db, parent)? &&
+            header.height >= metadata.pruned_height() &&
+            header.height <= metadata.best_block_height()
+        {
+            anchor_heights.push(header.height);
+        }
     }
-    if !all_unlinked {
-        return Ok(());
+    anchor_heights.sort_unstable();
+    for height in anchor_heights {
+        let anchor = db.fetch_chain_header_by_height(height)?;
+        let hash = *anchor.hash();
+        if let Err(e) = link_held_orphans_on(db, anchor, validator, rules) {
+            warn!(target: LOG_TARGET, "Failed to link the orphans held on #{height} ({hash}): {e}");
+        }
     }
-    let mut prev_timestamps = get_previous_timestamps(db, tip.header(), rules)?;
-    prev_timestamps.push(tip.header().timestamp);
-    let vm_key_height = tari_rx_vm_key_height(tip.height());
+    Ok(())
+}
+
+fn link_held_orphans_on<T: BlockchainBackend>(
+    db: &mut T,
+    anchor: ChainHeader,
+    validator: &dyn HeaderChainLinkedValidator<T>,
+    rules: &BaseNodeConsensusManager,
+) -> Result<(), ChainStorageError> {
+    let mut prev_timestamps = get_previous_timestamps(db, anchor.header(), rules)?;
+    prev_timestamps.push(anchor.header().timestamp);
+    let vm_key_height = tari_rx_vm_key_height(anchor.height());
     let vm_key = *db.fetch_chain_header_by_height(vm_key_height)?.hash();
-    let (tip_hash, tip_height) = (*tip.hash(), tip.height());
-    let tips = find_orphan_descendant_tips_of(
+    let anchor_height = anchor.height();
+    find_orphan_descendant_tips_of(
         db,
-        tip,
+        anchor,
         prev_timestamps,
         validator,
         rules,
         (vm_key_height, vm_key),
-        tip_height,
-    )?;
-    let mut txn = DbTransaction::new();
-    // The walk returns the main chain tip itself when no child links
-    for new_tip in tips.iter().filter(|tip| *tip.hash() != tip_hash) {
-        txn.insert_orphan_chain_tip(*new_tip.hash(), new_tip.accumulated_data().total_accumulated_difficulty);
-    }
-    db.write(txn)
+        anchor_height,
+        true,
+    )
 }
 
-// Find the tip set of any orphans that have hash as an ancestor
+// Link the orphans that have `prev_chain_header` as an ancestor. Each child that links becomes an orphan chain tip in
+// place of its parent as it is linked, so a walk that stops early leaves a consistent tip set behind.
+#[allow(clippy::too_many_lines)]
 fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     db: &mut T,
     prev_chain_header: ChainHeader,
@@ -5319,7 +5326,9 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     // The highest height at which this orphan chain and the chain in the database are the same chain. Every
     // descendant found here is on the same orphan chain, so they all share it.
     fork_height: u64,
-) -> Result<Vec<ChainHeader>, ChainStorageError> {
+    // Linking a linked child fails, and only a main chain block can have one: an orphan's children link together
+    skip_linked_children: bool,
+) -> Result<(), ChainStorageError> {
     let children = db.fetch_orphan_children_of(*prev_chain_header.hash())?;
     debug!(
         target: LOG_TARGET,
@@ -5329,8 +5338,12 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         prev_chain_header.hash()
     );
 
-    let mut res = vec![];
     for child in children {
+        // A child whose accumulated data cannot be read, such as one with an unknown version, is treated as unlinked
+        // so that header validation rejects it rather than every walk failing on it
+        if skip_linked_children && matches!(db.fetch_orphan_chain_block(child.hash()), Ok(Some(_))) {
+            continue;
+        }
         debug!(
             target: LOG_TARGET,
             "Validating header #{} ({}), descendant of #{} ({})",
@@ -5384,9 +5397,12 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 txn.set_accumulated_data_for_orphan(
                     chain_header.header().version,
                     chain_header.accumulated_data().clone(),
-                );
+                )
+                // A main chain parent is not a tip
+                .remove_orphan_chain_tip_if_exists(*prev_chain_header.hash())
+                .insert_orphan_chain_tip(child_hash, chain_header.accumulated_data().total_accumulated_difficulty);
                 db.write(txn)?;
-                let children = find_orphan_descendant_tips_of(
+                find_orphan_descendant_tips_of(
                     db,
                     chain_header,
                     prev_timestamps_for_children,
@@ -5394,8 +5410,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                     rules,
                     child_vm_key,
                     fork_height,
+                    false,
                 )?;
-                res.extend(children);
             },
             Err(e) => {
                 let failure = classify_header_failure(&e);
@@ -5420,17 +5436,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
             },
         };
     }
-    // No child extends this orphan, so it is a tip itself
-    if res.is_empty() {
-        debug!(
-            target: LOG_TARGET,
-            "Found new orphan tip {} ({})",
-            prev_chain_header.height(),
-            prev_chain_header.hash(),
-        );
-        return Ok(vec![prev_chain_header]);
-    }
-    Ok(res)
+    Ok(())
 }
 fn get_previous_timestamps<T: BlockchainBackend>(
     db: &T,
