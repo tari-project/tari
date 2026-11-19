@@ -2138,6 +2138,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             txn.body.inputs().len()
         );
 
+        let first_kernel_sig = txn.first_kernel_excess_sig().cloned();
         let mut handler = self.mempool_service.clone();
         let res = handler.submit_transaction(txn).await.map_err(|e| {
             error!(target: LOG_TARGET, "Error submitting:{e}");
@@ -2149,8 +2150,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredAlreadySpent |
-            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
-                result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
+            TxStorageResponse::NotStoredAlreadyMined => {
+                // Only this exact transaction being in the chain counts as mined; anything else is a double spend
+                let is_mined = match first_kernel_sig {
+                    Some(sig) => !self
+                        .node_service
+                        .clone()
+                        .get_kernel_by_excess_sig(sig)
+                        .await
+                        .map_err(|e| {
+                            error!(target: LOG_TARGET, "Error looking up the rejected transaction's kernel: {e}");
+                            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                        })?
+                        .is_empty(),
+                    None => false,
+                };
+                let result = if is_mined {
+                    tari_rpc::SubmitTransactionResult::AlreadyMined
+                } else {
+                    tari_rpc::SubmitTransactionResult::Rejected
+                };
+                tari_rpc::SubmitTransactionResponse { result: result.into() }
             },
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredOrphan |
