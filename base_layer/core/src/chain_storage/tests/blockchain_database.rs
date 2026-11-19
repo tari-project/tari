@@ -2622,3 +2622,69 @@ mod rewind_headers_above_the_block_tip {
         ));
     }
 }
+
+mod read_on_requested_chain {
+    use super::*;
+    use crate::{
+        block_specs,
+        chain_storage::NotServed,
+        test_helpers::blockchain::{create_chained_blocks, create_main_chain},
+    };
+
+    /// A block's data is returned only if, under the same read lock, the block and the requested end block are on the
+    /// chain and the end block's body is stored, and otherwise says which of these failed
+    #[test]
+    fn it_returns_block_data_only_on_the_requested_chain() {
+        let db = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
+        let (_, fork) = create_chained_blocks(
+            &db,
+            block_specs!(["B2->GB"], ["C2->B2"]),
+            chain.get("A").unwrap().clone(),
+        );
+        let b = chain.get("B").unwrap();
+        let c = chain.get("C").unwrap();
+        let b2 = fork.get("B2").unwrap();
+        let c2 = fork.get("C2").unwrap();
+        // D and E are stored as headers only, above the block tip C, as header sync does
+        let (_, headers_only) = create_chained_blocks(&db, block_specs!(["D->GB"], ["E->D"]), c.clone());
+        let d = headers_only.get("D").unwrap();
+        let e = headers_only.get("E").unwrap();
+        db.insert_valid_headers(vec![d.to_chain_header(), e.to_chain_header()])
+            .unwrap();
+        assert_eq!(db.fetch_header(5).unwrap().unwrap().hash(), *e.hash());
+
+        let kernels = db.fetch_kernels_in_block_on_chain(2, *b.hash(), 3, *c.hash()).unwrap();
+        assert_eq!(kernels.as_ref(), Ok(b.block().body.kernels()));
+        let (outputs, inputs, spent) = db
+            .fetch_txos_in_block_on_chain(2, *b.hash(), 3, *c.hash())
+            .unwrap()
+            .unwrap();
+        let outputs = outputs.into_iter().map(|(output, _)| output).collect::<Vec<_>>();
+        assert_eq!(&outputs, b.block().body.outputs());
+        assert_eq!(&inputs, b.block().body.inputs());
+        assert_eq!(spent.len(), inputs.len());
+
+        // The block is not on the chain (its data reads as empty), the end block is not on the chain, or the end height
+        // is above the header tip; or the end block (and maybe the block) is stored as a header only
+        for (height, hash, end_height, end_hash, reason) in [
+            (2, b2.hash(), 3, c.hash(), NotServed::NotOnChain),
+            (2, b.hash(), 3, c2.hash(), NotServed::NotOnChain),
+            (2, b.hash(), 6, c.hash(), NotServed::NotOnChain),
+            (2, b.hash(), 5, e.hash(), NotServed::BodyNotStored),
+            (4, d.hash(), 4, d.hash(), NotServed::BodyNotStored),
+        ] {
+            assert_eq!(
+                db.fetch_kernels_in_block_on_chain(height, *hash, end_height, *end_hash)
+                    .unwrap(),
+                Err(reason)
+            );
+            assert_eq!(
+                db.fetch_txos_in_block_on_chain(height, *hash, end_height, *end_hash)
+                    .unwrap()
+                    .unwrap_err(),
+                reason
+            );
+        }
+    }
+}

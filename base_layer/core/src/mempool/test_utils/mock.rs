@@ -20,15 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
 
 use futures::StreamExt;
 use tari_service_framework::reply_channel;
 use tari_transaction_components::transaction_components::Transaction;
-use tokio::{sync::Mutex, task};
+use tokio::{sync::Mutex, task, time::sleep};
 
 use crate::mempool::{
     MempoolServiceError,
@@ -51,6 +54,7 @@ pub struct MempoolMockState {
     get_stats: Arc<Mutex<StatsResponse>>,
     get_tx_state_by_excess_sig: Arc<Mutex<TxStorageResponse>>,
     submit_transaction: Arc<Mutex<TxStorageResponse>>,
+    submit_transaction_delay: Arc<Mutex<Duration>>,
     submitted_transactions: Arc<Mutex<Vec<Transaction>>>,
     calls: Arc<AtomicUsize>,
 }
@@ -65,6 +69,7 @@ impl Default for MempoolMockState {
             })),
             get_tx_state_by_excess_sig: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
             submit_transaction: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
+            submit_transaction_delay: Arc::new(Mutex::new(Duration::ZERO)),
             submitted_transactions: Arc::new(Mutex::new(Vec::new())),
             calls: Arc::new(Default::default()),
         }
@@ -82,6 +87,11 @@ impl MempoolMockState {
 
     pub async fn set_submit_transaction_response(&self, resp: TxStorageResponse) {
         *self.submit_transaction.lock().await = resp;
+    }
+
+    /// How long the mock takes to answer a submission; it answers nothing else meanwhile
+    pub async fn set_submit_transaction_delay(&self, delay: Duration) {
+        *self.submit_transaction_delay.lock().await = delay;
     }
 
     /// Every transaction submitted to the mock, in order
@@ -144,6 +154,8 @@ impl MempoolServiceMock {
             )),
             SubmitTransaction(tx) => {
                 self.state.submitted_transactions.lock().await.push(tx);
+                let delay = *self.state.submit_transaction_delay.lock().await;
+                sleep(delay).await;
                 Ok(MempoolResponse::TxStorage(
                     self.state.submit_transaction.lock().await.clone(),
                 ))
