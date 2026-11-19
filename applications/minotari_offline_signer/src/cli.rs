@@ -45,7 +45,7 @@ use tari_transaction_components::{
         ConfirmationMode,
         ConfirmedPayload,
         PayloadSummary,
-        models::{PrepareOneSidedTransactionForSigningResult, TransactionResult},
+        models::PrepareOneSidedTransactionForSigningResult,
         present_payload_summary,
         sign_locked_transaction,
     },
@@ -201,7 +201,7 @@ where
 }
 
 fn check_already_initialized() -> Result<()> {
-    if keystore::is_initialized() {
+    if keystore::has_any_entry() {
         return Err(anyhow!(
             "Keystore is already initialized. Use 'clear' command first to reinitialize."
         ));
@@ -426,7 +426,7 @@ fn check_status() -> Result<()> {
 }
 
 fn clear_keystore() -> Result<()> {
-    if !keystore::is_initialized() {
+    if !keystore::has_any_entry() {
         println!("Keystore is already empty");
         return Ok(());
     }

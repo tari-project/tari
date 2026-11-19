@@ -49,7 +49,7 @@ const VIEW_KEY_ENTRY: &str = "view_key";
 pub(crate) use test_keystore::set_test_keystore_file;
 
 /// Encrypted key data stored by a keystore backend.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct EncryptedKeyData {
     /// Salt used for key derivation (base64 encoded)
     salt: String,
@@ -94,7 +94,10 @@ impl Keystore {
         let encrypted_view = encrypt_key(view_key, passphrase)?;
 
         self.backend.store(SPEND_KEY_ENTRY, &encrypted_spend)?;
-        self.backend.store(VIEW_KEY_ENTRY, &encrypted_view)?;
+        if let Err(err) = self.backend.store(VIEW_KEY_ENTRY, &encrypted_view) {
+            let _unused = self.backend.delete(SPEND_KEY_ENTRY);
+            return Err(err);
+        }
 
         Ok(())
     }
@@ -110,7 +113,20 @@ impl Keystore {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.backend.retrieve(SPEND_KEY_ENTRY).is_ok()
+        self.backend.retrieve(SPEND_KEY_ENTRY).is_ok() && self.backend.retrieve(VIEW_KEY_ENTRY).is_ok()
+    }
+
+    pub fn has_any_entry(&self) -> bool {
+        !matches!(
+            (
+                self.backend.retrieve(SPEND_KEY_ENTRY),
+                self.backend.retrieve(VIEW_KEY_ENTRY)
+            ),
+            (
+                Err(OfflineSignerError::NotInitialized(_)),
+                Err(OfflineSignerError::NotInitialized(_))
+            )
+        )
     }
 
     pub fn clear(&self) -> Result<(), OfflineSignerError> {
@@ -291,19 +307,23 @@ fn derive_encryption_key(passphrase: &str, salt: &Salt) -> Result<Zeroizing<[u8;
 
 /// Encrypts a private key using ChaCha20-Poly1305.
 fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
+    if passphrase.is_empty() {
+        return Err(OfflineSignerError::EncryptionError(
+            "Passphrase cannot be empty".to_string(),
+        ));
+    }
     let salt = Salt::generate();
     let mut nonce_bytes = [0u8; 12];
     rand::rng().fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = Nonce::from(nonce_bytes);
 
     let encryption_key = derive_encryption_key(passphrase, &salt)?;
 
     let cipher = ChaCha20Poly1305::new_from_slice(&*encryption_key)
         .map_err(|e| OfflineSignerError::EncryptionError(format!("Failed to create cipher: {}", e)))?;
 
-    let plaintext = key.to_vec();
     let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_ref())
+        .encrypt(&nonce, key.as_bytes())
         .map_err(|e| OfflineSignerError::EncryptionError(format!("Failed to encrypt: {}", e)))?;
 
     Ok(EncryptedKeyData {
@@ -320,7 +340,12 @@ fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, 
 
     let nonce_bytes =
         Vec::from_hex(&data.nonce).map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid nonce: {}", e)))?;
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = Nonce::try_from(nonce_bytes.as_slice()).map_err(|_| {
+        OfflineSignerError::DecryptionError(format!(
+            "Invalid nonce length: expected 12 bytes, got {}",
+            nonce_bytes.len()
+        ))
+    })?;
 
     let ciphertext = Vec::from_hex(&data.ciphertext)
         .map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid ciphertext: {}", e)))?;
@@ -330,9 +355,9 @@ fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, 
     let cipher = ChaCha20Poly1305::new_from_slice(&*encryption_key)
         .map_err(|e| OfflineSignerError::DecryptionError(format!("Failed to create cipher: {}", e)))?;
 
-    let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| {
+    let plaintext = Zeroizing::new(cipher.decrypt(&nonce, ciphertext.as_ref()).map_err(|_| {
         OfflineSignerError::DecryptionError("Failed to decrypt: invalid passphrase or corrupted data".to_string())
-    })?;
+    })?);
 
     PrivateKey::from_vec(&plaintext)
         .map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid key data: {}", e)))
@@ -357,6 +382,11 @@ pub fn is_initialized() -> bool {
     Keystore::new().is_initialized()
 }
 
+/// Checks if any keystore entry exists (including partial or corrupted state).
+pub fn has_any_entry() -> bool {
+    Keystore::new().has_any_entry()
+}
+
 /// Clears all keys from the keystore.
 pub fn clear_keystore() -> Result<(), OfflineSignerError> {
     Keystore::new().clear()
@@ -365,4 +395,80 @@ pub fn clear_keystore() -> Result<(), OfflineSignerError> {
 /// Returns a human-readable description of the active keystore backend.
 pub fn storage_description() -> &'static str {
     Keystore::new().description()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decrypt_key_rejects_invalid_nonce_length_without_panicking() {
+        let salt = Salt::generate();
+        let data = EncryptedKeyData {
+            salt: salt.to_string(),
+            nonce: "deadbeef".to_string(),
+            ciphertext: "00112233".to_string(),
+        };
+        let err = decrypt_key(&data, "passphrase").unwrap_err().to_string();
+        assert!(err.contains("Invalid nonce length"), "{err}");
+    }
+
+    #[test]
+    fn encrypt_key_rejects_empty_passphrase_and_roundtrips_valid_key() {
+        let key = PrivateKey::default();
+        let err = encrypt_key(&key, "").unwrap_err().to_string();
+        assert!(err.contains("Passphrase cannot be empty"), "{err}");
+
+        let encrypted = encrypt_key(&key, "correct-horse-battery-staple").unwrap();
+        let decrypted = decrypt_key(&encrypted, "correct-horse-battery-staple").unwrap();
+        assert_eq!(decrypted, key);
+    }
+
+    #[test]
+    fn partial_keystore_state_is_not_initialized_but_has_any_entry() {
+        use std::{cell::RefCell, collections::BTreeMap};
+
+        struct MemBackend {
+            entries: RefCell<BTreeMap<String, EncryptedKeyData>>,
+            fail_view_store: bool,
+        }
+
+        impl KeystoreBackend for MemBackend {
+            fn store(&self, entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError> {
+                if self.fail_view_store && entry_name == VIEW_KEY_ENTRY {
+                    return Err(OfflineSignerError::KeystoreError("view store failed".to_string()));
+                }
+                self.entries.borrow_mut().insert(entry_name.to_string(), data.clone());
+                Ok(())
+            }
+
+            fn retrieve(&self, entry_name: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
+                self.entries
+                    .borrow()
+                    .get(entry_name)
+                    .cloned()
+                    .ok_or_else(|| OfflineSignerError::NotInitialized("missing".to_string()))
+            }
+
+            fn delete(&self, entry_name: &str) -> Result<(), OfflineSignerError> {
+                self.entries.borrow_mut().remove(entry_name);
+                Ok(())
+            }
+
+            fn description(&self) -> &'static str {
+                "memory"
+            }
+        }
+
+        let failing_keystore = Keystore {
+            backend: Box::new(MemBackend {
+                entries: RefCell::new(BTreeMap::new()),
+                fail_view_store: true,
+            }),
+        };
+        let key = PrivateKey::default();
+        assert!(failing_keystore.init(&key, &key, "passphrase").is_err());
+        assert!(!failing_keystore.is_initialized());
+        assert!(!failing_keystore.has_any_entry());
+    }
 }
