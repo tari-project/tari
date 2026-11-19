@@ -40,6 +40,7 @@ use tari_common::{
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
     Request,
@@ -478,6 +479,14 @@ async fn run_grpc(
     println!("{CUCUMBER_TEST_MARKER_A}");
 
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_listener_addr}");
+    // The gRPC prepare endpoints sign with the payload key, so without authentication anyone who can reach the port can
+    // produce payloads a strict signer accepts
+    if matches!(auth_config, GrpcAuthentication::None) && wallet.key_manager_service.get_payload_auth_key().is_some() {
+        const WARNING: &str = "a payload key is loaded and gRPC has no authentication: any local process that can \
+                               reach the gRPC port can prepare payloads signed with it";
+        warn!(target: LOG_TARGET, "{WARNING}");
+        eprintln!("WARNING: {WARNING}");
+    }
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
     let auth = ServerAuthenticationInterceptor::new(auth_config)
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;

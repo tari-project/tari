@@ -3084,7 +3084,11 @@ pub async fn command_runner(
             ImportPayloadKey(args) => {
                 let (private_key, public_key) = read_payload_key(&args)?;
                 wallet.import_payload_auth_key(args.index, private_key)?;
-                println!("Payload key #{} imported (public key {public_key}).", args.index);
+                println!(
+                    "Payload key #{} imported (public key {public_key}). Check it matches the public key the signer \
+                     printed at export.",
+                    args.index
+                );
                 if let Some(path) = &args.file {
                     println!("Delete {} now: it holds the payload private key.", path.display());
                     #[cfg(unix)]
@@ -3097,6 +3101,11 @@ pub async fn command_runner(
                             );
                         }
                     }
+                    #[cfg(not(unix))]
+                    println!(
+                        "WARNING: file permissions are not restricted on this platform; keep the file in a private \
+                         location until it is deleted."
+                    );
                 }
             },
             ClearPayloadKey => {

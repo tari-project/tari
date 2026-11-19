@@ -102,9 +102,11 @@ To set it up:
    minotari_offline_signer export-payload-key --index 1 --output payload_key.json
    ```
 
-   The file holds the private payload key and is created readable by the owner only; `--stdout` prints the key
-   instead (one of the two is required). Move it to the online wallet the same way you move payloads, and delete it
-   once imported.
+   The file holds the private payload key. On Unix it is created readable by the owner only; on other platforms its
+   permissions are not restricted (the signer warns), so keep it in a private location. `--stdout` prints the key
+   instead (one of the two is required). Move the key to the online wallet over a separate trusted channel, never
+   the medium you move payloads on, and delete it once imported. The signer prints the key's public key at export;
+   check that the wallet prints the same public key when it imports it.
 
    The signer records each index it exports. From then on `sign` requires a payload key with one of those indices,
    so it refuses version 5 payloads and payloads signed with the view key.
@@ -117,8 +119,10 @@ To set it up:
 
    or `import-payload-key --index 1 --key <hex>` (the key is then visible in shell history and `ps`, so prefer
    `--file`). The key is stored in the wallet's database, encrypted with the wallet passphrase. Importing again
-   replaces it; `clear-payload-key` removes it. From then on every prepared payload is signed with it. The import
-   prints a reminder to delete the file, and warns if other users can read it.
+   replaces it; `clear-payload-key` removes it. From then on every prepared payload is signed with it, whether it is
+   prepared from the command line or over gRPC, so enable gRPC authentication once a key is imported (the wallet
+   warns at startup if it is not). The import prints the key's public key and a reminder to delete the file, and on
+   Unix warns if other users can read it.
 
    The online wallet's database now holds a credential for preparing payloads, not just the view key. Do not copy the
    database and passphrase to other view-only instances as if it were a view key. If the payload key may have
@@ -147,7 +151,7 @@ To set it up:
    `--payload-key-index <n>` (repeatable) accepts the given indices instead for that run.
    `--require-payload-key` turns the same check on before any key has been exported (with no index, it refuses
    everything). `--allow-view-key` accepts view key payloads again for one run, and cannot be combined with the other
-   two. A console wallet that signs offline payloads does the same with `require_payload_key = true` and
+   two; a payload signed with a payload key the signer retired or never exported is still refused. A console wallet that signs offline payloads does the same with `require_payload_key = true` and
    `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config; setting the indices alone turns it on.
 
 Before showing the summary the signer checks the payload's expiry, checks its signing key against these settings,
@@ -210,12 +214,13 @@ again. Export a payload key again (or pass `--require-payload-key`) to turn stri
   has been exported)
 - `--payload-key-index`: A payload key index to accept, in place of the exported ones; repeat for more. Implies
   `--require-payload-key`
-- `--allow-view-key`: Accept payloads signed with the view key even after a payload key has been exported
+- `--allow-view-key`: Accept payloads signed with the view key even after a payload key has been exported (a retired
+  or never-exported payload key is still refused)
 
 ### `export-payload-key` Command
 
 - `--index`: The payload key index
-- `--output, -o`: Write the key to this new file (owner-only)
+- `--output, -o`: Write the key to this new file (owner-only on Unix)
 - `--stdout`: Print the key instead (one of `--output` and `--stdout` is required). Only the key goes to stdout, so it
   can be redirected into a file for `import-payload-key --file`; status lines go to stderr
 - `--passphrase`: Passphrase to decrypt the keys (can also be set via `TARI_PASSPHRASE` env var)
