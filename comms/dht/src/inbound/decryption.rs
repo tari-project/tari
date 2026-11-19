@@ -67,6 +67,8 @@ enum DecryptionError {
     EnvelopeBodyDecodeFailed,
     #[error("Bad clear-text message semantics")]
     BadClearTextMessageSemantics,
+    #[error("DHT protocol message is not signed")]
+    UnsignedDhtProtocolMessage,
 }
 
 impl DecryptionError {
@@ -79,6 +81,7 @@ impl DecryptionError {
             DecryptionError::MessageRejectDecryptionFailed => "decryption_failed",
             DecryptionError::EnvelopeBodyDecodeFailed => "body_decode_failed",
             DecryptionError::BadClearTextMessageSemantics => "bad_clear_text_semantics",
+            DecryptionError::UnsignedDhtProtocolMessage => "unsigned_dht_protocol_message",
         }
     }
 }
@@ -338,6 +341,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
         }
 
+        // Honest nodes always sign Join, Discovery and DiscoveryResponse, and never relay one unsigned in cleartext.
+        // Rejecting them here keeps them out of the dedup cache, where they could shadow a domain message's body.
+        if message.dht_header.message_type.is_dht_message() && message.dht_header.message_signature.is_empty() {
+            own();
+            return Err(DecryptionError::UnsignedDhtProtocolMessage);
+        }
+
         // If a signature is not present, the message is valid at this point
         if message.dht_header.message_signature.is_empty() {
             return Ok(ValidatedDhtInboundMessage::new(message, None));
@@ -464,8 +474,13 @@ mod test {
 
     use super::*;
     use crate::{
-        envelope::DhtMessageFlags,
-        test_utils::{make_dht_inbound_message, make_dht_inbound_message_raw, make_node_identity},
+        envelope::{DhtMessageFlags, DhtMessageType},
+        test_utils::{
+            make_dht_inbound_message,
+            make_dht_inbound_message_raw,
+            make_node_identity,
+            make_valid_message_signature,
+        },
     };
 
     type SinkFn = ServiceFn<fn(DecryptedDhtMessage) -> future::Ready<Result<(), PipelineError>>>;
@@ -839,6 +854,62 @@ mod test {
             };
             let message = make_dht_inbound_message(&node_identity, &at_cap, flags, is_encrypted, true).unwrap();
             assert_eq!(passed_on(node_identity.clone(), message).await, true, "{flags:?}");
+        }
+    }
+
+    /// A cleartext message of `message_type`, signed if `signed`
+    fn cleartext_message(
+        node_identity: &NodeIdentity,
+        message_type: DhtMessageType,
+        signed: bool,
+    ) -> DhtInboundMessage {
+        let mut message = make_dht_inbound_message(
+            node_identity,
+            &wrap_in_envelope_body!(b"body".to_vec()),
+            DhtMessageFlags::NONE,
+            false,
+            false,
+        )
+        .unwrap();
+        message.dht_header.message_type = message_type;
+        if signed {
+            let binding_hash = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
+            message.dht_header.message_signature =
+                make_valid_message_signature(node_identity.secret_key(), &binding_hash);
+        }
+        message
+    }
+
+    #[tokio::test]
+    /// Honest nodes always sign DHT protocol messages, so an unsigned one is dropped (never banned: the service has no
+    /// way to), while unsigned domain messages and signed DHT protocol messages pass
+    async fn unsigned_dht_protocol_messages_are_rejected() {
+        let node_identity = make_node_identity();
+        for message_type in [
+            DhtMessageType::Join,
+            DhtMessageType::Discovery,
+            DhtMessageType::DiscoveryResponse,
+        ] {
+            expect_error(
+                node_identity.clone(),
+                cleartext_message(&node_identity, message_type, false),
+                DecryptionError::UnsignedDhtProtocolMessage,
+            )
+            .await;
+        }
+        expect_no_error(
+            node_identity.clone(),
+            cleartext_message(&node_identity, DhtMessageType::None, false),
+            true,
+        )
+        .await;
+        for message_type in [DhtMessageType::Discovery, DhtMessageType::DiscoveryResponse] {
+            expect_no_error(
+                node_identity.clone(),
+                cleartext_message(&node_identity, message_type, true),
+                true,
+            )
+            .await;
         }
     }
 

@@ -630,24 +630,12 @@ impl AppStateInner {
         match found {
             None => {
                 // If it's not in the backend then remove it from AppState
-                let _completed_transaction: Option<CompletedTransaction> = self
-                    .data
-                    .pending_txs
-                    .iter()
-                    .position(|i| i.tx_id == tx_id)
-                    .and_then(|index| {
-                        let _completed_transaction_info = self.data.pending_txs.remove(index);
-                        None
-                    });
-                let _completed_transaction: Option<CompletedTransaction> = self
-                    .data
-                    .completed_txs
-                    .iter()
-                    .position(|i| i.tx_id == tx_id)
-                    .and_then(|index| {
-                        let _completed_transaction_info = self.data.pending_txs.remove(index);
-                        None
-                    });
+                if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
+                    let _completed_transaction_info = self.data.pending_txs.remove(index);
+                }
+                if let Some(index) = self.data.completed_txs.iter().position(|i| i.tx_id == tx_id) {
+                    let _completed_transaction_info = self.data.completed_txs.remove(index);
+                }
             },
             Some(txn) => {
                 let tx = CompletedTransactionInfo::from_completed_transaction(

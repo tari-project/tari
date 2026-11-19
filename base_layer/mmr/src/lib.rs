@@ -163,6 +163,6 @@ pub use mem_backend_vec::MemBackendVec;
 /// An immutable, append-only Merkle Mountain range (MMR) data structure
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR
-pub use merkle_proof::{MerkleProof, MerkleProofError};
+pub use merkle_proof::{MAX_PROOF_HASHES, MerkleProof, MerkleProofError};
 
 pub mod functions;

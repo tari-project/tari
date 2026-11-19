@@ -356,10 +356,14 @@ impl TryFrom<LegacyTransactionStatus> for LegacyImportStatus {
             LegacyTransactionStatus::Broadcast => Ok(LegacyImportStatus::Broadcast),
             LegacyTransactionStatus::Imported => Ok(LegacyImportStatus::Imported),
             LegacyTransactionStatus::OneSidedUnconfirmed => Ok(LegacyImportStatus::OneSidedUnconfirmed),
-            LegacyTransactionStatus::OneSidedConfirmed => Ok(LegacyImportStatus::OneSidedConfirmed),
+            LegacyTransactionStatus::OneSidedConfirmed | LegacyTransactionStatus::OneSidedConfirmedLocked => {
+                Ok(LegacyImportStatus::OneSidedConfirmed)
+            },
             LegacyTransactionStatus::CoinbaseUnconfirmed => Ok(LegacyImportStatus::CoinbaseUnconfirmed),
-            LegacyTransactionStatus::CoinbaseConfirmed => Ok(LegacyImportStatus::CoinbaseConfirmed),
-            _ => Err(TransactionConversionError { code: i32::MAX }),
+            LegacyTransactionStatus::CoinbaseConfirmed | LegacyTransactionStatus::CoinbaseConfirmedLocked => {
+                Ok(LegacyImportStatus::CoinbaseConfirmed)
+            },
+            status => Err(TransactionConversionError { code: status as i32 }),
         }
     }
 }
@@ -417,5 +421,24 @@ impl Display for TransactionDirection {
             TransactionDirection::Outbound => write!(f, "Outbound"),
             TransactionDirection::Unknown => write!(f, "Unknown"),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn legacy_import_status_accepts_locked_confirmed_variants() {
+        assert_eq!(
+            LegacyImportStatus::try_from(LegacyTransactionStatus::OneSidedConfirmedLocked).unwrap(),
+            LegacyImportStatus::OneSidedConfirmed
+        );
+        assert_eq!(
+            LegacyImportStatus::try_from(LegacyTransactionStatus::CoinbaseConfirmedLocked).unwrap(),
+            LegacyImportStatus::CoinbaseConfirmed
+        );
+        let err = LegacyImportStatus::try_from(LegacyTransactionStatus::Pending).unwrap_err();
+        assert_eq!(err.code, LegacyTransactionStatus::Pending as i32);
     }
 }

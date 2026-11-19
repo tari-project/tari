@@ -418,6 +418,7 @@ where
                 output_features,
                 fee_per_gram,
                 mut payment_id,
+                payload_lifetime,
             } => {
                 async {
                     if selection_criteria.range_limit.is_some() {
@@ -504,6 +505,7 @@ where
                         &recipients,
                         payment_id,
                         self.resources.one_sided_tari_address.clone(),
+                        payload_lifetime,
                     )?;
 
                     self.resources
@@ -518,7 +520,10 @@ where
                 .await
             },
 
-            TransactionServiceRequest::PrepareDepositMultisigTransaction { request } => {
+            TransactionServiceRequest::PrepareDepositMultisigTransaction {
+                request,
+                payload_lifetime,
+            } => {
                 async {
                     self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
                     // Checked before any input is locked; the offline signer needs the recipient's view key.
@@ -589,6 +594,7 @@ where
                         request.public_keys,
                         self.resources.one_sided_tari_address.clone(),
                         request.recipient_address,
+                        payload_lifetime,
                     )?;
 
                     self.resources
@@ -604,7 +610,10 @@ where
                 .await
             },
 
-            TransactionServiceRequest::PrepareWithdrawMultisigTransaction { request } => {
+            TransactionServiceRequest::PrepareWithdrawMultisigTransaction {
+                request,
+                payload_lifetime,
+            } => {
                 async {
                     self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
 
@@ -741,6 +750,7 @@ where
                         output_features,
                         self.resources.one_sided_tari_address.clone(),
                         request.recipient_address,
+                        payload_lifetime,
                     )?;
 
                     self.resources
@@ -764,6 +774,7 @@ where
                         self.resources.consensus_manager.consensus_constants(tip_height).clone(),
                         self.resources.network,
                         request,
+                        &self.resources.config.payload_key_policy(),
                     )?;
                     Ok(TransactionServiceResponse::SignedOneSidedTransaction(Box::new(res)))
                 }
@@ -778,6 +789,7 @@ where
                         self.resources.consensus_manager.consensus_constants(tip_height).clone(),
                         self.resources.network,
                         request,
+                        &self.resources.config.payload_key_policy(),
                     )?;
                     Ok(TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(
                         Box::new(res),
@@ -837,6 +849,7 @@ where
                         self.resources.consensus_manager.consensus_constants(tip_height).clone(),
                         self.resources.network,
                         request,
+                        &self.resources.config.payload_key_policy(),
                     )?;
 
                     Ok(TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(

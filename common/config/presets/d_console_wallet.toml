@@ -149,6 +149,13 @@ transaction_event_channel_size = 25000
 # submitted at most 5 times in total (the initial submission plus 4 re-submissions) before it is cancelled as invalid.
 # (default = 600)
 #transaction_mempool_resubmission_window = 600
+# When signing offline-signing payloads, refuse any payload that is not signed with a payload key: version 5 payloads
+# and payloads signed with the shared view key. See the minotari_offline_signer README. (default = false)
+#require_payload_key = false
+# The payload key indices accepted when `require_payload_key` is on. An empty list refuses every payload. Setting any
+# index turns `require_payload_key` on.
+# (default = [])
+#accepted_payload_key_indices = [1]
 
 [wallet.outputs]
 # If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than the
@@ -436,8 +443,8 @@ network_discovery.initial_peer_sync_delay = 25
 # (Default: 5)
 #network_discovery.rebootstrap_connected_peers = 5
 # The most new peer records one directly connected peer may have stored within `source_budget_window` through Join
-# gossip, and separately through OnConnect peer sync. Also the most peers stored from one source in a rebootstrap.
-# At least 1. (Default: 50)
+# and Discovery gossip, and separately through OnConnect peer sync. Also the most peers stored from one source in a
+# rebootstrap. At least 1. (Default: 50)
 #network_discovery.max_stored_per_source = 50
 # The sliding window over which `max_stored_per_source` applies. At least 1 minute. (Default: 1 hour)
 #network_discovery.source_budget_window = 3_600 # 60 * 60

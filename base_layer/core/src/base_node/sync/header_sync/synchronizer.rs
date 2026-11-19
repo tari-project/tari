@@ -72,7 +72,7 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 const MAX_LATENCY_INCREASES: usize = 5;
 
 /// A peer whose attempts end because our chain changed this many times within the window is banned.
-const MAX_CHAIN_CHANGES_PER_PEER: usize = 3;
+pub(super) const MAX_CHAIN_CHANGES_PER_PEER: usize = 3;
 
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
@@ -81,7 +81,7 @@ pub struct HeaderSynchronizer<'a, B> {
     connectivity: ConnectivityRequester,
     sync_peers: &'a mut Vec<SyncPeer>,
     hooks: Hooks,
-    local_cached_metadata: &'a ChainMetadata,
+    local_cached_metadata: ChainMetadata,
     peer_ban_manager: PeerBanManager,
     consensus_rules: BaseNodeConsensusManager,
     /// Time spent on each peer by the strong dial before its attempt
@@ -106,7 +106,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         connectivity: ConnectivityRequester,
         sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,
-        local_metadata: &'a ChainMetadata,
+        local_metadata: ChainMetadata,
         chain_changes: &'a mut HashMap<NodeId, Vec<Instant>>,
     ) -> Self {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
@@ -420,6 +420,21 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             ));
         }
 
+        // Blocks keep landing while the round runs, so a peer chosen at its start may no longer be ahead of us. Checked
+        // against the header the pending chain verdict uses, so the two cannot disagree.
+        let claimed = sync_peer.claimed_chain_metadata().accumulated_difficulty();
+        let local = best_block_header.accumulated_data().total_accumulated_difficulty;
+        if claimed <= local {
+            debug!(
+                target: LOG_TARGET,
+                "Skipping peer `{}`: its claimed difficulty {} is no longer above ours at {}",
+                sync_peer.node_id(),
+                claimed,
+                local,
+            );
+            return Err(BlockHeaderSyncError::PeerClaimNoLongerAhead { claimed, local });
+        }
+
         // - At this point we may have more (InSyncOrAhead), equal (InSyncOrAhead), or less headers (Lagging) than the
         //   peer, but they claimed better POW before we attempted sync.
         // - This method will return ban-able errors for certain offenses.
@@ -673,26 +688,56 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     local: best_block_header.accumulated_data().total_accumulated_difficulty,
                 });
             }
-            // Our headers are ahead of our blocks, so the claim must be covered by our header chain
+            // Our headers are ahead of our blocks. No headers after the split hash means the split header is the
+            // peer's header tip, so the claim must be covered by the split header.
+            let Some(split_header) = self
+                .db
+                .fetch_chain_header_by_block_hash(chain_split_result.chain_split_hash)
+                .await?
+            else {
+                // The split hash is one of ours, so if it is gone our header chain rewound after we sent it
+                return Err(BlockHeaderSyncError::ChainChangedDuringSync);
+            };
+            let split_difficulty = split_header.accumulated_data().total_accumulated_difficulty;
             let claimed = sync_peer.claimed_chain_metadata().accumulated_difficulty();
-            if claimed > best_header.accumulated_data().total_accumulated_difficulty {
-                let header_tip = self.db.fetch_last_chain_header().await?;
-                let local = header_tip.accumulated_data().total_accumulated_difficulty;
-                if claimed > local {
-                    warn!(
+            if claimed > split_difficulty {
+                let local_metadata = self.db.get_chain_metadata().await?;
+                if claimed <= local_metadata.accumulated_difficulty() {
+                    debug!(
                         target: LOG_TARGET,
-                        "Peer `{}` did not provide any headers although they claim more work ({}) than our header \
-                         chain ({}). Peer will be banned.",
-                        sync_peer.node_id(),
-                        claimed,
-                        local,
+                        "Peer `{}` sent no headers, but our chain has reached their claim since sync started",
+                        sync_peer.node_id()
                     );
-                    return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                        claimed,
-                        actual: None,
-                        local,
-                    });
+                    return Err(BlockHeaderSyncError::ChainChangedDuringSync);
                 }
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer `{}` did not provide any headers although they claim more work ({}) than their header \
+                     tip at our fork hash index {} ({}). Peer will be banned.",
+                    sync_peer.node_id(),
+                    claimed,
+                    chain_split_result.peer_fork_hash_index,
+                    split_difficulty,
+                );
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                    claimed,
+                    actual: Some(split_difficulty),
+                    local: best_header.accumulated_data().total_accumulated_difficulty,
+                });
+            }
+            let claimed_height = sync_peer.claimed_chain_metadata().best_block_height();
+            if claimed_height > split_header.height() && split_difficulty <= claimed {
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainHeight {
+                    claimed: claimed_height,
+                    actual: split_header.height(),
+                });
+            }
+            if split_header.hash() != best_header.hash() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` sent no headers and their header tip is below ours", sync_peer.node_id()
+                );
+                return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
             }
             debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.node_id());
             return Ok((HeaderSyncStatus::InSyncOrAhead, chain_split_result));
@@ -874,15 +919,16 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
             // available headers from the peer, so they must cover what the peer claimed before we commit them.
-            if verdict == PendingChainVerdict::Weaker || total_accumulated_difficulty < claimed_total_accumulated_diff {
+            let local_total_accumulated_diff = split_info
+                .best_block_header
+                .accumulated_data()
+                .total_accumulated_difficulty;
+            if total_accumulated_difficulty < claimed_total_accumulated_diff {
                 debug!(target: LOG_TARGET, "No further headers to download");
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                     claimed: claimed_total_accumulated_diff,
                     actual: Some(total_accumulated_difficulty),
-                    local: split_info
-                        .best_block_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
+                    local: local_total_accumulated_diff,
                 });
             }
             // More difficulty than claimed at a lower height means the claim is stale (a reorg), not a lie
@@ -892,6 +938,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     claimed: claimed_height,
                     actual: start_header_height,
                 });
+            }
+            // The peer delivered its claim, so our chain overtook it after the round chose this peer
+            if verdict == PendingChainVerdict::Weaker {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` delivered its claimed difficulty {}, but our chain is stronger at {}",
+                    sync_peer.node_id(),
+                    claimed_total_accumulated_diff,
+                    local_total_accumulated_diff,
+                );
+                return Err(BlockHeaderSyncError::ChainChangedDuringSync);
             }
             // The peer's claim holds, but our headers are stronger still
             if verdict == PendingChainVerdict::Refused {
@@ -1284,6 +1341,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     if !blocks.is_empty() {
                         self.hooks.call_on_rewind_hooks(blocks);
                     }
+                    // Later attempts in this round check our block tip against this, and it is now lower
+                    self.local_cached_metadata = self.db.get_chain_metadata().await?;
                 },
                 // A reset drops the split unless it is the genesis block, and every peer in this round has a stale
                 // view of our chain
@@ -1542,7 +1601,7 @@ mod test {
             connectivity,
             sync_peers,
             RandomXFactory::default(),
-            metadata,
+            metadata.clone(),
             // Kept for the length of the test
             Box::leak(Box::default()),
         )
@@ -1942,6 +2001,15 @@ mod test {
             verdicts[HEADER_SYNC_INITIAL_MAX_HEADERS - 1],
             PendingChainVerdict::Refused
         );
+        let (peer_db, peer_tip) = serve_headers(&rules, headers);
+        (db, rules, peer_db, peer_tip, verdicts)
+    }
+
+    /// A peer database holding `headers` on the genesis block, serving them up to the last as its best block
+    fn serve_headers(
+        rules: &BaseNodeConsensusManager,
+        headers: Vec<ChainHeader>,
+    ) -> (BlockchainDatabase<TempDatabase>, ChainHeader) {
         let peer_db = create_store_with_consensus_and_validators_and_config(
             rules.clone(),
             Validators::new(
@@ -1963,7 +2031,60 @@ mod test {
             peer_tip.timestamp(),
         );
         peer_db.write(txn).unwrap();
-        (db, rules, peer_db, peer_tip, verdicts)
+        (peer_db, peer_tip)
+    }
+
+    /// An attempt that fails after rewinding our blocks to the split does not make the next peer's attempt see our
+    /// chain as inconsistent
+    #[tokio::test]
+    async fn the_next_peer_is_checked_against_our_chain_after_a_failed_attempt_rewound_it() {
+        let rules = create_consensus_rules();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
+        let db = create_store_with_consensus_and_validators_and_config(rules.clone(), validators, Default::default());
+        create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
+        let split_info = ChainSplitInfo {
+            best_block_header: db.fetch_tip_header().unwrap(),
+            reorg_steps_back: 5,
+            chain_split_hash: *db.fetch_genesis_block().hash(),
+        };
+        let (headers, verdicts) =
+            grow_pending_chain(&db, &rules, &split_info, HEADER_SYNC_INITIAL_MAX_HEADERS + 5).await;
+        // The first batch is enough to switch, so the rewind happens before the rest is streamed
+        assert_eq!(
+            verdicts[HEADER_SYNC_INITIAL_MAX_HEADERS - 1],
+            PendingChainVerdict::Switch
+        );
+        let (peer_db, peer_tip) = serve_headers(&rules, headers);
+        let metadata = db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![];
+        let mut synchronizer = new_synchronizer(&db, &rules, &mut sync_peers, &metadata);
+        let difficulty = peer_tip.accumulated_data().total_accumulated_difficulty;
+
+        // The first peer overclaims, which is only found out after the rewind
+        let (client, sync_peer, _server, _conn) = connect_to_peer(&peer_db, peer_tip.height(), difficulty + 1).await;
+        let err = synchronizer
+            .attempt_sync(&sync_peer, client, Duration::from_secs(60))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. }),
+            "{err}"
+        );
+        assert_eq!(synchronizer.rewind_attempts, 1);
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+
+        let (client, sync_peer, _server, _conn) = connect_to_peer(&peer_db, peer_tip.height(), difficulty).await;
+        let result = synchronizer
+            .attempt_sync(&sync_peer, client, Duration::from_secs(60))
+            .await
+            .unwrap();
+
+        assert_eq!(result.header_sync_status, HeaderSyncStatus::InSyncOrAhead);
+        assert_eq!(db.fetch_last_header().unwrap().hash(), *peer_tip.hash());
     }
 
     #[tokio::test]

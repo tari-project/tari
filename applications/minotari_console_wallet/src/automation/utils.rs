@@ -54,8 +54,8 @@ pub(crate) fn json_from_file_single_object<P: AsRef<Path>, T: DeserializeOwned>(
                 .map_err(|e| CommandError::JsonFile(format!("{e} '{}'", path.as_ref().display())))?,
         )
         .lines()
-        .take(val.lines_to_read)
-        .skip(val.lines_to_skip);
+        .skip(val.lines_to_skip)
+        .take(val.lines_to_read);
         let mut json_str = String::new();
         for line in lines {
             let line = line.map_err(|e| CommandError::JsonFile(format!("{e} '{}'", path.as_ref().display())))?;
@@ -79,6 +79,7 @@ pub(crate) fn write_json_object_to_file_as_line<T: Serialize>(
     outputs: T,
 ) -> Result<(), CommandError> {
     if let Some(file_path) = file.parent() &&
+        !file_path.as_os_str().is_empty() &&
         !file_path.exists()
     {
         fs::create_dir_all(file_path).map_err(|e| CommandError::JsonFile(format!("{} ({})", e, file.display())))?;
@@ -91,7 +92,11 @@ pub(crate) fn write_json_object_to_file_as_line<T: Serialize>(
 }
 
 fn append_json_line_to_file<P: AsRef<Path>, T: Serialize>(file: P, output: T) -> Result<(), CommandError> {
-    fs::create_dir_all(file.as_ref().parent().unwrap()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    if let Some(parent) = file.as_ref().parent() &&
+        !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    }
     let mut file_object = OpenOptions::new()
         .create(true)
         .append(true)
@@ -105,6 +110,7 @@ fn append_json_line_to_file<P: AsRef<Path>, T: Serialize>(file: P, output: T) ->
 /// Write outputs to a JSON file
 pub(crate) fn write_to_json_file<T: Serialize>(file: &Path, reset_file: bool, data: T) -> Result<(), CommandError> {
     if let Some(file_path) = file.parent() &&
+        !file_path.as_os_str().is_empty() &&
         !file_path.exists()
     {
         fs::create_dir_all(file_path).map_err(|e| CommandError::JsonFile(format!("{} ({})", e, file.display())))?;
@@ -117,7 +123,11 @@ pub(crate) fn write_to_json_file<T: Serialize>(file: &Path, reset_file: bool, da
 }
 
 fn append_to_json_file<P: AsRef<Path>, T: Serialize>(file: P, data: T) -> Result<(), CommandError> {
-    fs::create_dir_all(file.as_ref().parent().unwrap()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    if let Some(parent) = file.as_ref().parent() &&
+        !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    }
     let mut file_object = OpenOptions::new()
         .create(true)
         .append(true)
@@ -246,7 +256,26 @@ pub(crate) fn get_file_name(stem: &str, suffix: Option<String>) -> String {
 
 #[cfg(test)]
 mod test {
-    use super::validate_session_id;
+    use super::{PartialRead, json_from_file_single_object, validate_session_id, write_json_object_to_file_as_line};
+
+    #[test]
+    fn partial_read_skips_before_taking_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("lines.json");
+        write_json_object_to_file_as_line(&file, true, 10u32).unwrap();
+        write_json_object_to_file_as_line(&file, false, 20u32).unwrap();
+        write_json_object_to_file_as_line(&file, false, 30u32).unwrap();
+
+        let second_line: u32 = json_from_file_single_object(
+            &file,
+            Some(PartialRead {
+                lines_to_read: 1,
+                lines_to_skip: 1,
+            }),
+        )
+        .unwrap();
+        assert_eq!(second_line, 20);
+    }
 
     #[test]
     fn it_accepts_valid_session_ids() {

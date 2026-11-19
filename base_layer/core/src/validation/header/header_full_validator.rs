@@ -34,7 +34,7 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::BaseNodeConsensusManager,
-    proof_of_work::{AdjustedTarget, monero_rx::MoneroPowData},
+    proof_of_work::{AdjustedTarget, cuckaroo_pow::check_cuckaroo_pow_data, monero_rx::MoneroPowData},
     validation::{
         DifficultyCalculator,
         HeaderChainContext,
@@ -309,13 +309,6 @@ fn check_monero_seed_height<B: BlockchainBackend>(
 /// The largest RandomXT pow data [`check_randomxt_pow_data`] accepts.
 pub(crate) const MAX_RANDOMXT_POW_DATA_SIZE: usize = 32;
 
-/// The exact size of Cuckaroo pow data: `cycle_length` edges of `edge_bits` bits each, bit packed and rounded up to a
-/// whole byte.
-pub(crate) fn cuckaroo_pow_data_size(cuckaroo_cycle_length: u8, cuckaroo_edge_bits: u8) -> usize {
-    let total_packed_size = (cuckaroo_cycle_length as usize).saturating_mul(cuckaroo_edge_bits as usize);
-    total_packed_size.div_ceil(8)
-}
-
 /// The canonical form check for a RandomXT `pow_data`, shared by the full header validator and the cheap
 /// difficulty pre-check on the block propagation path (`InboundNodeCommsHandlers::check_min_block_difficulty`).
 ///
@@ -375,38 +368,8 @@ fn check_pow_data_inner(
             }
             Ok(())
         },
-        PowAlgorithm::Cuckaroo => {
-            let total_packed_size = (cuckaroo_cycle_length as usize).saturating_mul(cuckaroo_edge_bits as usize);
-            let remainder = total_packed_size % 8;
-            let total_bytes = cuckaroo_pow_data_size(cuckaroo_cycle_length, cuckaroo_edge_bits);
-
-            if pow.pow_data.len() != total_bytes {
-                return Err(PowError::CuckarooPowDataSizeMismatch {
-                    expected: total_bytes,
-                    actual: pow.pow_data.len(),
-                }
-                .into());
-            }
-
-            if remainder != 0 {
-                // Ensure that the last byte is not padded with zeros
-                let last_byte = *pow
-                    .pow_data
-                    .get(total_bytes.saturating_sub(1))
-                    .expect("Already checked");
-
-                let padding_mask = (1u8 << remainder).saturating_sub(1);
-                let mask = 0xff ^ padding_mask; // Mask to check if the last byte is padded
-
-                if last_byte & mask != 0 {
-                    return Err(PowError::CuckarooPowDataNonZeroPadding {
-                        padding: last_byte & mask,
-                    }
-                    .into());
-                }
-            }
-            Ok(())
-        },
+        PowAlgorithm::Cuckaroo => check_cuckaroo_pow_data(&pow.pow_data, cuckaroo_cycle_length, cuckaroo_edge_bits)
+            .map_err(ValidationError::from),
     }
 }
 
@@ -415,7 +378,7 @@ mod test {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::proof_of_work::create_tari_mining_blob;
+    use crate::proof_of_work::{create_tari_mining_blob, cuckaroo_pow::cuckaroo_pow_data_size};
 
     /// `PowData`'s bound is applied when a header is decoded, before any of the per-algorithm rules above run. If it
     /// were ever smaller than what one of those rules accepts, headers that are valid by the rules could not even be
@@ -496,6 +459,37 @@ mod test {
         assert_eq!(cuckaroo_pow_data_size(42, 29), 153); // 1218 bits
         assert_eq!(cuckaroo_pow_data_size(8, 8), 8);
         assert_eq!(cuckaroo_pow_data_size(0, 29), 0);
+    }
+
+    /// The full validator's Cuckaroo rule is `check_cuckaroo_pow_data`, so the pre-checks that call it directly
+    /// accept and reject exactly what the validator does, with the same error.
+    #[test]
+    fn cuckaroo_pow_data_rule_matches_check_cuckaroo_pow_data() {
+        let cases = [0usize, 1, 152, 153, 154, 155, 156, 200, 1_000, 65_535]
+            .into_iter()
+            .map(|len| vec![1u8; len])
+            .chain((0..=u8::MAX).map(|last| {
+                let mut data = vec![1u8; 153];
+                *data.last_mut().unwrap() = last;
+                data
+            }));
+        for data in cases {
+            let pow = ProofOfWork {
+                pow_algo: PowAlgorithm::Cuckaroo,
+                pow_data: data.clone().try_into().unwrap(),
+            };
+            let validator = check_pow_data_inner(&pow, 0, 42, 29, false).map_err(|e| match e {
+                ValidationError::ProofOfWorkError(e) => e,
+                e => panic!("unexpected error {e:?}"),
+            });
+            assert_eq!(
+                validator,
+                check_cuckaroo_pow_data(&data, 42, 29),
+                "len {} last {:?}",
+                data.len(),
+                data.last()
+            );
+        }
     }
 
     #[test]

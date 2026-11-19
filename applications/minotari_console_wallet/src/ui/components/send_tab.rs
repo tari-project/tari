@@ -46,6 +46,7 @@ pub struct SendTab {
     confirmation_dialog: Option<ConfirmationDialogType>,
     selected_unique_id: Option<Vec<u8>>,
     table_state: TableState,
+    #[cfg_attr(not(feature = "ledger"), allow(dead_code))]
     wallet_type: LegacyWalletType,
 }
 

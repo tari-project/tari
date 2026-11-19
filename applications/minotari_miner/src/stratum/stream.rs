@@ -39,20 +39,8 @@ impl Stream {
         let conn = TcpStream::connect(server_url)?;
         if let Some(true) = tls {
             let connector = TlsConnector::new()?;
-            let url_port: Vec<&str> = server_url.split(':').collect();
-            let split_url: Vec<&str> = url_port
-                .first()
-                .ok_or(Error::MissingData("No port".to_string()))?
-                .split('.')
-                .collect();
-            let base_host = format!(
-                "{}.{}",
-                split_url
-                    .get(split_url.len().saturating_sub(2))
-                    .ok_or(Error::MissingData("No url".to_string()))?,
-                split_url.last().ok_or(Error::MissingData("No port".to_string()))?
-            );
-            let mut stream = connector.connect(&base_host, conn).map_err(Box::new)?;
+            let host = extract_tls_host(server_url)?;
+            let mut stream = connector.connect(host, conn).map_err(Box::new)?;
             stream.get_mut().set_nonblocking(true)?;
             Ok(Self::TlsStream(Box::from(BufStream::new(stream))))
         } else {
@@ -113,5 +101,44 @@ impl BufRead for Stream {
 
     fn read_line(&mut self, string: &mut String) -> io::Result<usize> {
         self.buf_reader().read_line(string)
+    }
+}
+
+fn extract_tls_host(server_url: &str) -> Result<&str, Error> {
+    let trimmed = server_url.trim();
+    if let Some(rest) = trimmed.strip_prefix('[') {
+        let (host, port_part) = rest
+            .split_once("]:")
+            .ok_or_else(|| Error::MissingData("No port".to_string()))?;
+        if host.is_empty() || port_part.is_empty() {
+            return Err(Error::MissingData("No url".to_string()));
+        }
+        return Ok(host);
+    }
+    let (host, port_part) = trimmed
+        .rsplit_once(':')
+        .ok_or_else(|| Error::MissingData("No port".to_string()))?;
+    if host.is_empty() || port_part.is_empty() {
+        return Err(Error::MissingData("No url".to_string()));
+    }
+    Ok(host)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_tls_host_preserves_full_hostname() {
+        assert_eq!(extract_tls_host("pool.tari.com:3333").unwrap(), "pool.tari.com");
+        assert_eq!(
+            extract_tls_host("eu.stratum.tari.co.uk:443").unwrap(),
+            "eu.stratum.tari.co.uk"
+        );
+        assert_eq!(extract_tls_host("localhost:3333").unwrap(), "localhost");
+        assert_eq!(extract_tls_host("[::1]:3333").unwrap(), "::1");
+        assert!(extract_tls_host("pool.tari.com").is_err());
+        assert!(extract_tls_host(":3333").is_err());
+        assert!(extract_tls_host("pool.tari.com:").is_err());
     }
 }

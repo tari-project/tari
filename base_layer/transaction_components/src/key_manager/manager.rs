@@ -24,7 +24,7 @@ use std::{
     collections::HashMap,
     ops::Shl,
     str::FromStr,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
 use blake2::Blake2b;
@@ -123,6 +123,7 @@ use crate::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 const HASHER_LABEL_BURN_SENDER_OFFSET: &str = "burn-sender-offset";
+const HASHER_LABEL_PAYLOAD_AUTH: &str = "payload_auth";
 
 /// How many ephemeral nonces a software wallet will hold at once.
 ///
@@ -184,7 +185,8 @@ pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
         TariKeyId::Derived { .. } |
         TariKeyId::CodeTemplateAuthor |
         TariKeyId::Zero |
-        TariKeyId::LedgerEphemeralNonce { .. } => false,
+        TariKeyId::LedgerEphemeralNonce { .. } |
+        TariKeyId::PayloadAuth { .. } => false,
     };
     if allowed {
         Ok(())
@@ -244,6 +246,9 @@ pub struct KeyManager {
     /// Shared across clones on purpose: a nonce reserved through one handle to the key manager has to be signable
     /// through another, because the wrappers hand out clones freely.
     software_ephemeral_nonces: Arc<Mutex<SoftwareEphemeralNonceStore>>,
+    /// The imported payload-authentication key and its index. Shared across clones so that importing it through one
+    /// handle reaches every holder. `PrivateKey` is zeroized on drop.
+    payload_auth_key: Arc<Mutex<Option<(u64, PrivateKey)>>>,
 }
 
 /// Refuses a nonce key id that would give up the private key it signs with, and the zero signing key.
@@ -276,7 +281,9 @@ fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Res
         TariKeyId::SpendKey | TariKeyId::ViewKey | TariKeyId::CodeTemplateAuthor => {
             "a wallet master key is a long lived signing key, not a nonce"
         },
-        TariKeyId::Derived { .. } => "a derived key is a deterministic signing key, not a nonce",
+        TariKeyId::Derived { .. } | TariKeyId::PayloadAuth { .. } => {
+            "a derived key is a deterministic signing key, not a nonce"
+        },
         TariKeyId::DHCommitmentMask { .. } | TariKeyId::DHEncryptedData { .. } => {
             "a Diffie-Hellman key is shared with the holder of its public key"
         },
@@ -306,6 +313,7 @@ impl KeyManager {
             crypto_factories,
             wallet_type,
             software_ephemeral_nonces: Arc::default(),
+            payload_auth_key: Arc::default(),
         })
     }
 
@@ -320,6 +328,7 @@ impl KeyManager {
             crypto_factories: CryptoFactories::default(),
             wallet_type,
             software_ephemeral_nonces: Arc::default(),
+            payload_auth_key: Arc::default(),
         })
     }
 
@@ -328,7 +337,51 @@ impl KeyManager {
             crypto_factories: CryptoFactories::default(),
             wallet_type: WalletType::new_random()?,
             software_ephemeral_nonces: Arc::default(),
+            payload_auth_key: Arc::default(),
         })
+    }
+
+    /// Sets or clears the imported payload-authentication key `(index, key)` (see [`TariKeyId::PayloadAuth`]).
+    pub fn set_payload_auth_key(&self, key: Option<(u64, PrivateKey)>) {
+        *self.payload_auth_key.lock().unwrap_or_else(PoisonError::into_inner) = key;
+    }
+
+    /// `H("payload_auth", spend_key || index)`, or `None` when this wallet cannot derive it (view-only or Ledger).
+    fn derive_payload_auth_key(&self, index: u64) -> Result<Option<PrivateKey>, KeyManagerError> {
+        if self.wallet_type.is_ledger() {
+            return Ok(None);
+        }
+        let Ok(spend_key) = self.get_private_spend_key() else {
+            return Ok(None);
+        };
+        let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+            HASHER_LABEL_PAYLOAD_AUTH,
+        )
+        .chain(spend_key.as_bytes())
+        .chain(index.to_le_bytes())
+        .finalize_zeroizing();
+        Ok(Some(PrivateKey::from_uniform_bytes(hash.as_slice())?))
+    }
+
+    /// The derived payload key when this wallet can derive it. Only a wallet that cannot (view-only or Ledger) uses an
+    /// imported key, and only at the imported index: a wallet that can derive never trusts an import, so a wrong one
+    /// cannot make it accept payloads signed by another key.
+    fn payload_auth_private_key(&self, index: u64) -> Result<PrivateKey, KeyManagerError> {
+        if let Some(key) = self.derive_payload_auth_key(index)? {
+            return Ok(key);
+        }
+        if let Some((_, key)) = self
+            .payload_auth_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .filter(|(imported, _)| *imported == index)
+        {
+            return Ok(key.clone());
+        }
+        Err(KeyManagerError::InvalidWalletType(format!(
+            "This wallet cannot derive payload authentication key #{index} without the spend key; import it instead"
+        )))
     }
 
     fn created_encrypted_key(
@@ -990,7 +1043,27 @@ impl TransactionKeyManagerInterface for KeyManager {
             },
             TariKeyId::SpendKey => Ok(self.wallet_type.get_public_spend_key()),
             TariKeyId::ViewKey => Ok(self.wallet_type.get_public_view_key()),
+            TariKeyId::PayloadAuth { index } => Ok(CompressedPublicKey::from_secret_key(
+                &self.payload_auth_private_key(*index)?,
+            )),
         }
+    }
+
+    fn derive_payload_auth_public_key(&self, index: u64) -> Result<CompressedPublicKey, KeyManagerError> {
+        let key = self.derive_payload_auth_key(index)?.ok_or_else(|| {
+            KeyManagerError::InvalidWalletType(
+                "This wallet cannot verify payload keys: strict mode needs a software spend key".to_string(),
+            )
+        })?;
+        Ok(CompressedPublicKey::from_secret_key(&key))
+    }
+
+    fn get_payload_auth_key(&self) -> Option<u64> {
+        self.payload_auth_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(|(index, _)| *index)
     }
 
     fn create_encrypted_key(
@@ -2022,6 +2095,7 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 let private_key = self.decrypt_encrypted_key(encrypted, key)?;
                 Ok(private_key)
             },
+            TariKeyId::PayloadAuth { index } => self.payload_auth_private_key(*index),
         }
     }
 }

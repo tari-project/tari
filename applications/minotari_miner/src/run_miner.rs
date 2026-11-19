@@ -44,6 +44,7 @@ use minotari_app_utilities::parse_miner_input::{
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
+    verify_p2pool_block_coinbase,
     wallet_payment_address,
 };
 use tari_common::{
@@ -405,6 +406,7 @@ async fn verify_base_node_responses(
     Ok(())
 }
 
+#[derive(Debug, Clone)]
 struct GetNewBlockResponse {
     block: Block,
     target_difficulty: u64,
@@ -533,6 +535,7 @@ async fn get_new_block_p2pool_node(
         .into_inner();
     let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;
     let block = new_block_result.block.ok_or_else(|| err_empty("block response"))?;
+    verify_p2pool_block_coinbase(&block, wallet_payment_address, LOG_TARGET).map_err(MinerError::CoinbaseError)?;
     Ok(GetNewBlockResponse {
         block,
         target_difficulty: block_result.target_difficulty,
@@ -669,7 +672,12 @@ async fn mining_cycle(
 }
 
 pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
-    let mut hashrate = report.hashes as f64 / report.elapsed.as_secs() as f64;
+    let elapsed_secs = report.elapsed.as_secs_f64();
+    let mut hashrate = if elapsed_secs > 0.0 {
+        report.hashes as f64 / elapsed_secs
+    } else {
+        0.0
+    };
     let display_string = if hashrate > 1_000_000.0 {
         hashrate /= 1_000_000.0;
         "MH/s"
@@ -701,17 +709,14 @@ async fn validate_tip(
         .get_tip_info(minotari_app_grpc::tari_rpc::Empty {})
         .await?
         .into_inner();
-    let longest_height = tip.clone().metadata.unwrap().best_block_height;
+    if !tip.initial_sync_achieved {
+        return Err(MinerError::NodeNotReady);
+    }
+    let longest_height = tip.metadata.as_ref().ok_or(MinerError::NodeNotReady)?.best_block_height;
     if let Some(h) = mine_until_height &&
         longest_height >= h
     {
         return Err(MinerError::MineUntilHeightReached(h));
-    }
-    if height <= longest_height {
-        return Err(MinerError::MinerLostBlock(height));
-    }
-    if !tip.initial_sync_achieved || tip.metadata.is_none() {
-        return Err(MinerError::NodeNotReady);
     }
     if height <= longest_height {
         return Err(MinerError::MinerLostBlock(height));
@@ -722,6 +727,24 @@ async fn validate_tip(
 #[cfg(test)]
 mod test {
     use std::any::Any;
+
+    use minotari_app_grpc::tari_rpc::{
+        AggregateBody,
+        GetNewBlockResponse as GrpcGetNewBlockResponse,
+        GetNewBlockResult,
+        GetTipInfoRequest,
+        GetTipInfoResponse,
+        SubmitBlockRequest,
+        SubmitBlockResponse,
+        sha_p2_pool_server::{ShaP2Pool, ShaP2PoolServer},
+    };
+    use tari_common_types::{
+        grpc_authentication::GrpcAuthentication,
+        tari_address::TariAddressFeatures,
+        types::{CompressedPublicKey, PrivateKey},
+    };
+    use tokio::sync::Mutex;
+    use tonic::{Request, Response, Status};
 
     use super::*;
 
@@ -737,5 +760,163 @@ mod test {
     fn panic_message_falls_back_for_other_payloads() {
         let payload: Box<dyn Any + Send> = Box::new(42u32);
         assert_eq!(panic_message(payload.as_ref()), "panicked");
+    }
+
+    struct MockShaP2Pool {
+        response: Arc<Mutex<Option<GrpcGetNewBlockResponse>>>,
+    }
+
+    #[tonic::async_trait]
+    impl ShaP2Pool for MockShaP2Pool {
+        async fn get_new_block(
+            &self,
+            _request: Request<GetNewBlockRequest>,
+        ) -> Result<Response<GrpcGetNewBlockResponse>, Status> {
+            let resp = self
+                .response
+                .lock()
+                .await
+                .clone()
+                .ok_or_else(|| Status::internal("no mock response"))?;
+            Ok(Response::new(resp))
+        }
+
+        async fn submit_block(
+            &self,
+            _request: Request<SubmitBlockRequest>,
+        ) -> Result<Response<SubmitBlockResponse>, Status> {
+            Ok(Response::new(SubmitBlockResponse { block_hash: vec![] }))
+        }
+
+        async fn get_tip_info(
+            &self,
+            _request: Request<GetTipInfoRequest>,
+        ) -> Result<Response<GetTipInfoResponse>, Status> {
+            Ok(Response::new(GetTipInfoResponse::default()))
+        }
+    }
+
+    fn make_test_address() -> TariAddress {
+        TariAddress::default()
+    }
+
+    fn make_other_address() -> TariAddress {
+        let key = CompressedPublicKey::from_secret_key(&PrivateKey::from(42u64));
+        TariAddress::new_single_address(
+            key,
+            TariAddress::default().network(),
+            TariAddressFeatures::create_one_sided_only(),
+        )
+        .unwrap()
+    }
+
+    fn make_p2pool_block(coinbase_address: &TariAddress, value: u64) -> GrpcGetNewBlockResponse {
+        let output = minotari_app_utilities::parse_miner_input::make_test_coinbase_output(coinbase_address, value);
+        let block_output_mr = minotari_app_utilities::parse_miner_input::calculate_block_output_mr_from_grpc_outputs(
+            std::slice::from_ref(&output),
+        )
+        .unwrap()
+        .to_vec();
+        let header = minotari_app_grpc::tari_rpc::BlockHeader {
+            block_output_mr,
+            ..Default::default()
+        };
+        let block = Block {
+            header: Some(header),
+            body: Some(AggregateBody {
+                inputs: vec![],
+                outputs: vec![output],
+                kernels: vec![],
+            }),
+        };
+        GrpcGetNewBlockResponse {
+            block: Some(GetNewBlockResult {
+                block_hash: vec![],
+                block: Some(block),
+                merge_mining_hash: vec![],
+                tari_unique_id: vec![],
+                miner_data: None,
+                vm_key: vec![],
+            }),
+            target_difficulty: 100,
+        }
+    }
+
+    async fn setup_mock_client(
+        response: GrpcGetNewBlockResponse,
+    ) -> (ShaP2PoolGrpcClient, tokio::task::JoinHandle<()>) {
+        let mock = MockShaP2Pool {
+            response: Arc::new(Mutex::new(Some(response))),
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server_handle = tokio::spawn(async move {
+            if let Err(e) = tonic::transport::Server::builder()
+                .add_service(ShaP2PoolServer::new(mock))
+                .serve_with_incoming(tonic::transport::server::TcpIncoming::from(listener))
+                .await
+            {
+                eprintln!("Mock p2pool server error: {e}");
+            }
+        });
+
+        let mut client = None;
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            if let Ok(endpoint) = tonic::transport::Endpoint::from_shared(format!("http://{addr}")) &&
+                let Ok(channel) = endpoint.connect().await
+            {
+                let c = ShaP2PoolClient::with_interceptor(
+                    channel,
+                    ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
+                );
+                client = Some(c);
+                break;
+            }
+        }
+        (client.expect("Failed to connect to mock p2pool server"), server_handle)
+    }
+
+    #[tokio::test]
+    async fn test_miner_p2pool_rejects_wrong_coinbase_address() {
+        let configured_address = make_test_address();
+        let attacker_address = make_other_address();
+        let p2pool_resp = make_p2pool_block(&attacker_address, 1_000_000);
+
+        let (mut client, server_handle) = setup_mock_client(p2pool_resp).await;
+        let config = MinerConfig::default();
+
+        let result = get_new_block_p2pool_node(&config, &mut client, &configured_address).await;
+        assert!(
+            result.is_err(),
+            "Expected miner to reject block with wrong coinbase address"
+        );
+        match result.unwrap_err() {
+            MinerError::CoinbaseError(err) => {
+                assert!(err.contains(&configured_address.to_base58()));
+                assert!(err.contains(&attacker_address.to_base58()));
+            },
+            other => panic!("Expected CoinbaseError, got {other:?}"),
+        }
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_miner_p2pool_accepts_valid_coinbase_address() {
+        let configured_address = make_test_address();
+        let p2pool_resp = make_p2pool_block(&configured_address, 1_000_000);
+
+        let (mut client, server_handle) = setup_mock_client(p2pool_resp).await;
+        let config = MinerConfig::default();
+
+        let result = get_new_block_p2pool_node(&config, &mut client, &configured_address).await;
+        assert!(
+            result.is_ok(),
+            "Expected miner to accept block with matching coinbase address"
+        );
+
+        server_handle.abort();
     }
 }
