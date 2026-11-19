@@ -252,6 +252,8 @@ This provides defense-in-depth: even if the OS keystore is compromised, the keys
 
 - **Verify before signing**: Always verify the transaction details before signing: every recipient address, every amount, every "Other outputs" entry, and the fee, total spend and change (a payload can keep a dust change while sending the rest to the miner as fee). Unless the signer requires a payload key, anyone holding the view key can produce a payload that passes the integrity check, and the change-output rule above only closes one known way of recovering the spend key, so the summary is the check that matters.
 
+- **No log file**: The offline signer keeps no log. It reports a refused payload (expired, signed with the view key under strict mode, an index that is not accepted, or a failed integrity check) and every signing result on the terminal only. If you need an audit trail on the signing machine, record the terminal output yourself. The console wallet's signing commands do write these events to its `offline_signing` log.
+
 ## Building
 
 ```bash
