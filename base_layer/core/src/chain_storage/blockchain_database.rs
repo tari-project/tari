@@ -10694,6 +10694,242 @@ mod test {
         );
     }
 
+    /// Holds `blocks` as orphans with no accumulated data, the way blocks are held on a header with no body yet
+    fn hold_unlinked(db: &BlockchainDatabase<TempDatabase>, blocks: &[&Arc<ChainBlock>]) {
+        let mut txn = DbTransaction::new();
+        for block in blocks {
+            txn.insert_orphan(block.to_arc_block());
+        }
+        db.write(txn).unwrap();
+    }
+
+    fn is_linked(db: &BlockchainDatabase<TempDatabase>, block: &ChainBlock) -> bool {
+        db.db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_block(*block.hash())
+            .unwrap()
+            .is_some()
+    }
+
+    fn is_orphan_tip(db: &BlockchainDatabase<TempDatabase>, block: &ChainBlock) -> bool {
+        db.db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_tip_by_hash(block.hash())
+            .unwrap()
+            .is_some()
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_on_a_main_chain_block_with_a_linked_child() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(&test.db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"], ["A4->A3"]));
+        let a1 = main_chain.get("A1").unwrap().clone();
+        let (_, linked) = create_chained_blocks(&test.db, block_specs!(["L2->GB"]), a1.clone());
+        let l2 = linked.get("L2").unwrap().clone();
+        test.db.add_block(l2.to_arc_block()).unwrap().result.assert_orphaned();
+        let l2_linked = test
+            .db
+            .db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_block(*l2.hash())
+            .unwrap()
+            .unwrap();
+        let (_, held) = create_chained_blocks(&test.db, block_specs!(["U2->GB"], ["U3->U2"]), a1);
+        let (u2, u3) = (held.get("U2").unwrap(), held.get("U3").unwrap());
+        hold_unlinked(&test.db, &[u2, u3]);
+
+        let outcome = test.db.swap_to_highest_pow_chain().unwrap();
+
+        assert!(!outcome.result.was_chain_modified());
+        assert!(is_linked(&test.db, u2));
+        assert!(!is_orphan_tip(&test.db, u2));
+        assert!(is_orphan_tip(&test.db, u3));
+        let l2_after = test
+            .db
+            .db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_block(*l2.hash())
+            .unwrap()
+            .unwrap();
+        assert_eq!(l2_after.accumulated_data(), l2_linked.accumulated_data());
+        assert!(is_orphan_tip(&test.db, &l2));
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_on_a_block_at_but_not_below_the_pruned_height() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(&test.db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"]));
+        let (a1, a2) = (
+            main_chain.get("A1").unwrap().clone(),
+            main_chain.get("A2").unwrap().clone(),
+        );
+        let mut txn = DbTransaction::new();
+        txn.set_pruned_height(a2.height());
+        test.db.write(txn).unwrap();
+        let (_, below) = create_chained_blocks(&test.db, block_specs!(["U2->GB"]), a1);
+        let u2 = below.get("U2").unwrap();
+        let (_, at) = create_chained_blocks(&test.db, block_specs!(["V3->GB"], ["V4->V3"]), a2);
+        let (v3, v4) = (at.get("V3").unwrap(), at.get("V4").unwrap());
+        hold_unlinked(&test.db, &[u2, v3, v4]);
+
+        test.db.swap_to_highest_pow_chain().unwrap();
+
+        assert_eq!(*test.db.get_chain_metadata().unwrap().best_block_hash(), *v4.hash());
+        assert!(!is_linked(&test.db, u2));
+        assert!(!is_orphan_tip(&test.db, u2));
+    }
+
+    #[tokio::test]
+    async fn held_orphans_on_a_header_above_the_best_block_are_not_linked() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(
+            &test.db,
+            block_specs!(["B1->GB"], ["B2->B1"], ["B3->B2"], ["H4->B3"], ["H5->H4"]),
+        );
+        let b3 = main_chain.get("B3").unwrap().clone();
+        let h5 = main_chain.get("H5").unwrap().clone();
+        test.db.rewind_to_height(b3.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        test.db
+            .insert_valid_headers(vec![main_chain.get("H4").unwrap().to_chain_header()])
+            .unwrap();
+        test.db.add_block(h5.to_arc_block()).unwrap().result.assert_orphaned();
+
+        let outcome = test.db.swap_to_highest_pow_chain().unwrap();
+
+        assert!(!outcome.result.was_chain_modified());
+        assert_eq!(*test.db.get_chain_metadata().unwrap().best_block_hash(), *b3.hash());
+        assert!(test.db.fetch_orphan(*h5.hash()).is_ok());
+        assert!(!is_linked(&test.db, &h5));
+        assert!(!is_orphan_tip(&test.db, &h5));
+    }
+
+    /// The real header validator, except that the header named in `fault` fails with a storage error, a local fault
+    struct FaultingHeaderValidator {
+        inner: HeaderFullValidator,
+        fault: Arc<sync::Mutex<Option<HashOutput>>>,
+    }
+
+    impl HeaderChainLinkedValidator<TempDatabase> for FaultingHeaderValidator {
+        fn validate(
+            &self,
+            db: &TempDatabase,
+            header: &BlockHeader,
+            prev_header: &BlockHeader,
+            prev_timestamps: &[EpochTime],
+            target_difficulty: Option<AdjustedTarget>,
+            chain_context: HeaderChainContext<'_>,
+        ) -> Result<ValidatedHeader, ValidationError> {
+            if *self.fault.lock().unwrap() == Some(header.hash()) {
+                return Err(ValidationError::FatalStorageError("test fault".to_string()));
+            }
+            HeaderChainLinkedValidator::validate(
+                &self.inner,
+                db,
+                header,
+                prev_header,
+                prev_timestamps,
+                target_difficulty,
+                chain_context,
+            )
+        }
+    }
+
+    /// A store with mock body validators and a `FaultingHeaderValidator`, with a handle to set its fault
+    fn create_store_with_faulting_header_validator()
+    -> (BlockchainDatabase<TempDatabase>, Arc<sync::Mutex<Option<HashOutput>>>) {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let fault = Arc::new(sync::Mutex::new(None));
+        let validators = Validators::new(
+            MockValidator::new(true),
+            FaultingHeaderValidator {
+                inner: HeaderFullValidator::new(
+                    rules.clone(),
+                    DifficultyCalculator::new(rules.clone(), Default::default()),
+                ),
+                fault: fault.clone(),
+            },
+            MockValidator::new(true),
+        );
+        let db = crate::test_helpers::blockchain::create_store_with_consensus_and_validators(rules, validators);
+        (db, fault)
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_on_one_main_chain_block_when_another_fails_to_link() {
+        let (db, fault) = create_store_with_faulting_header_validator();
+        let (_, main_chain) = create_main_chain(&db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"]));
+        let (a1, a2) = (
+            main_chain.get("A1").unwrap().clone(),
+            main_chain.get("A2").unwrap().clone(),
+        );
+        // A1 is walked first and stops on X2 with a local fault
+        let (_, faulting) = create_chained_blocks(&db, block_specs!(["X2->GB"]), a1);
+        let x2 = faulting.get("X2").unwrap();
+        *fault.lock().unwrap() = Some(*x2.hash());
+        let (_, bad_fork) = create_chained_blocks(&db, block_specs!(["Y3->GB"]), a2.clone());
+        let mut y3 = bad_fork.get("Y3").unwrap().block().clone();
+        // Below the median of the previous timestamps
+        y3.header.timestamp = EpochTime::from(0);
+        let y3_hash = y3.hash();
+        let (_, good_fork) = create_chained_blocks(&db, block_specs!(["G3->GB"], ["G4->G3"]), a2);
+        let (g3, g4) = (good_fork.get("G3").unwrap(), good_fork.get("G4").unwrap());
+        hold_unlinked(&db, &[x2, g3, g4]);
+        let mut txn = DbTransaction::new();
+        txn.insert_orphan(Arc::new(y3));
+        db.write(txn).unwrap();
+
+        let outcome = db.swap_to_highest_pow_chain().unwrap();
+
+        let added: Vec<_> = outcome.result.added_blocks().iter().map(|b| *b.hash()).collect();
+        assert_eq!(added, vec![*g3.hash(), *g4.hash()]);
+        assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), *g4.hash());
+        assert!(db.fetch_orphan(*x2.hash()).is_ok());
+        assert!(!is_linked(&db, x2));
+        assert!(db.fetch_orphan(y3_hash).is_err());
+    }
+
+    #[tokio::test]
+    async fn orphans_linked_before_a_walk_stops_are_tips() {
+        let (db, fault) = create_store_with_faulting_header_validator();
+        let (_, main_chain) = create_main_chain(&db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"]));
+        let a1 = main_chain.get("A1").unwrap().clone();
+        let (_, held) = create_chained_blocks(&db, block_specs!(["P2->GB"], ["P3->P2"], ["P4->P3"], ["P5->P4"]), a1);
+        let [p2, p3, p4, p5] = ["P2", "P3", "P4", "P5"].map(|name| held.get(name).unwrap());
+        *fault.lock().unwrap() = Some(*p5.hash());
+        hold_unlinked(&db, &[p2, p3, p4, p5]);
+
+        let outcome = db.swap_to_highest_pow_chain().unwrap();
+
+        let added: Vec<_> = outcome.result.added_blocks().iter().map(|b| *b.hash()).collect();
+        assert_eq!(added, vec![*p2.hash(), *p3.hash(), *p4.hash()]);
+        assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), *p4.hash());
+        assert!(db.fetch_orphan(*p5.hash()).is_ok());
+        assert!(!is_linked(&db, p5));
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_next_to_a_sibling_with_an_unknown_version() {
+        let (db, _) = create_store_with_faulting_header_validator();
+        let (_, main_chain) = create_main_chain(&db, block_specs!(["A1->GB"], ["A2->A1"]));
+        let a2 = main_chain.get("A2").unwrap().clone();
+        let (_, bad_fork) = create_chained_blocks(&db, block_specs!(["B3->GB"]), a2.clone());
+        let mut b3 = bad_fork.get("B3").unwrap().block().clone();
+        b3.header.version = u16::MAX;
+        let b3_hash = b3.hash();
+        let mut txn = DbTransaction::new();
+        txn.insert_orphan(Arc::new(b3));
+        db.write(txn).unwrap();
+        let (_, good_fork) = create_chained_blocks(&db, block_specs!(["G3->GB"]), a2);
+        let g3 = good_fork.get("G3").unwrap();
+        hold_unlinked(&db, &[g3]);
+
+        db.swap_to_highest_pow_chain().unwrap();
+
+        assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), *g3.hash());
+        assert!(db.fetch_orphan(b3_hash).is_err());
+    }
+
     #[ignore]
     #[tokio::test]
     async fn test_handle_possible_reorg_target_difficulty_is_correct_case_2() {
