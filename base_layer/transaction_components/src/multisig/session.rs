@@ -389,6 +389,17 @@ mod test {
             "{threshold_above_n}"
         );
 
+        let k1 = key_manager.get_random_key(None, None).unwrap().pub_key;
+        let duplicate = deposit_err(block_on_ready(session.create_deposit_multisig_transaction(
+            MicroMinotari(10_000),
+            2,
+            vec![k1.clone(), k1],
+            recipient.clone(),
+            make_builder(),
+            Uuid::nil(),
+        )));
+        assert!(duplicate.contains("Duplicate public keys"), "{duplicate}");
+
         let oversized_keys = (0..=MAX_MULTISIG_LIMIT)
             .map(|_| key_manager.get_random_key(None, None).unwrap().pub_key)
             .collect::<Vec<_>>();

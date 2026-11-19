@@ -53,13 +53,25 @@ pub fn validate_multisig_bounds(party_number: u8, key_count: usize) -> Result<u8
     Ok(key_count_u8)
 }
 
-/// Validates the parameters of a new multisig deposit: threshold `party_number` (`m`) and participant count
-/// (`n <= MAX_MULTISIG_LIMIT`), so that a deposit cannot create an unspendable UTXO.
+/// Validates the parameters of a new multisig deposit: threshold `party_number` (`m`), participant count
+/// (`n <= MAX_MULTISIG_LIMIT`), and public key uniqueness, so that a deposit cannot create an unspendable UTXO or let
+/// one key holder fill two threshold slots. Only new deposits are checked: the spend side accepts any script consensus
+/// accepts, so existing outputs with repeated keys stay spendable.
 pub fn validate_multisig_parameters(
     party_number: u8,
     public_keys: &[CompressedPublicKey],
 ) -> Result<u8, TransactionError> {
-    validate_multisig_bounds(party_number, public_keys.len())
+    let key_count = validate_multisig_bounds(party_number, public_keys.len())?;
+    for (idx, key) in public_keys.iter().enumerate() {
+        if let Some(rest) = public_keys.get(idx.saturating_add(1)..) &&
+            rest.contains(key)
+        {
+            return Err(TransactionError::BuilderError(
+                "Duplicate public keys are not allowed in multisig parameters".to_string(),
+            ));
+        }
+    }
+    Ok(key_count)
 }
 
 /// Validates that a multisig spend supplies exactly the script's threshold `m` signatures and returns `m`.
@@ -171,6 +183,10 @@ mod test {
             err_text(validate_multisig_bounds(1, usize::from(MAX_MULTISIG_LIMIT) + 1))
                 .contains("expected 1..=32, got 33")
         );
+
+        let mut dup_keys = keys.clone();
+        dup_keys.extend(keys.first().cloned());
+        assert!(err_text(validate_multisig_parameters(2, &dup_keys)).contains("Duplicate public keys"));
 
         let too_many_keys = sample_keys(usize::from(MAX_MULTISIG_LIMIT) + 1);
         assert!(err_text(validate_multisig_parameters(2, &too_many_keys)).contains("expected 1..=32, got 33"));
