@@ -113,7 +113,7 @@ Feature: Offline One-Sided Transaction Signing
     # Step 4: Verify receiving wallet has confirmed funds
     When I wait for wallet WALLET_RECEIVER to have at least 100000 uT
 
-  @payload-key
+  @critical @payload-key
   Scenario: Offline signing with a payload key imported into the view wallet
     Given I have a seed node NODE
     When I have wallet WALLET_SENDER connected to all seed nodes
@@ -141,7 +141,7 @@ Feature: Offline One-Sided Transaction Signing
     Then all nodes are at height 9
     When I wait for wallet WALLET_RECEIVER to have at least 100000 uT
 
-  @payload-key @security
+  @critical @payload-key @security
   Scenario: Strict signers refuse a payload signed with the view key
     Given I have a seed node NODE
     When I have wallet WALLET_SENDER connected to all seed nodes
