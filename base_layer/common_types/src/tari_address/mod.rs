@@ -439,7 +439,8 @@ impl FromStr for TariAddress {
     type Err = TariAddressError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(address) = TariAddress::from_emoji_string(&key.trim().replace('|', "")) {
+        let key = key.trim();
+        if let Ok(address) = TariAddress::from_emoji_string(&key.replace('|', "")) {
             Ok(address)
         } else if let Ok(address) = TariAddress::from_base58(key) {
             Ok(address)
@@ -1621,6 +1622,24 @@ mod test {
                 Err(TariAddressError::InvalidCoinbaseTarget(reason)) => assert!(reason.contains("254"), "{reason}"),
                 other => panic!("expected a refused payment id of {len} bytes, got {other:?}"),
             }
+        }
+    }
+
+    #[test]
+    fn from_str_trims_surrounding_whitespace_for_all_encodings() {
+        let dual = random_dual_address(Some(vec![1, 2, 3]));
+        let mut rng = rand::rng();
+        let single_spend = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let single = TariAddress::new_single_address_with_interactive_only(single_spend, Network::Esmeralda).unwrap();
+
+        for address in [dual, single] {
+            let base58_padded = format!("  {}\n", address.to_base58());
+            let hex_padded = format!("\t {} \r\n", address.to_hex());
+            let emoji_padded = format!("  {} \n", address.to_emoji_string());
+
+            assert_eq!(TariAddress::from_str(&base58_padded).unwrap(), address);
+            assert_eq!(TariAddress::from_str(&hex_padded).unwrap(), address);
+            assert_eq!(TariAddress::from_str(&emoji_padded).unwrap(), address);
         }
     }
 }
