@@ -299,6 +299,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(block_response);
+                fetched_chunks = fetched_chunks.saturating_add(1);
             }
             for output_chunk in outputs.chunks(self.max_utxo_chunk_size) {
                 let inputs_to_send = if inputs.is_empty() {
@@ -1221,5 +1222,166 @@ mod tests {
         assert_eq!(response.utxos[0].found_in_header.as_ref().unwrap().0, remined.height());
         assert_eq!(response.utxos[0].spent_in_header, None);
         assert_eq!(response.utxos[0].spent_timestamp, None);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn empty_block_placeholders_count_towards_page_chunk_limit_across_batches() {
+        use tari_common_types::types::{
+            CompressedCommitment,
+            CompressedPublicKey,
+            CompressedSignature,
+            PrivateKey,
+            UncompressedPublicKey,
+        };
+        use tari_crypto::keys::{PublicKey as _, SecretKey as _};
+        use tari_transaction_components::{
+            test_helpers::schema_to_transaction,
+            transaction_components::{KernelBuilder, KernelFeatures, RangeProofType, Transaction},
+            txn_schema,
+        };
+
+        use crate::test_helpers::{
+            BlockSpec,
+            BlockSpecs,
+            blockchain::{TestBlockchain, create_custom_blockchain},
+            create_consensus_rules,
+        };
+
+        let rules = create_consensus_rules();
+        let mut blockchain = TestBlockchain::new(create_custom_blockchain(rules.clone()), rules)
+            .with_coinbase_range_proof_type(RangeProofType::RevealedValue);
+
+        let (_, coinbase_1) = blockchain.add_next_tip(block_spec!("B1", parent: "GB")).unwrap();
+        let (txs, _) = schema_to_transaction(
+            &[txn_schema!(from: vec![coinbase_1], to: vec![1_000.into(), 2_000.into()])],
+            &blockchain.km,
+        );
+        let two_output_txs = txs.into_iter().map(|t| (*t).clone()).collect::<Vec<_>>();
+
+        let kernel_only_tx = || {
+            let sk = PrivateKey::random(&mut rand::rng());
+            let nonce_sk = PrivateKey::random(&mut rand::rng());
+            let excess = CompressedCommitment::from_public_key(UncompressedPublicKey::from_secret_key(&sk));
+            let sig = CompressedSignature::new(CompressedPublicKey::from_secret_key(&nonce_sk), sk);
+            let kernel = KernelBuilder::new()
+                .with_fee(0.into())
+                .with_features(KernelFeatures::empty())
+                .with_lock_height(0)
+                .with_excess(&excess)
+                .with_signature(sig)
+                .build()
+                .unwrap();
+            Transaction::new(
+                vec![],
+                vec![],
+                vec![kernel],
+                PrivateKey::default(),
+                PrivateKey::default(),
+            )
+        };
+
+        let mut specs = Vec::with_capacity(114);
+        for i in 2..=115u64 {
+            let name = format!("B{}->B{}", i, i - 1);
+            let mut builder = BlockSpec::builder().with_name(Box::leak(name.into_boxed_str()));
+            match i {
+                10..=15 => {
+                    builder = builder.skip_coinbase().with_transactions(vec![kernel_only_tx()]);
+                },
+                31 => {
+                    // Block 31 has its coinbase + 2 transaction outputs (3 outputs -> 2 chunks when max_utxo_chunk_size
+                    // = 2). Starting at height 7 with limit = 25, blocks 7..=30 (including 6 empty
+                    // blocks 10..=15) consume 24 chunks; block 31 adds 2 chunks -> 26 > 25, so block 31
+                    // is deferred to the next cursor.
+                    builder = builder.with_transactions(two_output_txs.clone());
+                },
+                _ => {},
+            }
+            specs.push(builder.finish());
+        }
+        blockchain.append_chain(BlockSpecs::from(specs)).unwrap();
+
+        let adb = AsyncBlockchainDb::from(blockchain.db().clone());
+        let mut service = Service::new(adb, make_state_machine_handle(), make_mempool_handle());
+        service.max_utxo_chunk_size = 2;
+
+        let start_height = 7u64;
+        let tip_height = 115u64;
+        let limit = 25u64;
+        let mut start_header_hash = service
+            .db()
+            .fetch_header(start_height)
+            .await
+            .unwrap()
+            .unwrap()
+            .hash()
+            .to_vec();
+
+        let mut visited_heights = Vec::new();
+        let mut first_page_heights = Vec::new();
+        while !start_header_hash.is_empty() {
+            let mut page = 0u64;
+            let mut has_next_page = true;
+            let mut next_round_hash = Vec::new();
+            while has_next_page {
+                let resp = service
+                    .fetch_utxos(SyncUtxosByBlockRequest {
+                        start_header_hash: start_header_hash.clone(),
+                        limit,
+                        page,
+                        exclude_spent: false,
+                        exclude_inputs: false,
+                        version: 0,
+                    })
+                    .await
+                    .unwrap();
+                assert!(!resp.blocks.is_empty(), "non-empty page expected");
+                if first_page_heights.is_empty() {
+                    for b in resp.blocks.iter().filter(|b| (10..=15).contains(&b.height)) {
+                        assert!(b.outputs.is_empty() && b.inputs.is_empty());
+                    }
+                    first_page_heights = resp.blocks.iter().map(|b| b.height).collect();
+                }
+
+                // Collect unique block heights within this response (a multi-chunk block shares a height within a
+                // single response, never across separate responses).
+                let mut response_heights = Vec::new();
+                for block in &resp.blocks {
+                    if let Some(&last_in_resp) = response_heights.last() {
+                        assert!(
+                            block.height == last_in_resp || block.height == last_in_resp + 1,
+                            "non-consecutive height within response: {last_in_resp} followed by {}",
+                            block.height
+                        );
+                        if block.height != last_in_resp {
+                            response_heights.push(block.height);
+                        }
+                    } else {
+                        response_heights.push(block.height);
+                    }
+                }
+                if let Some(&prev) = visited_heights.last() {
+                    assert_eq!(
+                        response_heights[0],
+                        prev + 1,
+                        "next response must start strictly at {} after {prev}, got {}",
+                        prev + 1,
+                        response_heights[0]
+                    );
+                }
+                visited_heights.extend(response_heights);
+
+                has_next_page = resp.has_next_page;
+                next_round_hash = resp.next_header_to_scan;
+                if has_next_page {
+                    page += 1;
+                }
+            }
+            start_header_hash = next_round_hash;
+        }
+
+        assert_eq!(first_page_heights, (7..=30).collect::<Vec<u64>>());
+        assert_eq!(visited_heights, (start_height..=tip_height).collect::<Vec<u64>>());
     }
 }

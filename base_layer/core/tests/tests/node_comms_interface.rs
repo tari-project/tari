@@ -21,7 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use futures::StreamExt;
 use tari_common::configuration::Network;
@@ -34,6 +40,7 @@ use tari_core::{
     base_node::comms_interface::{
         BlockEvent,
         CommsInterfaceError,
+        FetchMempoolTransactionsResponse,
         GetNewBlockTemplateRequest,
         InboundNodeCommsHandlers,
         NodeCommsRequest,
@@ -51,7 +58,7 @@ use tari_core::{
         inputs_and_outputs_match_header,
     },
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
-    mempool::{Mempool, MempoolConfig},
+    mempool::{Mempool, MempoolConfig, TxStorageResponse},
     proof_of_work::{AchievedTargetDifficulty, AdjustedTarget, randomx_factory::RandomXFactory, sha3x_difficulty},
     test_helpers::{
         blockchain::{TempDatabase, create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
@@ -65,7 +72,7 @@ use tari_core::{
         ValidationError,
         block_body::BlockBodyFullValidator,
         mocks::MockValidator,
-        transaction::TransactionChainLinkedValidator,
+        transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
     },
 };
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock, NewBlock};
@@ -76,6 +83,7 @@ use tari_transaction_components::{
     MicroMinotari,
     aggregated_body::AggregateBody,
     consensus::emission::Emission,
+    crypto_factories::CryptoFactories,
     key_manager::KeyManager,
     tari_amount::T,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
@@ -1803,4 +1811,162 @@ async fn an_unresolvable_spend_on_a_held_fork_is_banned_only_if_the_whole_fork_w
         "{err:?}"
     );
     assert!(err.get_ban_reason().is_none());
+}
+
+/// A chain with three outputs to spend at its tip `tip`, the transactions `A` and `B`, the aggregates `T1 = A + X1`
+/// and `T2 = A + X2` (`X1` and `X2` spending the same output), and blocks on `tip` mining `A`, `T1`, and `A` and `B`
+struct OverlappingAggregates {
+    store: BlockchainDatabase<TempDatabase>,
+    rules: BaseNodeConsensusManager,
+    a: Transaction,
+    b: Transaction,
+    t1: Transaction,
+    t2: Transaction,
+    block_a: Block,
+    block_t1: Block,
+    block_ab: Block,
+}
+
+impl OverlappingAggregates {
+    #[allow(clippy::arithmetic_side_effects)]
+    fn new() -> Self {
+        let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(Network::LocalNet);
+        let split = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![
+            MicroMinotari(200_000),
+            MicroMinotari(200_000),
+            MicroMinotari(200_000),
+        ]);
+        let (split_txs, split_outputs) = schema_to_transaction(&[split], &key_manager);
+        let (tip, _) = append_block(
+            &store,
+            &blocks[0],
+            vec![(*split_txs[0]).clone()],
+            &rules,
+            Difficulty::min(),
+            &key_manager,
+        )
+        .unwrap();
+        let spend = |output: &WalletOutput, value| {
+            let (txs, _) = schema_to_transaction(
+                &[txn_schema!(from: vec![output.clone()], to: vec![MicroMinotari(value)])],
+                &key_manager,
+            );
+            (*txs[0]).clone()
+        };
+        let a = spend(&split_outputs[0], 100_000);
+        let b = spend(&split_outputs[2], 100_000);
+        let aggregate = |x: Transaction| {
+            let mut tx = a.clone() + x;
+            tx.body.sort();
+            tx
+        };
+        let t1 = aggregate(spend(&split_outputs[1], 100_000));
+        let t2 = aggregate(spend(&split_outputs[1], 101_000));
+        let block_a = prepare_block(&store, &tip, vec![a.clone()], &rules, &key_manager);
+        let block_t1 = prepare_block(&store, &tip, vec![t1.clone()], &rules, &key_manager);
+        let block_ab = prepare_block(&store, &tip, vec![a.clone(), b.clone()], &rules, &key_manager);
+        Self {
+            store,
+            rules,
+            a,
+            b,
+            t1,
+            t2,
+            block_a,
+            block_t1,
+            block_ab,
+        }
+    }
+
+    /// Adds `block` from its compact announcement, with `pooled` in our mempool and a peer that answers with
+    /// `peer_txs`, and returns how many times the full block was requested
+    async fn full_block_requests(self, pooled: Vec<Transaction>, peer_txs: Vec<Transaction>, block: Block) -> usize {
+        let Self { store, rules, .. } = self;
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(TransactionFullValidator::new(
+                CryptoFactories::default(),
+                false,
+                store.clone(),
+                rules.clone(),
+            )),
+        );
+        for tx in pooled {
+            assert_eq!(
+                mempool.insert(Arc::new(tx)).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
+
+        let full_block_requests = Arc::new(AtomicUsize::new(0));
+        let counter = full_block_requests.clone();
+        let served = block.clone();
+        let (request_sender, mut request_receiver) = reply_channel::unbounded();
+        tokio::spawn(async move {
+            while let Some(request_context) = request_receiver.next().await {
+                let ((request, _), reply_tx) = request_context.split();
+                let response = match request {
+                    NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { .. } => {
+                        NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
+                            FetchMempoolTransactionsResponse {
+                                transactions: peer_txs.iter().cloned().map(Arc::new).collect(),
+                                not_found: vec![],
+                            },
+                        )
+                    },
+                    _ => {
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        NodeCommsResponse::Block(Box::new(Some(served.clone())))
+                    },
+                };
+                let _ignore = reply_tx.send(Ok(response));
+            }
+        });
+        let mut handlers = new_handlers_with_requests(&store, mempool, rules, request_sender);
+        handlers
+            .handle_new_block_message(NewBlock::from(&block), NodeId::default())
+            .await
+            .unwrap();
+        assert_eq!(store.fetch_tip_header().unwrap().hash(), &block.hash());
+        full_block_requests.load(Ordering::SeqCst)
+    }
+}
+
+/// Pool transactions that share a kernel with the block's transactions, or hold kernels the block does not, are left
+/// out of the rebuilt block, so it is rebuilt from the mempool without fetching the full block.
+#[tokio::test]
+async fn overlapping_kernel_aggregates_do_not_force_full_block_fallback_in_reconcile_block() {
+    let txs = OverlappingAggregates::new();
+    let (a, block_a) = (txs.a.clone(), txs.block_a.clone());
+    assert_eq!(txs.full_block_requests(vec![a], vec![], block_a).await, 0);
+
+    let txs = OverlappingAggregates::new();
+    let (pooled, block_a) = (vec![txs.a.clone(), txs.t1.clone()], txs.block_a.clone());
+    assert_eq!(txs.full_block_requests(pooled, vec![], block_a).await, 0);
+
+    let txs = OverlappingAggregates::new();
+    let (pooled, block_a) = (vec![txs.a.clone(), txs.t1.clone(), txs.t2.clone()], txs.block_a.clone());
+    assert_eq!(txs.full_block_requests(pooled, vec![], block_a).await, 0);
+
+    // Accepted cost of taking the fewest kernels first: for a block that mined the aggregate T1 while A is pooled, A
+    // is taken, X1 stays missing and the full block is fetched
+    let txs = OverlappingAggregates::new();
+    let (pooled, block_t1) = (
+        vec![txs.a.clone(), txs.t1.clone(), txs.t2.clone()],
+        txs.block_t1.clone(),
+    );
+    assert_eq!(txs.full_block_requests(pooled, vec![], block_t1).await, 1);
+}
+
+/// A peer that answers a request for the block's missing transactions with overlapping ones (and one holding a kernel
+/// we did not ask for) does not force a full-block fetch: only a disjoint set of them goes into the rebuilt block.
+#[tokio::test]
+async fn overlapping_transactions_from_a_peer_are_not_all_put_in_the_rebuilt_block() {
+    let txs = OverlappingAggregates::new();
+    let mut a_and_b = txs.a.clone() + txs.b.clone();
+    a_and_b.body.sort();
+    let peer_txs = vec![txs.a.clone(), txs.t1.clone(), txs.b.clone(), a_and_b];
+    let block_ab = txs.block_ab.clone();
+    assert_eq!(txs.full_block_requests(vec![], peer_txs, block_ab).await, 0);
 }

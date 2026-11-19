@@ -115,7 +115,10 @@ impl DualAddress {
                 features.set(TariAddressFeatures::PAYMENT_ID, true);
                 MaxSizeBytes::try_from(data).map_err(|_| TariAddressError::PaymentIdTooLarge)?
             },
-            None => MaxSizeBytes::empty(),
+            None => {
+                features.set(TariAddressFeatures::PAYMENT_ID, false);
+                MaxSizeBytes::empty()
+            },
         };
         Ok(Self {
             network,
@@ -769,5 +772,33 @@ mod test {
                 INTERNAL_DUAL_BASE58_MIN_SIZE
             );
         }
+    }
+
+    #[test]
+    fn new_clears_payment_id_feature_when_payment_id_is_none() {
+        let mut rng = rand::rng();
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+
+        let with_payment_id = DualAddress::new(
+            view_key.clone(),
+            spend_key.clone(),
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(vec![1, 2, 3]),
+        )
+        .unwrap();
+        assert!(with_payment_id.features().contains(TariAddressFeatures::PAYMENT_ID));
+
+        let without_payment_id = DualAddress::new(
+            view_key,
+            spend_key,
+            Network::Esmeralda,
+            with_payment_id.features(),
+            None,
+        )
+        .unwrap();
+        assert!(!without_payment_id.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert!(without_payment_id.get_memo_field_payment_id_bytes().is_empty());
     }
 }
