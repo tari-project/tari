@@ -88,6 +88,10 @@ pub const LEDGER_EPHEMERAL_NONCE_BRANCH: &str = "ledger_ephemeral_nonce";
 ///
 /// Display/parse form: `"code-template-author"`
 pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
+/// String prefix for `TariKeyId::PayloadAuth` entries.
+///
+/// Display/parse form: `"payload_auth.<index>"` where `<index>` is a non-negative decimal integer.
+pub const PAYLOAD_AUTH_BRANCH: &str = "payload_auth";
 
 #[derive(Default, Clone, Serialize, Eq, PartialEq, borsh::BorshSerialize)]
 /// Identifiers for different logical key types used by Tari components.
@@ -206,6 +210,17 @@ pub enum TariKeyId {
     LedgerEphemeralNonce {
         /// The issuer supplied handle naming the reserved nonce.
         handle: u64,
+    },
+    /// The key that authenticates offline-signing payloads, derived from the spend key at `index`. Only a wallet
+    /// holding the spend key can derive it; other wallets import it, and the key manager resolves this id to the
+    /// imported key when the index matches.
+    ///
+    /// String form: `payload_auth.<index>`
+    ///
+    /// Appended last for the same borsh ordering reason as `LedgerEphemeralNonce`.
+    PayloadAuth {
+        /// Which payload key, so one can be retired by refusing its index.
+        index: u64,
     },
 }
 
@@ -354,6 +369,10 @@ impl FromStr for TariKeyId {
                         .map_err(|_| "Invalid ledger ephemeral nonce handle".to_string())?;
                     Ok(TariKeyId::LedgerEphemeralNonce { handle })
                 },
+                // `check_key_string` has checked the format and the index
+                PAYLOAD_AUTH_BRANCH => Ok(TariKeyId::PayloadAuth {
+                    index: parts.get(1).and_then(|index| index.parse().ok()).unwrap_or_default(),
+                }),
                 _ => Err("Wrong generic format".to_string()),
             },
         }
@@ -455,6 +474,15 @@ fn check_key_string(id: &str) -> Result<(), String> {
                     .map_err(|_| "Invalid ledger ephemeral nonce handle".to_string())?;
                 return Ok(());
             },
+            PAYLOAD_AUTH_BRANCH => {
+                let Some(index) = tail.filter(|t| !t.contains('.')) else {
+                    return Err("Wrong payload auth format".to_string());
+                };
+                index
+                    .parse::<u64>()
+                    .map_err(|_| "Invalid payload auth index".to_string())?;
+                return Ok(());
+            },
             _ => return Err("Wrong generic format".to_string()),
         };
     }
@@ -491,6 +519,9 @@ pub enum TariKeyIdRaw {
     LedgerEphemeralNonce {
         handle: u64,
     },
+    PayloadAuth {
+        index: u64,
+    },
 }
 
 impl ValidatedDecode for TariKeyId {
@@ -522,6 +553,7 @@ impl ValidatedDecode for TariKeyId {
             TariKeyIdRaw::Encrypted { encrypted, key } => TariKeyId::Encrypted { encrypted, key },
             TariKeyIdRaw::LedgerKey { branch, index } => TariKeyId::LedgerKey { branch, index },
             TariKeyIdRaw::LedgerEphemeralNonce { handle } => TariKeyId::LedgerEphemeralNonce { handle },
+            TariKeyIdRaw::PayloadAuth { index } => TariKeyId::PayloadAuth { index },
         };
         check_key_string(&key_id.to_string())?;
         Ok(key_id)
@@ -566,6 +598,7 @@ impl fmt::Display for TariKeyId {
             TariKeyId::LedgerEphemeralNonce { handle } => {
                 write!(f, "{LEDGER_EPHEMERAL_NONCE_BRANCH}.{}", handle)
             },
+            TariKeyId::PayloadAuth { index } => write!(f, "{PAYLOAD_AUTH_BRANCH}.{index}"),
         }
     }
 }
@@ -764,6 +797,29 @@ mod tests {
         }
     }
 
+    #[test]
+    fn roundtrip_payload_auth() {
+        for index in [0u64, 1, u64::MAX] {
+            let key_id = TariKeyId::PayloadAuth { index };
+            let s = key_id.to_string();
+            assert_eq!(s, format!("payload_auth.{index}"));
+            assert_eq!(TariKeyId::from_str(&s).unwrap(), key_id);
+            let json = serde_json::to_string(&key_id).unwrap();
+            assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), key_id, "{json}");
+            let bytes = borsh::to_vec(&key_id).unwrap();
+            assert_eq!(TariKeyId::try_from_slice(&bytes).unwrap(), key_id);
+            // It carries no secret, so it is not redacted
+            assert_eq!(key_id.redacted(), s);
+        }
+        assert_eq!(
+            borsh::to_vec(&TariKeyId::PayloadAuth { index: 1 })
+                .unwrap()
+                .first()
+                .copied(),
+            Some(10u8)
+        );
+    }
+
     /// The enum is `borsh` encoded by variant declaration order, so appending `LedgerEphemeralNonce` must not have
     /// moved any existing variant. A stored key id that no longer decodes to what it was written as is silent
     /// wallet corruption, so pin the encoding rather than only the round trip.
@@ -886,6 +942,19 @@ mod tests {
             TariKeyId::from_str("ledger_ephemeral_nonce.notnumber").unwrap_err(),
             "Invalid ledger ephemeral nonce handle"
         );
+        // Payload auth wrong formats
+        assert_eq!(
+            TariKeyId::from_str("payload_auth").unwrap_err(),
+            "Wrong payload auth format"
+        );
+        assert_eq!(
+            TariKeyId::from_str("payload_auth.1.2").unwrap_err(),
+            "Wrong payload auth format"
+        );
+        assert_eq!(
+            TariKeyId::from_str("payload_auth.notnumber").unwrap_err(),
+            "Invalid payload auth index"
+        );
         // Unknown branch
         assert_eq!(
             TariKeyId::from_str("unknown.branch").unwrap_err(),
@@ -921,6 +990,7 @@ mod tests {
             },
             ledger.clone(),
             TariKeyId::LedgerEphemeralNonce { handle: 9 },
+            TariKeyId::PayloadAuth { index: 3 },
             // `Derived` wrapping a single-token key id, which the legacy key conversion produces (a legacy
             // `derived.managed.comms.0` becomes `derived.spend_key`), also nested in the other wrapping variants
             TariKeyId::Derived {
@@ -1065,6 +1135,12 @@ mod tests {
                 "ledger_ephemeral_nonce.",
                 "ledger_ephemeral_nonce.-1",
                 "ledger_ephemeral_nonce.18446744073709551616",
+                "payload_auth",
+                "payload_auth.",
+                "payload_auth.-1",
+                "payload_auth.1.2",
+                "payload_auth.0x1",
+                "payload_auth.18446744073709551616",
             ]
             .iter()
             .map(|s| s.to_string()),
