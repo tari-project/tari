@@ -112,3 +112,51 @@ Feature: Offline One-Sided Transaction Signing
     Then all nodes are at height 9
     # Step 4: Verify receiving wallet has confirmed funds
     When I wait for wallet WALLET_RECEIVER to have at least 100000 uT
+
+  @payload-key
+  Scenario: Offline signing with a payload key imported into the view wallet
+    Given I have a seed node NODE
+    When I have wallet WALLET_SENDER connected to all seed nodes
+    When I have wallet WALLET_RECEIVER connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_SENDER
+    When mining node MINER mines 4 blocks
+    Then all nodes are at height 4
+    When I wait for wallet WALLET_SENDER to have at least 1002000 uT
+    # The signer derives payload key 1 from the spend key and exports it; from then on it is strict by default
+    Then I initialize standalone offline signer OFFLINE_SIGNER from wallet WALLET_SENDER seed words
+    Then I export payload key 1 from standalone offline signer OFFLINE_SIGNER
+    Then I export wallet WALLET_SENDER view and spend keys as SENDER_KEYS
+    Then I create view wallet VIEW_WALLET from view and spend keys SENDER_KEYS on node NODE
+    When I wait for wallet VIEW_WALLET to have at least 1002000 uT
+    # The view wallet imports the key with its CLI command, then restarts and loads it from its database
+    Then I import payload key 1 from standalone offline signer OFFLINE_SIGNER into wallet VIEW_WALLET
+    When I wait for wallet VIEW_WALLET to have at least 1002000 uT
+    When I prepare an offline one-sided transaction of 100000 uT from wallet VIEW_WALLET to wallet WALLET_RECEIVER at fee 20
+    Then the prepared offline signing payload is signed with payload key 1
+    # Both signers check the payload key against their own spend key
+    Then I sign the prepared transaction using standalone offline signer OFFLINE_SIGNER accepting payload key 1
+    Then I sign the prepared transaction using wallet WALLET_SENDER requiring payload key 1
+    When I broadcast the signed transaction via wallet VIEW_WALLET
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 9
+    When I wait for wallet WALLET_RECEIVER to have at least 100000 uT
+
+  @payload-key @security
+  Scenario: Strict signers refuse a payload signed with the view key
+    Given I have a seed node NODE
+    When I have wallet WALLET_SENDER connected to all seed nodes
+    When I have wallet WALLET_RECEIVER connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_SENDER
+    When mining node MINER mines 4 blocks
+    Then all nodes are at height 4
+    When I wait for wallet WALLET_SENDER to have at least 1002000 uT
+    Then I initialize standalone offline signer OFFLINE_SIGNER from wallet WALLET_SENDER seed words
+    Then I export payload key 1 from standalone offline signer OFFLINE_SIGNER
+    Then I export wallet WALLET_SENDER view and spend keys as SENDER_KEYS
+    # No payload key is imported, so the view wallet signs with the view key
+    Then I create view wallet VIEW_WALLET from view and spend keys SENDER_KEYS on node NODE
+    When I wait for wallet VIEW_WALLET to have at least 1002000 uT
+    When I prepare an offline one-sided transaction of 100000 uT from wallet VIEW_WALLET to wallet WALLET_RECEIVER at fee 20
+    Then the prepared offline signing payload is signed with the view key
+    Then standalone offline signer OFFLINE_SIGNER refuses the prepared transaction as signed with the view key
+    Then wallet WALLET_SENDER requiring payload key 1 refuses to sign the prepared transaction
