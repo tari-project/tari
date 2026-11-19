@@ -151,8 +151,10 @@ To set it up:
    `--payload-key-index <n>` (repeatable) accepts the given indices instead for that run.
    `--require-payload-key` turns the same check on before any key has been exported (with no index, it refuses
    everything). `--allow-view-key` accepts view key payloads again for one run, and cannot be combined with the other
-   two; a payload signed with a payload key the signer retired or never exported is still refused. A console wallet that signs offline payloads does the same with `require_payload_key = true` and
-   `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config; setting the indices alone turns it on.
+   two; once a payload key has been exported, a payload signed with a payload key the signer retired or never
+   exported is still refused. A console wallet that signs offline payloads does the same with
+   `require_payload_key = true` and `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config;
+   setting the indices alone turns it on.
 
 Before showing the summary the signer checks the payload's expiry, checks its signing key against these settings,
 and verifies its signature, so a payload it would refuse is never shown for approval. The summary then says which key
@@ -176,7 +178,8 @@ minotari_offline_signer clear
 ```
 
 This also removes the recorded payload key indices, so after `clear` and `init` the signer accepts view key payloads
-again. Export a payload key again (or pass `--require-payload-key`) to turn strict mode back on.
+again, and payload keys retired before the clear are accepted again too, because the record of them is gone. Export
+a payload key again (or pass `--require-payload-key`) to turn strict mode back on.
 
 ## Commands
 
@@ -214,8 +217,8 @@ again. Export a payload key again (or pass `--require-payload-key`) to turn stri
   has been exported)
 - `--payload-key-index`: A payload key index to accept, in place of the exported ones; repeat for more. Implies
   `--require-payload-key`
-- `--allow-view-key`: Accept payloads signed with the view key even after a payload key has been exported (a retired
-  or never-exported payload key is still refused)
+- `--allow-view-key`: Accept payloads signed with the view key even after a payload key has been exported (once a
+  payload key has been exported, a retired or never-exported payload key is still refused)
 
 ### `export-payload-key` Command
 

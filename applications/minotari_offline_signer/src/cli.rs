@@ -185,8 +185,8 @@ pub struct SignArgs {
     #[clap(long = "payload-key-index")]
     pub payload_key_indices: Vec<u64>,
 
-    /// Accept payloads signed with the shared view key, even after a payload key has been exported. Payloads signed
-    /// with a payload key this signer retired or never exported are still refused
+    /// Accept payloads signed with the shared view key, even after a payload key has been exported. Once a payload key
+    /// has been exported, payloads signed with a payload key this signer retired or never exported are still refused
     #[clap(long, conflicts_with_all = ["require_payload_key", "payload_key_indices"])]
     pub allow_view_key: bool,
 }
@@ -616,8 +616,8 @@ fn clear_keystore() -> Result<()> {
     // Prompt for confirmation
     println!("WARNING: This will permanently delete all stored keys!");
     println!(
-        "It also resets payload key strict mode: after 'init', the signer accepts view key payloads again until a \
-         payload key is exported (or --require-payload-key is given)."
+        "It also resets payload key strict mode: after 'init', the signer accepts view key payloads, and payload keys \
+         retired before the clear, again until a payload key is exported (or --require-payload-key is given)."
     );
     print!("Are you sure you want to continue? [y/N]: ");
     std::io::Write::flush(&mut std::io::stdout())?;

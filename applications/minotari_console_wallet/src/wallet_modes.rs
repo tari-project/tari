@@ -281,6 +281,7 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
+            warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
             let grpc = WalletGrpcServer::new(wallet.clone());
 
             let mut tls_identity = None;
@@ -432,6 +433,7 @@ pub fn grpc_mode(
             });
             wallet.shutdown_signal = grpc_shutdown.to_signal();
 
+            warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
             let grpc = WalletGrpcServer::new(wallet.clone());
             let auth = config.grpc_authentication.clone();
 
@@ -467,6 +469,18 @@ pub fn grpc_mode(
 /// reading a stream cannot hold the wallet's shutdown drain until it times out.
 const GRPC_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
 
+/// The gRPC prepare endpoints sign with the payload key, so without authentication anyone who can reach the port can
+/// produce payloads a strict signer accepts. Called before gRPC is spawned and before the TUI takes the terminal, so
+/// the warning is seen.
+fn warn_if_payload_key_without_grpc_auth(auth_config: &GrpcAuthentication, wallet: &WalletSqlite) {
+    if matches!(auth_config, GrpcAuthentication::None) && wallet.key_manager_service.get_payload_auth_key().is_some() {
+        const WARNING: &str = "a payload key is loaded and gRPC has no authentication: anyone that can reach the gRPC \
+                               port can prepare payloads signed with it";
+        warn!(target: LOG_TARGET, "{WARNING}");
+        eprintln!("WARNING: {WARNING}");
+    }
+}
+
 async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
@@ -479,14 +493,6 @@ async fn run_grpc(
     println!("{CUCUMBER_TEST_MARKER_A}");
 
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_listener_addr}");
-    // The gRPC prepare endpoints sign with the payload key, so without authentication anyone who can reach the port can
-    // produce payloads a strict signer accepts
-    if matches!(auth_config, GrpcAuthentication::None) && wallet.key_manager_service.get_payload_auth_key().is_some() {
-        const WARNING: &str = "a payload key is loaded and gRPC has no authentication: any local process that can \
-                               reach the gRPC port can prepare payloads signed with it";
-        warn!(target: LOG_TARGET, "{WARNING}");
-        eprintln!("WARNING: {WARNING}");
-    }
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
     let auth = ServerAuthenticationInterceptor::new(auth_config)
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;
