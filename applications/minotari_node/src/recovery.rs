@@ -276,10 +276,13 @@ mod test {
     }
 
     /// The store being rebuilt carries the genesis block of the node's network, so it has to be read with that
-    /// network's rules. Esmeralda stands in for every network other than LocalNet.
+    /// network's rules. The default network of the build stands in for every network other than LocalNet, because
+    /// only the genesis blocks of the build's own networks pass the checks made when a store is opened.
     #[tokio::test]
     async fn rebuild_reads_a_store_of_a_network_other_than_localnet() {
-        let rules = BaseNodeConsensusManager::builder(Network::Esmeralda).build().unwrap();
+        let network = Network::default();
+        assert_ne!(network, Network::LocalNet);
+        let rules = BaseNodeConsensusManager::builder(network).build().unwrap();
         let source_dir = tempfile::tempdir().unwrap();
         let target_dir = tempfile::tempdir().unwrap();
         {
