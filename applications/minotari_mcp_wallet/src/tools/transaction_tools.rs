@@ -355,7 +355,7 @@ impl McpTool for TransactionAnalysisTool {
                 },
                 "limit": {
                     "type": "number",
-                    "description": "Maximum number of transactions to read (default and maximum: 512)",
+                    "description": "Maximum number of transactions in the period to analyze (default and maximum: 512)",
                     "minimum": 1,
                     "maximum": 512
                 }
@@ -380,22 +380,22 @@ impl McpTool for TransactionAnalysisTool {
             block_height: None,
         });
 
-        let mut client = (*self.grpc_client).clone();
-        let response_stream = client.get_completed_transactions(request).await?.into_inner();
-        let (responses, truncated) =
-            node_rpc::collect_limited(response_stream, limit, |tx_response| tx_response.transaction.clone()).await?;
-
         let cutoff_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs()
             .saturating_sub(days_back.saturating_mul(24 * 60 * 60));
 
-        let transactions: Vec<_> = responses
-            .into_iter()
-            .flatten()
-            .filter(|transaction| transaction.timestamp >= cutoff_timestamp)
-            .collect();
+        // The wallet returns transactions in no date order, so filter while reading and cap only those in the window
+        let mut client = (*self.grpc_client).clone();
+        let response_stream = client.get_completed_transactions(request).await?.into_inner();
+        let (transactions, truncated) = node_rpc::collect_limited(response_stream, limit, |tx_response| {
+            tx_response
+                .transaction
+                .clone()
+                .filter(|transaction| transaction.timestamp >= cutoff_timestamp)
+        })
+        .await?;
 
         if transactions.is_empty() {
             return Ok(json!({

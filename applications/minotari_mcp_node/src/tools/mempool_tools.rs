@@ -253,7 +253,7 @@ impl AnalyzeMempoolTool {
             truncated,
             ..Default::default()
         };
-        for (tx_fee, tx_weight) in fee_and_weight.into_iter().flatten() {
+        for (tx_fee, tx_weight) in fee_and_weight {
             samples.fee_distribution.push(tx_fee);
             samples.weight_distribution.push(tx_weight);
             samples.total_fees = samples.total_fees.saturating_add(tx_fee);

@@ -559,7 +559,7 @@ pub async fn get_completed_transactions(mut client: Client, params: &Value) -> M
         .await?
         .into_inner();
     #[allow(clippy::cast_possible_wrap)]
-    let (transactions, truncated) = collect_limited(stream, limit, |tx_response| {
+    let (transactions, truncated): (Vec<Value>, _) = collect_limited(stream, limit, |tx_response| {
         tx_response.transaction.as_ref().map(|transaction| {
             json!({
                 "tx_id": transaction.tx_id,
@@ -599,7 +599,6 @@ pub async fn get_completed_transactions(mut client: Client, params: &Value) -> M
         })
     })
     .await?;
-    let transactions: Vec<Value> = transactions.into_iter().flatten().collect();
 
     let inbound_count = transactions
         .iter()

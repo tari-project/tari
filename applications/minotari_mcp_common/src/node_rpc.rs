@@ -44,29 +44,50 @@ pub const MAX_MEMPOOL_TX_LIMIT: u64 = 1000;
 
 type Client = BaseNodeGrpcClient<Channel>;
 
-/// Read at most `cap` messages from a server stream, mapping each as it arrives so only `f`'s output is kept
+/// Where the collectors read messages from: a gRPC server stream, or a queue in tests
+pub(crate) trait MessageSource<T> {
+    async fn next_message(&mut self) -> McpResult<Option<T>>;
+}
+
+impl<T> MessageSource<T> for Streaming<T> {
+    async fn next_message(&mut self) -> McpResult<Option<T>> {
+        Ok(self.message().await?)
+    }
+}
+
+/// Read messages until `f` has returned `Some` for `cap` of them, mapping each as it arrives so only `f`'s output is
+/// kept. Messages `f` skips do not count toward `cap`.
+async fn collect_from<T, U>(
+    source: &mut impl MessageSource<T>,
+    cap: usize,
+    mut f: impl FnMut(&T) -> Option<U>,
+) -> McpResult<Vec<U>> {
+    let mut kept = Vec::new();
+    while kept.len() < cap &&
+        let Some(item) = source.next_message().await?
+    {
+        kept.extend(f(&item));
+    }
+    Ok(kept)
+}
+
+/// [collect_from] a server stream
 pub(crate) async fn collect_map<T, U>(
     mut stream: Streaming<T>,
     cap: usize,
-    mut f: impl FnMut(&T) -> U,
+    f: impl FnMut(&T) -> Option<U>,
 ) -> McpResult<Vec<U>> {
-    let mut items = Vec::new();
-    while items.len() < cap &&
-        let Some(item) = stream.message().await?
-    {
-        items.push(f(&item));
-    }
-    Ok(items)
+    collect_from(&mut stream, cap, f).await
 }
 
-/// [collect_map] for up to `limit` messages, and whether the stream had more
+/// [collect_map] for up to `limit` kept items, and whether the stream had more
 pub async fn collect_limited<T, U>(
-    stream: Streaming<T>,
+    mut stream: Streaming<T>,
     limit: u64,
-    f: impl FnMut(&T) -> U,
+    f: impl FnMut(&T) -> Option<U>,
 ) -> McpResult<(Vec<U>, bool)> {
     let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-    let items = collect_map(stream, limit.saturating_add(1), f).await?;
+    let items = collect_from(&mut stream, limit.saturating_add(1), f).await?;
     Ok(split_limited(items, limit))
 }
 
@@ -212,7 +233,7 @@ pub async fn list_headers(mut client: Client, params: &Value) -> McpResult<Value
     let stream = client.list_headers(request).await?.into_inner();
 
     let headers: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |header_response| {
-        json!({
+        Some(json!({
             "height": header_response.header.as_ref().map(|h| h.height).unwrap_or(0),
             "hash": header_response.header.as_ref()
                 .map(|h| hex::encode(&h.hash))
@@ -227,7 +248,7 @@ pub async fn list_headers(mut client: Client, params: &Value) -> McpResult<Value
             "version": header_response.header.as_ref()
                 .map(|h| h.version)
                 .unwrap_or(0),
-        })
+        }))
     })
     .await?;
 
@@ -280,10 +301,7 @@ pub async fn get_blocks(mut client: Client, params: &Value) -> McpResult<Value> 
     let blocks: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |historical_block| {
         historical_block.block.as_ref().map(block_summary)
     })
-    .await?
-    .into_iter()
-    .flatten()
-    .collect();
+    .await?;
 
     Ok(json!({
         "blocks": blocks,
@@ -354,7 +372,7 @@ pub async fn get_network_difficulty(mut client: Client, params: &Value) -> McpRe
     let stream = client.get_network_difficulty(request).await?.into_inner();
 
     let difficulties: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |difficulty_response| {
-        json!({
+        Some(json!({
             "height": difficulty_response.height,
             "difficulty": difficulty_response.difficulty,
             "adjusted_difficulty": difficulty_response.adjusted_difficulty,
@@ -364,7 +382,7 @@ pub async fn get_network_difficulty(mut client: Client, params: &Value) -> McpRe
             "sha3x_estimated_hash_rate": difficulty_response.sha3x_estimated_hash_rate,
             "monero_randomx_estimated_hash_rate": difficulty_response.monero_randomx_estimated_hash_rate,
             "tari_randomx_estimated_hash_rate": difficulty_response.tari_randomx_estimated_hash_rate,
-        })
+        }))
     })
     .await?;
 
@@ -389,13 +407,13 @@ pub async fn get_tokens_in_circulation(mut client: Client, params: &Value) -> Mc
         .into_inner();
 
     let circulation_data: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |value_response| {
-        json!({
+        Some(json!({
             "height": value_response.height,
             "mined_rewards": value_response.mined_rewards,
             "spendable_rewards": value_response.spendable_rewards,
             "spendable_pre_mine": value_response.spendable_pre_mine,
             "total_spendable": value_response.total_spendable,
-        })
+        }))
     })
     .await?;
 
@@ -423,7 +441,7 @@ pub async fn get_mempool_transactions(mut client: Client, params: &Value) -> Mcp
         .get_mempool_transactions(GetMempoolTransactionsRequest {})
         .await?
         .into_inner();
-    let (transactions, truncated) = collect_limited(stream, limit, |tx_response| {
+    let (transactions, truncated): (Vec<Value>, _) = collect_limited(stream, limit, |tx_response| {
         tx_response.transaction.as_ref().map(|transaction| {
             json!({
                 "offset": hex::encode(&transaction.offset),
@@ -452,7 +470,6 @@ pub async fn get_mempool_transactions(mut client: Client, params: &Value) -> Mcp
         })
     })
     .await?;
-    let transactions: Vec<Value> = transactions.into_iter().flatten().collect();
 
     Ok(json!({
         "transactions": transactions,
@@ -576,7 +593,7 @@ pub async fn list_connected_peers(mut client: Client) -> McpResult<Value> {
 pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
     let limit = limit_param(params, 50, MAX_STREAM_ITEMS as u64);
     let stream = client.get_peers(GetPeersRequest {}).await?.into_inner();
-    let (all_peers, truncated) = collect_limited(stream, limit, |peer_response| {
+    let (all_peers, truncated): (Vec<Value>, _) = collect_limited(stream, limit, |peer_response| {
         peer_response.peer.as_ref().map(|peer| {
             let mut info = peer_summary(peer);
             info["status"] = json!({
@@ -593,7 +610,6 @@ pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
         })
     })
     .await?;
-    let all_peers: Vec<Value> = all_peers.into_iter().flatten().collect();
 
     let connected_count = all_peers
         .iter()
@@ -813,10 +829,7 @@ async fn historical_blocks(stream: Streaming<minotari_node_grpc_client::grpc::Hi
     let blocks: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |historical_block| {
         historical_block.block.as_ref().map(block_summary)
     })
-    .await?
-    .into_iter()
-    .flatten()
-    .collect();
+    .await?;
     Ok(json!({
         "blocks": blocks,
         "count": blocks.len(),
@@ -838,10 +851,7 @@ pub async fn fetch_matching_utxos(mut client: Client, params: &Value) -> McpResu
             })
         })
     })
-    .await?
-    .into_iter()
-    .flatten()
-    .collect();
+    .await?;
 
     Ok(json!({
         "outputs": outputs,
@@ -913,6 +923,28 @@ mod tests {
         assert!(heights(&too_many).is_err());
         let hashes = json!({ "hashes": vec!["00"; MAX_STREAM_ITEMS + 1] });
         assert!(hex_list(&hashes, "hashes").is_err());
+    }
+
+    impl<T> MessageSource<T> for std::collections::VecDeque<T> {
+        async fn next_message(&mut self) -> McpResult<Option<T>> {
+            Ok(self.pop_front())
+        }
+    }
+
+    #[tokio::test]
+    async fn skipped_items_do_not_count_toward_the_cap() {
+        // 1000 items outside the window, then 3 inside it
+        let mut source: std::collections::VecDeque<u64> = (0..1000).chain([5000, 5001, 5002]).collect();
+        let kept = collect_from(&mut source, 3, |t| (*t >= 5000).then_some(*t))
+            .await
+            .unwrap();
+        assert_eq!(kept, vec![5000, 5001, 5002]);
+
+        let mut source: std::collections::VecDeque<u64> = (0..1000).chain([5000, 5001, 5002]).collect();
+        let kept = collect_from(&mut source, 2 + 1, |t| (*t >= 5000).then_some(*t))
+            .await
+            .unwrap();
+        assert_eq!(split_limited(kept, 2), (vec![5000, 5001], true));
     }
 
     #[test]
