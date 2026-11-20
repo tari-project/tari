@@ -392,7 +392,7 @@ async fn import_payload_key_into_wallet(world: &mut TariWorld, index: u64, signe
 #[then(expr = "the prepared offline signing payload is signed with payload key {int}")]
 async fn prepared_payload_is_signed_with_payload_key(world: &mut TariWorld, index: u64) {
     let payload = prepared_payload_json(world);
-    assert_eq!(payload.get("version"), Some(&serde_json::json!("6.0.0")), "{payload}");
+    assert_eq!(payload.get("version"), Some(&serde_json::json!("7.0.0")), "{payload}");
     assert_eq!(
         payload.get("payload_key_id"),
         Some(&serde_json::json!({ "PayloadAuth": { "index": index } })),
@@ -403,7 +403,7 @@ async fn prepared_payload_is_signed_with_payload_key(world: &mut TariWorld, inde
 #[then(expr = "the prepared offline signing payload is signed with the view key")]
 async fn prepared_payload_is_signed_with_the_view_key(world: &mut TariWorld) {
     let payload = prepared_payload_json(world);
-    assert_eq!(payload.get("version"), Some(&serde_json::json!("6.0.0")), "{payload}");
+    assert_eq!(payload.get("version"), Some(&serde_json::json!("7.0.0")), "{payload}");
     assert!(
         payload.get("payload_key_id").is_none_or(serde_json::Value::is_null),
         "{payload}"
@@ -671,5 +671,92 @@ async fn broadcast_signed_transaction(world: &mut TariWorld, wallet_name: String
                 )
             }))
         }
+    );
+}
+
+/// Change the signed transaction file on its way back and assert the wallet refuses it without touching its balance.
+/// `recipient` swaps the recorded recipient for the sender's own address, `change` inflates the change output and
+/// `version` removes the result's signature and marks the file as version 6, which was not signed.
+#[then(
+    expr = "broadcasting the signed transaction via wallet {word} with a tampered {word} fails with an integrity error"
+)]
+async fn broadcast_tampered_signed_transaction_fails(world: &mut TariWorld, wallet_name: String, field: String) {
+    let signed_json = world
+        .offline_signing_signed
+        .as_ref()
+        .expect("No signed transaction found: run the sign step first")
+        .clone();
+    let mut value: serde_json::Value = serde_json::from_str(&signed_json).expect("Failed to parse signed JSON");
+    assert!(
+        value.get("payload_signature").is_some_and(|s| !s.is_null()),
+        "the signed result carries no signature: {value}"
+    );
+    let set = |value: &mut serde_json::Value, path: &str, new_value: serde_json::Value| {
+        *value
+            .pointer_mut(path)
+            .unwrap_or_else(|| panic!("no {path} in the signed JSON")) = new_value;
+    };
+    match field.as_str() {
+        "recipient" => {
+            let sender = value
+                .pointer("/request/info/sender_address")
+                .expect("sender address")
+                .clone();
+            assert_ne!(value.pointer("/request/info/recipients/0/address"), Some(&sender));
+            set(&mut value, "/request/info/recipients/0/address", sender);
+        },
+        "change" => {
+            let change = value
+                .pointer("/signed_transaction/change_output/value")
+                .and_then(serde_json::Value::as_u64)
+                .expect("signed transaction has a change output");
+            set(
+                &mut value,
+                "/signed_transaction/change_output/value",
+                serde_json::json!(change.saturating_add(1_000_000_000_000)),
+            );
+        },
+        "version" => {
+            value.as_object_mut().unwrap().remove("payload_signature");
+            set(&mut value, "/version", serde_json::json!("6.0.0"));
+        },
+        other => panic!("Unknown field to tamper: {other}"),
+    }
+    let tampered = serde_json::to_string(&value).expect("Failed to re-serialise tampered signed JSON");
+
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let balance_before = client
+        .get_balance(grpc::GetBalanceRequest { payment_id: None })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let response = client
+        .broadcast_signed_one_sided_transaction(grpc::BroadcastSignedOneSidedTransactionRequest { request: tampered })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(
+        !response.is_success,
+        "Wallet {wallet_name} accepted a signed transaction with a tampered {field}"
+    );
+    assert!(
+        response.failure_message.contains("integrity"),
+        "Expected a signed transaction integrity error, got: {}",
+        response.failure_message
+    );
+
+    let balance_after = client
+        .get_balance(grpc::GetBalanceRequest { payment_id: None })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(
+        balance_before, balance_after,
+        "The rejected signed transaction changed the balance of wallet {wallet_name}"
+    );
+    println!(
+        "Wallet {wallet_name} rejected the tampered {field}: {}",
+        response.failure_message
     );
 }

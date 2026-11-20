@@ -36,6 +36,7 @@ pub use offline_signer::{
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
     verify_offline_payload,
+    verify_signed_result,
 };
 pub use payload_summary::{
     Confirmation,
@@ -3239,6 +3240,7 @@ mod test {
     /// Mutable access to the authenticated fields of every payload type.
     trait AuthFields {
         fn auth_fields(&mut self) -> (&mut Option<TariKeyId>, &mut u64);
+        fn version_and_signature(&mut self) -> (&mut semver::Version, &mut PayloadIntegritySignature);
     }
 
     macro_rules! impl_auth_fields {
@@ -3247,13 +3249,17 @@ mod test {
                 fn auth_fields(&mut self) -> (&mut Option<TariKeyId>, &mut u64) {
                     (&mut self.payload_key_id, &mut self.expires_at)
                 }
+
+                fn version_and_signature(&mut self) -> (&mut semver::Version, &mut PayloadIntegritySignature) {
+                    (&mut self.version, &mut self.payload_signature)
+                }
             }
         )*};
     }
     impl_auth_fields!(
         PrepareOneSidedTransactionForSigningResult,
-        crate::offline_signing::models::PrepareDepositMultisigTransactionResult,
-        crate::offline_signing::models::PrepareWithdrawMultisigTransactionResult
+        PrepareDepositMultisigTransactionResult,
+        PrepareWithdrawMultisigTransactionResult
     );
 
     /// `payload` was prepared with payload key #1; `sign` signs it under a policy.
@@ -3301,44 +3307,46 @@ mod test {
         tx_builder
     }
 
-    #[test]
-    fn deposit_multisig_payload_key_rules() {
-        let (spend, view) = wallets(Some(1));
+    /// A multisig deposit prepared by the view wallet `view`.
+    fn deposit_payload(spend: &KeyManager, view: &KeyManager) -> PrepareDepositMultisigTransactionResult {
         let bob = KeyManager::new_random().unwrap();
-        let payload = prepare_deposit_multisig_transaction(
-            &view,
+        prepare_deposit_multisig_transaction(
+            view,
             TxId::new_random(),
-            view_builder(&spend, &view),
+            view_builder(spend, view),
             MicroMinotari(5000),
             MemoField::new_empty(),
             OutputFeatures::default(),
             2,
             vec![spend.get_spend_key().pub_key, bob.get_spend_key().pub_key],
-            one_sided_address(&view),
+            one_sided_address(view),
             one_sided_address(&bob),
             None,
         )
-        .unwrap();
-        assert_payload_key_rules(&spend, payload, |payload, policy| {
-            sign_locked_deposit_multisig_transaction(
-                &spend,
-                create_consensus_manager().consensus_constants(0).clone(),
-                Network::LocalNet,
-                confirmed(PayloadSummary::from_multisig(payload)),
-                policy,
-            )
-            .map(|_| ())
-        });
+        .unwrap()
     }
 
-    #[test]
-    fn withdraw_multisig_payload_key_rules() {
-        let (spend, view) = wallets(Some(1));
+    fn sign_deposit_payload(
+        spend: &KeyManager,
+        payload: PrepareDepositMultisigTransactionResult,
+        policy: &PayloadKeyPolicy,
+    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
+        sign_locked_deposit_multisig_transaction(
+            spend,
+            create_consensus_manager().consensus_constants(0).clone(),
+            Network::LocalNet,
+            confirmed(PayloadSummary::from_multisig(payload)),
+            policy,
+        )
+    }
+
+    /// A multisig withdraw prepared by the view wallet `view`.
+    fn withdraw_payload(spend: &KeyManager, view: &KeyManager) -> PrepareWithdrawMultisigTransactionResult {
         let bob_address = one_sided_address(&KeyManager::new_random().unwrap());
-        let payload = prepare_withdraw_multisig_transaction(
-            &view,
+        prepare_withdraw_multisig_transaction(
+            view,
             TxId::new_random(),
-            view_builder(&spend, &view),
+            view_builder(spend, view),
             MicroMinotari(50_000),
             addressed_output_memo(
                 MemoField::default(),
@@ -3348,20 +3356,40 @@ mod test {
             )
             .unwrap(),
             OutputFeatures::default(),
-            one_sided_address(&view),
+            one_sided_address(view),
             bob_address,
             None,
         )
-        .unwrap();
-        assert_payload_key_rules(&spend, payload, |payload, policy| {
-            sign_locked_withdraw_multisig_transaction(
-                &spend,
-                create_consensus_manager().consensus_constants(0).clone(),
-                Network::LocalNet,
-                confirmed(PayloadSummary::from_withdraw_multisig(payload)),
-                policy,
-            )
-            .map(|_| ())
+        .unwrap()
+    }
+
+    fn sign_withdraw_payload(
+        spend: &KeyManager,
+        payload: PrepareWithdrawMultisigTransactionResult,
+        policy: &PayloadKeyPolicy,
+    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
+        sign_locked_withdraw_multisig_transaction(
+            spend,
+            create_consensus_manager().consensus_constants(0).clone(),
+            Network::LocalNet,
+            confirmed(PayloadSummary::from_withdraw_multisig(payload)),
+            policy,
+        )
+    }
+
+    #[test]
+    fn deposit_multisig_payload_key_rules() {
+        let (spend, view) = wallets(Some(1));
+        assert_payload_key_rules(&spend, deposit_payload(&spend, &view), |payload, policy| {
+            sign_deposit_payload(&spend, payload, policy).map(|_| ())
+        });
+    }
+
+    #[test]
+    fn withdraw_multisig_payload_key_rules() {
+        let (spend, view) = wallets(Some(1));
+        assert_payload_key_rules(&spend, withdraw_payload(&spend, &view), |payload, policy| {
+            sign_withdraw_payload(&spend, payload, policy).map(|_| ())
         });
     }
 
@@ -3371,5 +3399,340 @@ mod test {
         assert_payload_key_rules(&spend, prepare(&spend, &view), |payload, policy| {
             sign_one_sided(&spend, payload, policy).map(|_| ())
         });
+    }
+
+    // -----------------------------------------------------------------------
+    // Signed results on their way back to the online wallet
+    // -----------------------------------------------------------------------
+
+    use crate::offline_signing::{
+        models::{
+            PayloadIntegritySignature,
+            PrepareDepositMultisigTransactionResult,
+            PrepareWithdrawMultisigTransactionResult,
+            SignedOneSidedDepositMultisigTransactionResult,
+            SignedOneSidedWithdrawMultisigTransactionResult,
+            SignedResultKind,
+            SignedTransactionResult,
+            TransactionResult,
+            borsh_canonical_signed,
+            get_latest_version,
+        },
+        verify_signed_result,
+    };
+
+    /// A view-only wallet over `spend` with no payload key: what any holder of the view key can build.
+    fn view_key_holder(spend: &KeyManager) -> KeyManager {
+        create_view_key_manager(ViewWallet::new(
+            spend.get_spend_key().pub_key,
+            spend.get_private_view_key(),
+            None,
+        ))
+        .unwrap()
+    }
+
+    fn to_value(result: &impl TransactionResult) -> serde_json::Value {
+        serde_json::from_str(&result.to_json().unwrap()).unwrap()
+    }
+
+    /// The signed result as the online wallet reads it back from the file.
+    fn read_back(result: &impl TransactionResult) -> SignedTransactionResult {
+        SignedTransactionResult::from_json(&result.to_json().unwrap()).unwrap()
+    }
+
+    /// The error `wallet` refuses the file `value` with.
+    fn result_refusal(wallet: &KeyManager, value: &serde_json::Value) -> String {
+        let result = SignedTransactionResult::from_json(&value.to_string()).unwrap();
+        let err = match verify_signed_result(wallet, &result) {
+            Ok(()) => panic!("the result was accepted"),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("integrity check failed"), "{err}");
+        err
+    }
+
+    /// Every change in `tampers` (a JSON pointer and the new value) makes `wallet` refuse the file.
+    fn assert_tampers_refused(
+        wallet: &KeyManager,
+        original: &serde_json::Value,
+        tampers: &[(&str, serde_json::Value)],
+    ) {
+        for (path, new_value) in tampers {
+            let mut value = original.clone();
+            *value.pointer_mut(path).unwrap_or_else(|| panic!("no {path}")) = new_value.clone();
+            assert_ne!(&value, original, "{path}");
+            result_refusal(wallet, &value);
+        }
+    }
+
+    /// Sets `payload` back to version `major` and signs it again, as a wallet of that version wrote it.
+    fn as_version<P: OfflinePayload + AuthFields>(view: &KeyManager, payload: &mut P, major: u64) {
+        *payload.version_and_signature().0 = semver::Version::new(major, 0, 0);
+        if major < 6 {
+            let (key_id, expires_at) = payload.auth_fields();
+            *key_id = None;
+            *expires_at = 0;
+        }
+        let canonical = payload.canonical_bytes().unwrap();
+        let signing_key = payload.payload_key_id().cloned().unwrap_or(TariKeyId::ViewKey);
+        *payload.version_and_signature().1 = sign_payload(view, &signing_key, &canonical).unwrap();
+    }
+
+    fn sign_default(
+        spend: &KeyManager,
+        payload: PrepareOneSidedTransactionForSigningResult,
+    ) -> SignedOneSidedTransactionResult {
+        sign_one_sided(spend, payload, &PayloadKeyPolicy::default()).unwrap()
+    }
+
+    #[test]
+    fn a_signed_result_verifies_under_the_key_that_signed_its_request() {
+        for index in [None, Some(1)] {
+            let (spend, view) = wallets(index);
+            let signed = sign_default(&spend, prepare(&spend, &view));
+            assert_eq!(signed.version, semver::Version::new(7, 0, 0));
+            assert_eq!(signed.version, get_latest_version());
+            assert!(signed.payload_signature.is_some());
+
+            verify_signed_result(&view, &read_back(&signed)).unwrap();
+            // A wallet with the spend key derives every payload key
+            verify_signed_result(&spend, &read_back(&signed)).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_changed_signed_result_is_refused() {
+        for index in [None, Some(1)] {
+            let (spend, view) = wallets(index);
+            let original = to_value(&sign_default(&spend, prepare(&spend, &view)));
+            let other_address = one_sided_address(&KeyManager::new_random().unwrap()).to_base58();
+            let expires_at = original["request"]["expires_at"].as_u64().unwrap();
+            let change_hash = original["signed_transaction"]["change_hashes"][0].clone();
+
+            assert_tampers_refused(&view, &original, &[
+                ("/request/info/recipients/0/address", other_address.into()),
+                ("/request/info/recipients/0/amount", 4_000.into()),
+                ("/request/tx_id", 1.into()),
+                ("/request/expires_at", expires_at.saturating_add(1).into()),
+                ("/signed_transaction/tx_id", 1.into()),
+                ("/signed_transaction/change_output/value", 1_000_000_000.into()),
+                ("/signed_transaction/outputs/0/value", 1_000_000_000.into()),
+                ("/signed_transaction/change_output", serde_json::Value::Null),
+                ("/signed_transaction/sent_hashes/0", change_hash),
+                ("/signed_transaction/change_hashes", serde_json::json!([])),
+                ("/signed_transaction/transaction/body/kernels/0/fee", 1.into()),
+            ]);
+        }
+    }
+
+    #[test]
+    fn a_signed_result_is_refused_with_another_signature() {
+        let (spend, view) = wallets(None);
+        let signed = sign_default(&spend, prepare(&spend, &view));
+        let value = to_value(&signed);
+
+        // The request's own signature in place of the result's
+        let mut borrowed = value.clone();
+        borrowed["payload_signature"] = borrowed["request"]["payload_signature"].clone();
+        result_refusal(&view, &borrowed);
+
+        // The result's bytes signed as another kind of result
+        let request_canonical = signed.request.canonical_bytes().unwrap();
+        let sign_as = |kind| {
+            let canonical = borsh_canonical_signed(
+                kind,
+                &signed.version,
+                &request_canonical,
+                &signed.request.payload_signature,
+                &signed.signed_transaction,
+            )
+            .unwrap();
+            let mut signed = signed.clone();
+            signed.payload_signature = Some(sign_payload(&view, &TariKeyId::ViewKey, &canonical).unwrap());
+            to_value(&signed)
+        };
+        result_refusal(&view, &sign_as(SignedResultKind::DepositMultisig));
+        // A withdraw has the fields of a one-sided payment and is read back as one
+        verify_signed_result(
+            &view,
+            &SignedTransactionResult::from_json(&sign_as(SignedResultKind::WithdrawMultisig).to_string()).unwrap(),
+        )
+        .unwrap();
+
+        // Another wallet's result
+        let (_, other_view) = wallets(None);
+        let err = result_refusal(&other_view, &value);
+        assert!(err.contains("not one this wallet signed"), "{err}");
+    }
+
+    /// The result is signed with the key that signed the request, and a wallet with a payload key accepts no other.
+    #[test]
+    fn a_wallet_with_a_payload_key_refuses_results_under_any_other_key() {
+        let (spend, view) = wallets(Some(1));
+        let signed = sign_default(&spend, prepare(&spend, &view));
+        let value = to_value(&signed);
+
+        // The same wallet without the key, or with another one, cannot check it
+        let err = result_refusal(&view_key_holder(&spend), &value);
+        assert!(err.contains("does not hold the key"), "{err}");
+        let other_index = view_key_holder(&spend);
+        other_index.set_payload_auth_key(Some((2, spend.get_private_key(&payload_key(2)).unwrap())));
+        let err = result_refusal(&other_index, &value);
+        assert!(err.contains("does not hold the key"), "{err}");
+
+        // A view-key holder changes the result and signs it again with the view key
+        let attacker = view_key_holder(&spend);
+        let mut forged = signed.clone();
+        forged.signed_transaction.tx_id = TxId::from(1u64);
+        let canonical = borsh_canonical_signed(
+            SignedResultKind::OneSided,
+            &forged.version,
+            &forged.request.canonical_bytes().unwrap(),
+            &forged.request.payload_signature,
+            &forged.signed_transaction,
+        )
+        .unwrap();
+        forged.payload_signature = Some(sign_payload(&attacker, &TariKeyId::ViewKey, &canonical).unwrap());
+        let err = result_refusal(&view, &to_value(&forged));
+        assert!(err.contains("the result's signature is invalid"), "{err}");
+
+        // A whole request and result made with the view key alone
+        let forged = sign_default(&spend, prepare(&spend, &attacker));
+        assert_eq!(forged.request.payload_key_id, None);
+        let err = result_refusal(&view, &to_value(&forged));
+        assert!(err.contains("signed with the view key"), "{err}");
+        // Known limit: a wallet that signs with the view key cannot tell this apart from its own
+        verify_signed_result(&attacker, &read_back(&forged)).unwrap();
+    }
+
+    /// Whether a result must be signed is read from its signed request, so the file cannot opt out.
+    #[test]
+    fn a_signed_result_cannot_be_downgraded() {
+        let (spend, view) = wallets(Some(1));
+        let mut value = to_value(&sign_default(&spend, prepare(&spend, &view)));
+
+        value.as_object_mut().unwrap().remove("payload_signature");
+        let err = result_refusal(&view, &value);
+        assert!(err.contains("must be signed"), "{err}");
+
+        value["version"] = "6.0.0".into();
+        let err = result_refusal(&view, &value);
+        assert!(err.contains("the result is version 6.0.0"), "{err}");
+
+        value["request"]["version"] = "6.0.0".into();
+        let err = result_refusal(&view, &value);
+        assert!(err.contains("not one this wallet signed"), "{err}");
+
+        // Without the payload key the request can only be signed again with the view key
+        let mut request = PrepareOneSidedTransactionForSigningResult::from_json(&value["request"].to_string()).unwrap();
+        request.payload_key_id = None;
+        resign(&view_key_holder(&spend), &mut request);
+        value["request"] = serde_json::from_str(&request.to_json().unwrap()).unwrap();
+        let err = result_refusal(&view, &value);
+        assert!(err.contains("signed with the view key"), "{err}");
+    }
+
+    /// A signer answers a version 5 or 6 request in that version and without a signature, so the wallet that wrote
+    /// the request can read the result. This wallet still accepts such a result for a request it signed.
+    #[test]
+    fn results_for_version_5_and_6_requests_are_unsigned_and_still_accepted() {
+        for (major, index) in [(5, None), (6, None), (6, Some(1))] {
+            let (spend, view) = wallets(index);
+            let mut payload = prepare(&spend, &view);
+            as_version(&view, &mut payload, major);
+            let signed = sign_default(&spend, payload);
+            assert_eq!(signed.version, semver::Version::new(major, 0, 0));
+            assert_eq!(signed.payload_signature, None);
+            let value = to_value(&signed);
+            let mut fields = value.as_object().unwrap().keys().collect::<Vec<_>>();
+            fields.sort();
+            assert_eq!(fields, ["request", "signed_transaction", "version"]);
+            verify_signed_result(&view, &read_back(&signed)).unwrap();
+
+            // The request is still checked against this wallet's key, and the recorded outputs against the transaction
+            let other_address = one_sided_address(&KeyManager::new_random().unwrap()).to_base58();
+            let other = to_value(&sign_default(&spend, prepare(&spend, &view)));
+            assert_tampers_refused(&view, &value, &[
+                ("/request/info/recipients/0/address", other_address.into()),
+                ("/request/info/recipients/0/amount", 4_000.into()),
+                ("/request/tx_id", 1.into()),
+                ("/version", "7.0.0".into()),
+                (
+                    "/signed_transaction/sent_hashes/0",
+                    other["signed_transaction"]["sent_hashes"][0].clone(),
+                ),
+                (
+                    "/signed_transaction/change_hashes/0",
+                    other["signed_transaction"]["change_hashes"][0].clone(),
+                ),
+                (
+                    "/signed_transaction/change_output",
+                    other["signed_transaction"]["change_output"].clone(),
+                ),
+            ]);
+        }
+    }
+
+    #[test]
+    fn multisig_results_are_signed_and_verified() {
+        for index in [None, Some(1)] {
+            let (spend, view) = wallets(index);
+
+            let deposit =
+                sign_deposit_payload(&spend, deposit_payload(&spend, &view), &PayloadKeyPolicy::default()).unwrap();
+            assert!(deposit.payload_signature.is_some());
+            let read = read_back(&deposit);
+            assert!(matches!(read, SignedTransactionResult::DepositMultisig(_)));
+            verify_signed_result(&view, &read).unwrap();
+            let (tx_id, info, signed_transaction) = read.into_parts();
+            assert_eq!(tx_id, deposit.request.tx_id);
+            assert_eq!(info, deposit.request.info.base);
+            assert_eq!(signed_transaction, deposit.signed_transaction);
+            let value = to_value(&deposit);
+            assert_tampers_refused(&view, &value, &[
+                ("/request/info/recipients/0/amount", 4_000.into()),
+                ("/request/info/party_number", 1.into()),
+                ("/request/info/public_keys", serde_json::json!([])),
+                ("/signed_transaction/change_output/value", 1_000_000_000.into()),
+                ("/payload_signature", value["request"]["payload_signature"].clone()),
+            ]);
+            // Without `public_keys` it is read as a one-sided result, whose request bytes differ
+            let mut as_one_sided = value.clone();
+            as_one_sided["request"]["info"]
+                .as_object_mut()
+                .unwrap()
+                .remove("public_keys");
+            let err = result_refusal(&view, &as_one_sided);
+            assert!(err.contains("not one this wallet signed"), "{err}");
+
+            let withdraw =
+                sign_withdraw_payload(&spend, withdraw_payload(&spend, &view), &PayloadKeyPolicy::default()).unwrap();
+            assert!(withdraw.payload_signature.is_some());
+            let read = read_back(&withdraw);
+            assert!(matches!(read, SignedTransactionResult::OneSided(_)));
+            verify_signed_result(&view, &read).unwrap();
+            let value = to_value(&withdraw);
+            assert_tampers_refused(&view, &value, &[
+                ("/request/info/recipients/0/amount", 4_000.into()),
+                ("/signed_transaction/change_output/value", 1_000_000_000.into()),
+                ("/payload_signature", value["request"]["payload_signature"].clone()),
+            ]);
+
+            // Requests written by a version 6 wallet
+            let mut payload = deposit_payload(&spend, &view);
+            as_version(&view, &mut payload, 6);
+            let deposit = sign_deposit_payload(&spend, payload, &PayloadKeyPolicy::default()).unwrap();
+            assert_eq!(deposit.payload_signature, None);
+            verify_signed_result(&view, &read_back(&deposit)).unwrap();
+            assert_tampers_refused(&view, &to_value(&deposit), &[(
+                "/request/info/recipients/0/amount",
+                4_000.into(),
+            )]);
+            let mut payload = withdraw_payload(&spend, &view);
+            as_version(&view, &mut payload, 6);
+            let withdraw = sign_withdraw_payload(&spend, payload, &PayloadKeyPolicy::default()).unwrap();
+            assert_eq!(withdraw.payload_signature, None);
+            verify_signed_result(&view, &read_back(&withdraw)).unwrap();
+        }
     }
 }

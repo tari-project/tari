@@ -40,11 +40,15 @@ use crate::{
 /// signer can verify the payload was not tampered with in transit.
 const VERSION_5: &str = "5.0.0";
 /// Version 6 adds `payload_key_id` and `expires_at`, both covered by the payload signature.
-const SUPPORTED_VERSION: &str = "6.0.0";
+const VERSION_6: &str = "6.0.0";
+/// Version 7 adds `payload_signature` to the `Signed*` results, so the online wallet can tell that a result was
+/// changed on its way back. The `Prepare*` results are the same as in version 6.
+const SUPPORTED_VERSION: &str = "7.0.0";
 
 pub fn get_supported_versions() -> Vec<Version> {
     vec![
         Version::parse(VERSION_5).unwrap(),
+        Version::parse(VERSION_6).unwrap(),
         Version::parse(SUPPORTED_VERSION).unwrap(),
     ]
 }
@@ -52,6 +56,11 @@ pub fn get_supported_versions() -> Vec<Version> {
 /// Whether a payload of `version` carries `payload_key_id` and `expires_at`.
 pub fn has_payload_auth_fields(version: &Version) -> bool {
     version.major >= 6
+}
+
+/// Whether the signer signs its result for a request of `version`. A result carries the version of its request.
+pub fn has_result_signature(version: &Version) -> bool {
+    version.major >= 7
 }
 
 pub fn get_latest_version() -> Version {
@@ -180,6 +189,54 @@ fn borsh_canonical<T: BorshSerialize>(
             "A version {version} payload cannot carry a payload key id or an expiry"
         )));
     }
+    Ok(buf)
+}
+
+/// Which signer flow produced a signed result. Each kind has its own label in the signed bytes, so a signature over
+/// one kind of result is not valid for another, nor for a `Prepare*` payload signed with the same key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignedResultKind {
+    OneSided,
+    DepositMultisig,
+    WithdrawMultisig,
+}
+
+impl SignedResultKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::OneSided => "tari.offline_signing.signed_one_sided",
+            Self::DepositMultisig => "tari.offline_signing.signed_deposit_multisig",
+            Self::WithdrawMultisig => "tari.offline_signing.signed_withdraw_multisig",
+        }
+    }
+}
+
+/// Canonical Borsh bytes for a signed result: the request as the signer verified it (its canonical bytes and its
+/// payload signature) and every field of the signed transaction.
+pub fn borsh_canonical_signed(
+    kind: SignedResultKind,
+    version: &Version,
+    request_canonical: &[u8],
+    request_signature: &PayloadIntegritySignature,
+    signed: &SignedTransaction,
+) -> Result<Vec<u8>, TransactionError> {
+    let mut buf = Vec::new();
+    BorshSerialize::serialize(
+        &(
+            kind.label(),
+            version.to_string(),
+            request_canonical,
+            request_signature,
+            &signed.transaction,
+            &signed.sent_hashes,
+            &signed.outputs,
+            &signed.change_hashes,
+            &signed.change_output,
+            u64::from(signed.tx_id),
+        ),
+        &mut buf,
+    )
+    .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     Ok(buf)
 }
 
@@ -395,6 +452,9 @@ pub struct SignedOneSidedTransactionResult {
     pub version: Version,
     pub request: PrepareOneSidedTransactionForSigningResult,
     pub signed_transaction: SignedTransaction,
+    /// Signature over [`borsh_canonical_signed`] by the key that signed `request`. Set from version 7 on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload_signature: Option<PayloadIntegritySignature>,
 }
 
 impl TransactionResult for SignedOneSidedTransactionResult {}
@@ -410,6 +470,9 @@ pub struct SignedOneSidedDepositMultisigTransactionResult {
     pub version: Version,
     pub request: PrepareDepositMultisigTransactionResult,
     pub signed_transaction: SignedTransaction,
+    /// Signature over [`borsh_canonical_signed`] by the key that signed `request`. Set from version 7 on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload_signature: Option<PayloadIntegritySignature>,
 }
 
 impl TransactionResult for SignedOneSidedDepositMultisigTransactionResult {}
@@ -425,6 +488,9 @@ pub struct SignedOneSidedWithdrawMultisigTransactionResult {
     pub version: Version,
     pub request: PrepareWithdrawMultisigTransactionResult,
     pub signed_transaction: SignedTransaction,
+    /// Signature over [`borsh_canonical_signed`] by the key that signed `request`. Set from version 7 on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload_signature: Option<PayloadIntegritySignature>,
 }
 
 impl TransactionResult for SignedOneSidedWithdrawMultisigTransactionResult {}
@@ -432,5 +498,38 @@ impl TransactionResult for SignedOneSidedWithdrawMultisigTransactionResult {}
 impl HasVersion for SignedOneSidedWithdrawMultisigTransactionResult {
     fn get_version(&self) -> &Version {
         &self.version
+    }
+}
+
+/// A signed result as the online wallet reads it back to broadcast it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SignedTransactionResult {
+    /// A one-sided payment or a multisig withdraw. The two files have the same fields.
+    OneSided(SignedOneSidedTransactionResult),
+    DepositMultisig(SignedOneSidedDepositMultisigTransactionResult),
+}
+
+impl SignedTransactionResult {
+    /// Reads any of the three signed results. Only a multisig deposit request has `public_keys`; reading one as
+    /// another kind changes the request's canonical bytes, so its payload signature no longer verifies.
+    pub fn from_json(s: &str) -> Result<Self, TransactionError> {
+        let value: serde_json::Value = serde_json::from_str(s).map_err(parse_error)?;
+        if value.pointer("/request/info/public_keys").is_some() {
+            SignedOneSidedDepositMultisigTransactionResult::from_json(s).map(Self::DepositMultisig)
+        } else {
+            SignedOneSidedTransactionResult::from_json(s).map(Self::OneSided)
+        }
+    }
+
+    /// The request's id and transaction info, and the signed transaction.
+    pub fn into_parts(self) -> (TxId, OneSidedTransactionInfo, SignedTransaction) {
+        match self {
+            Self::OneSided(result) => (result.request.tx_id, result.request.info, result.signed_transaction),
+            Self::DepositMultisig(result) => (
+                result.request.tx_id,
+                result.request.info.into_base(),
+                result.signed_transaction,
+            ),
+        }
     }
 }
