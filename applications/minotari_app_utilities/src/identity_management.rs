@@ -1402,6 +1402,53 @@ mod test {
     }
 
     #[test]
+    fn tcp_load_persists_removal_of_onion_addresses() {
+        let tcp: Multiaddr = "/ip4/127.0.0.1/tcp/18141".parse().unwrap();
+        let onion: Multiaddr = "/onion3/pd6sf3mqkkkfrn4rk5odgcr2j5sn7m523a4tt7pzy5hrdvhafdgn7ydt:18141"
+            .parse()
+            .unwrap();
+        let write_signed = |path: &Path| {
+            let id = NodeIdentity::random_multiple_addresses(
+                &mut rand::rng(),
+                vec![tcp.clone(), onion.clone()],
+                PeerFeatures::COMMUNICATION_NODE,
+            );
+            save_as_json(path, &id).unwrap();
+        };
+        let (_dir, path) = temp_path();
+
+        // Non-TCP transports keep the onion address, so nothing changed and nothing is written.
+        write_signed(&path);
+        let before = mtime_and_inode(&path);
+        load_node_identity(&path, TransportType::Tor, true).unwrap();
+        assert_eq!(mtime_and_inode(&path), before);
+
+        load_node_identity(&path, TransportType::Tcp, true).unwrap();
+        assert_ne!(
+            mtime_and_inode(&path).1,
+            before.1,
+            "the filtered addresses must be persisted"
+        );
+        assert!(!tmp_path(&path).exists());
+        let reloaded = load_node_identity(&path, TransportType::Tor, false).unwrap();
+        assert_eq!(reloaded.public_addresses(), vec![tcp.clone()]);
+        reloaded
+            .identity_signature_read()
+            .as_ref()
+            .unwrap()
+            .verify(reloaded.public_key(), reloaded.features(), &reloaded.public_addresses())
+            .unwrap();
+
+        let _unused = fs::remove_file(&path);
+        write_signed(&path);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let before = mtime_and_inode(&path);
+        let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
+        assert!(matches!(err, IdentityError::ReadOnly(_)), "got {err:?}");
+        assert_eq!(mtime_and_inode(&path), before);
+    }
+
+    #[test]
     fn it_serializes_to_zeroizing_string() {
         let node_identity = NodeIdentity::random(
             &mut rand::rng(),
