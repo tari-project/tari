@@ -296,13 +296,13 @@ impl StdioTransport {
         let unquoted_values = regex::Regex::new(r#":\s*([^{"\[\d\s][\w\s]*[^,}\]]*)"#).ok()?;
         repaired = unquoted_values.replace_all(&repaired, r#": "$1""#).to_string();
 
-        // 4. Fix HTML entities
+        // 4. Fix HTML entities (decode &amp; last to avoid double-decoding &amp;lt; into <)
         repaired = repaired
-            .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
-            .replace("&#39;", "'");
+            .replace("&#39;", "'")
+            .replace("&amp;", "&");
 
         // 5. Replace single quotes with double quotes for strings
         let single_quotes = regex::Regex::new(r#"'([^']*)'"#).ok()?;

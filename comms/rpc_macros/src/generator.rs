@@ -297,9 +297,34 @@ impl RpcCodeGenerator {
     }
 }
 
-fn is_unit_type(ty: &syn::Type) -> bool {
-    match ty {
-        syn::Type::Tuple(tuple) => tuple.elems.is_empty(),
-        _ => false,
+fn is_unit_type(mut ty: &syn::Type) -> bool {
+    loop {
+        match ty {
+            syn::Type::Group(group) => ty = &group.elem,
+            syn::Type::Paren(paren) => ty = &paren.elem,
+            syn::Type::Tuple(tuple) => return tuple.elems.is_empty(),
+            _ => return false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proc_macro2::{Delimiter, Group, TokenTree};
+    use syn::parse_quote;
+
+    use super::*;
+
+    #[test]
+    fn recognizes_grouped_and_parenthesized_unit_type() {
+        let unit: syn::Type = parse_quote!(());
+        let grouped: syn::Type = syn::parse2(TokenStream::from(TokenTree::Group(Group::new(
+            Delimiter::None,
+            quote!(#unit),
+        ))))
+        .unwrap();
+        let paren: syn::Type = parse_quote!((#grouped));
+        assert!(is_unit_type(&grouped));
+        assert!(is_unit_type(&paren));
     }
 }

@@ -33,9 +33,18 @@ pub fn format_currency(value: &str, separator: char) -> String {
     let mut buffer = String::with_capacity((full_len / 3).saturating_add(full_len));
     let mut iter = value.splitn(2, '.');
     let whole = iter.next().unwrap_or("");
-    for (i, c) in whole.chars().enumerate() {
+    let digits = if let Some(stripped) = whole.strip_prefix('-') {
+        buffer.push('-');
+        stripped
+    } else if let Some(stripped) = whole.strip_prefix('+') {
+        buffer.push('+');
+        stripped
+    } else {
+        whole
+    };
+    for (i, c) in digits.chars().enumerate() {
         buffer.push(c);
-        let idx = whole.len().saturating_sub(i).saturating_sub(1);
+        let idx = digits.len().saturating_sub(i).saturating_sub(1);
         if idx > 0 && idx.is_multiple_of(3) {
             buffer.push(separator);
         }
@@ -63,5 +72,9 @@ mod test {
         assert_eq!("7,123", format_currency("7123", ','));
         assert_eq!(".00", format_currency(".00", ','));
         assert_eq!("00.", format_currency("00.", ','));
+        assert_eq!("-123", format_currency("-123", ','));
+        assert_eq!("-123.45", format_currency("-123.45", ','));
+        assert_eq!("-123,456.78", format_currency("-123456.78", ','));
+        assert_eq!("+123,456", format_currency("+123456", ','));
     }
 }

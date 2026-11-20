@@ -83,10 +83,10 @@ use crate::{
         inputs_and_outputs_match_header,
     },
     consensus::BaseNodeConsensusManager,
-    mempool::{Mempool, MempoolLastSeen},
+    mempool::{Mempool, MempoolLastSeen, select_disjoint_kernel_cover},
     proof_of_work::{
         AdjustedTarget,
-        cuckaroo_pow::cuckaroo_difficulty,
+        cuckaroo_pow::{check_cuckaroo_pow_data, cuckaroo_difficulty},
         monero_randomx_difficulty_at_rules_height,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -830,6 +830,20 @@ where B: BlockchainBackend + 'static
                 .map_err(|e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)))
                 .inspect_err(log_pow_rejection)?;
         }
+        // The same pre-filter for Cuckaroo: the full header validator only accepts the canonical encoding, so a
+        // re-encoded proof is rejected here before any lookup or cycle verification.
+        if new_block.header.pow_algo() == PowAlgorithm::Cuckaroo {
+            // The claimed height is safe only while the C29 parameters are the same at every height, so a false height
+            // cannot loosen the check. If they ever change with height, this must use the corroborated rules height.
+            let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+            check_cuckaroo_pow_data(
+                &new_block.header.pow.pow_data,
+                constants.cuckaroo_cycle_length(),
+                constants.cuckaroo_edge_bits(),
+            )
+            .map_err(|e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)))
+            .inspect_err(log_pow_rejection)?;
+        }
 
         // Lets check if the block exists before we try and ask for a complete block
         if self.check_exists_and_not_bad_block(block_hash).await? {
@@ -967,8 +981,9 @@ where B: BlockchainBackend + 'static
     /// validators, which run against the block's real, linked height.
     ///
     /// Being stricter here does reject announcements, and bans for them: `verify_header_at_rules_height` returns
-    /// `Err` when the announcement does not satisfy the selected rules - on the `pow_data` wire format, and on
-    /// the depth 0 `aux_chain_merkle_proof` rule - and both of those are a long ban. The rules the max picks are
+    /// `Err` when the announcement does not satisfy the selected rules - on the `pow_data` wire format, on the
+    /// depth 0 `aux_chain_merkle_proof` rule, and on strict merge mining parameter decoding - and all three of
+    /// those are a long ban. The rules the max picks are
     /// only ever the *newer* ones, so the announcements this costs are exactly those written under the pre-fork
     /// rules and announced to a node whose own chain has already passed the fork. A block like that cannot
     /// become our tip by being announced anyway; if it is genuinely part of a better chain, that chain arrives
@@ -1222,7 +1237,7 @@ where B: BlockchainBackend + 'static
                 not_found,
             } = self
                 .outbound_nci
-                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs)
+                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs.clone())
                 .await?;
 
             // Only keep transactions that we actually asked for. Anything else is dropped before it reaches the mempool
@@ -1263,6 +1278,9 @@ where B: BlockchainBackend + 'static
                 return Ok(block);
             }
 
+            // Overlapping transactions would duplicate kernels in the block. A signature this leaves uncovered fails
+            // the MMR root check below, which falls back to the full block.
+            let (transactions, _) = select_disjoint_kernel_cover(transactions, vec![], &missing_excess_sigs);
             builder = builder.with_transactions(
                 transactions
                     .into_iter()
@@ -2053,6 +2071,92 @@ mod test {
         let err = handlers.check_min_block_difficulty(&unknown, &peer).await.unwrap_err();
         assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
         assert!(err.get_ban_reason().is_none());
+    }
+
+    /// A Cuckaroo block whose `pow_data` is not in canonical form is rejected, with a ban, before the existence and
+    /// bad-block lookups: even with its hash already recorded as bad, the encoding error is what comes back.
+    #[tokio::test]
+    async fn a_non_canonical_cuckaroo_block_is_rejected_before_any_lookup() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody, tari_proof_of_work::ProofOfWork};
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            chain_storage::DbTransaction,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{blockchain::create_new_blockchain, create_consensus_rules},
+            validation::mocks::MockValidator,
+        };
+
+        let db = create_new_blockchain();
+        let genesis = db.fetch_chain_header(0).unwrap();
+        let rules = create_consensus_rules();
+        let constants = rules.consensus_constants(1);
+        let size = crate::proof_of_work::cuckaroo_pow::cuckaroo_pow_data_size(
+            constants.cuckaroo_cycle_length(),
+            constants.cuckaroo_edge_bits(),
+        );
+        let block_with = |pow_data: Vec<u8>| {
+            let mut header = BlockHeader::from_previous(genesis.header());
+            header.pow = ProofOfWork {
+                pow_algo: PowAlgorithm::Cuckaroo,
+                pow_data: pow_data.try_into().unwrap(),
+            };
+            NewBlock::from(&Block::new(header, AggregateBody::empty()))
+        };
+        let canonical = block_with(vec![0u8; size]);
+        let padded = block_with(vec![0u8; size + 1]);
+        let mut txn = DbTransaction::new();
+        for block in [&canonical, &padded] {
+            txn.insert_bad_block(
+                block.header.hash(),
+                block.header.height,
+                "planted by a test".to_string(),
+            );
+        }
+        db.write(txn).unwrap();
+
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        let peer = NodeId::default();
+
+        // Control: the canonical encoding passes the pre-filter and stops at the bad-block lookup
+        let err = handlers
+            .handle_new_block_message(canonical, peer.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CommsInterfaceError::KnownBadBlock { .. }), "{err:?}");
+
+        let err = handlers.handle_new_block_message(padded, peer).await.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(
+                    PowError::CuckarooPowDataSizeMismatch { .. }
+                ))
+            ),
+            "{err:?}"
+        );
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
     }
 
     /// Once a peer has used up its checks of unknown-ancestry RandomX blocks, the next one is dropped before it is

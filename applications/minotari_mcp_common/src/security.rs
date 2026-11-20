@@ -181,13 +181,13 @@ impl SecurityContext {
         let now = Utc::now();
 
         // Find existing session for this IP
-        let session_id = self
-            .sessions
-            .values()
-            .find(|s| s.client_ip == client_ip)
-            .map(|s| s.id)
-            .unwrap_or_else(Uuid::new_v4);
+        if let Some(existing) = self.sessions.values_mut().find(|s| s.client_ip == client_ip) {
+            existing.last_activity = now;
+            existing.request_count = existing.request_count.saturating_add(1);
+            return existing.id;
+        }
 
+        let session_id = Uuid::new_v4();
         let session = Session {
             id: session_id,
             client_ip,

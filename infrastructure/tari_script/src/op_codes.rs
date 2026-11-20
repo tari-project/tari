@@ -21,7 +21,7 @@ use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 use tari_max_size::MaxSizeVecError;
-use tari_utilities::{ByteArrayError, hex::Hex};
+use tari_utilities::hex::Hex;
 
 use super::ScriptError;
 
@@ -75,13 +75,11 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<CompressedKe
         return Err(ScriptError::InvalidData);
     }
 
-    let public_keys = slice
-        .as_chunks::<PUBLIC_KEY_LENGTH>()
-        .0
-        .iter()
-        .take(num)
-        .map(|chunk| CompressedKey::from_canonical_bytes(chunk))
-        .collect::<Result<Vec<CompressedKey<RistrettoPublicKey>>, ByteArrayError>>()?;
+    // Exact capacity: collecting into a `Result` hides the length, so the vector would grow by doubling
+    let mut public_keys = Vec::with_capacity(num);
+    for chunk in slice.as_chunks::<PUBLIC_KEY_LENGTH>().0.iter().take(num) {
+        public_keys.push(CompressedKey::from_canonical_bytes(chunk)?);
+    }
 
     Ok(public_keys)
 }
@@ -1066,6 +1064,7 @@ mod test {
         let vec = [bytes, bytes, bytes].concat();
         let slice = vec.as_bytes();
         let vec = slice_to_vec_pubkeys(slice, 3).unwrap();
+        assert_eq!(vec.capacity(), 3);
         for pk in vec {
             assert_eq!(key, pk);
         }

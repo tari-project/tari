@@ -219,10 +219,14 @@ fn check_receiver(method: &TraitItemFn) -> syn::Result<()> {
 }
 
 /// Returns the last segment of a path type, e.g. `Request<T>` for `rpc::Request<T>`.
-fn last_segment(ty: &Type) -> Option<&syn::PathSegment> {
-    match ty {
-        Type::Path(path) if path.qself.is_none() => path.path.segments.last(),
-        _ => None,
+fn last_segment(mut ty: &Type) -> Option<&syn::PathSegment> {
+    loop {
+        match ty {
+            Type::Group(group) => ty = &group.elem,
+            Type::Paren(paren) => ty = &paren.elem,
+            Type::Path(path) if path.qself.is_none() => return path.path.segments.last(),
+            _ => return None,
+        }
     }
 }
 

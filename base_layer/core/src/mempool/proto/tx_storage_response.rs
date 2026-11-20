@@ -53,6 +53,7 @@ impl From<TxStorageResponse> for proto::TxStorageResponse {
             NotStoredAlreadyMined => proto::TxStorageResponse::NotStored,
             NotStoredFeeTooLow => proto::TxStorageResponse::NotStored,
             NotStoredValidatorNodeSlotTaken => proto::TxStorageResponse::NotStored,
+            NotStoredMempoolPolicy(_) => proto::TxStorageResponse::NotStored,
         }
     }
 }

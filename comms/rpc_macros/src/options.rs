@@ -56,15 +56,35 @@ impl Parse for RpcTraitOptions {
             let _: Token![=] = input.parse()?;
 
             match name.to_string().as_str() {
-                "protocol_name" => set_once(&mut protocol_name, &name, input.parse()?)?,
+                "protocol_name" => {
+                    let lit: LitByteStr = input.parse()?;
+                    if lit.value().is_empty() {
+                        return Err(syn_error!(lit, "`protocol_name` must not be empty"));
+                    }
+                    set_once(&mut protocol_name, &name, lit)?;
+                },
                 "server_struct" => set_once(&mut server_struct, &name, input.parse()?)?,
                 "client_struct" => set_once(&mut client_struct, &name, input.parse()?)?,
                 "reserved_methods" => {
                     let content;
                     bracketed!(content in input);
                     let list = Punctuated::<LitInt, Token![,]>::parse_terminated(&content)?;
+                    let mut seen = std::collections::HashSet::new();
                     for lit in &list {
-                        lit.base10_parse::<u32>()?;
+                        let num = lit.base10_parse::<u32>()?;
+                        if num == 0 {
+                            return Err(syn_error!(
+                                lit,
+                                "method number in `reserved_methods` must be greater than 0"
+                            ));
+                        }
+                        if !seen.insert(num) {
+                            return Err(syn_error!(
+                                lit,
+                                "duplicate method number `{}` in `reserved_methods`",
+                                num
+                            ));
+                        }
                     }
                     set_once(&mut reserved_methods, &name, list.into_iter().collect())?;
                 },
@@ -103,4 +123,47 @@ fn set_once<T>(slot: &mut Option<T>, name: &Ident, value: T) -> syn::Result<()> 
 
 fn missing(option: &str) -> syn::Error {
     syn::Error::new(Span::call_site(), format!("#[tari_rpc(...)] requires `{option}`"))
+}
+
+#[cfg(test)]
+mod tests {
+    use quote::quote;
+
+    use super::*;
+
+    #[test]
+    fn rejects_empty_protocol_name() {
+        let err = syn::parse2::<RpcTraitOptions>(quote!(protocol_name = b"", server_struct = Srv, client_struct = Cli))
+            .unwrap_err();
+        assert!(err.to_string().contains("`protocol_name` must not be empty"));
+    }
+
+    #[test]
+    fn rejects_zero_or_duplicate_reserved_methods() {
+        let err_zero = syn::parse2::<RpcTraitOptions>(quote!(
+            protocol_name = b"/test/1",
+            server_struct = Srv,
+            client_struct = Cli,
+            reserved_methods = [0]
+        ))
+        .unwrap_err();
+        assert!(
+            err_zero
+                .to_string()
+                .contains("method number in `reserved_methods` must be greater than 0")
+        );
+
+        let err_dup = syn::parse2::<RpcTraitOptions>(quote!(
+            protocol_name = b"/test/1",
+            server_struct = Srv,
+            client_struct = Cli,
+            reserved_methods = [2, 5, 2]
+        ))
+        .unwrap_err();
+        assert!(
+            err_dup
+                .to_string()
+                .contains("duplicate method number `2` in `reserved_methods`")
+        );
+    }
 }

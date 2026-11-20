@@ -25,6 +25,7 @@ flowchart TD
         B <--> BA[[10. fn mempool_storage::retrieve_by_excess_sigs]]
         BA <--> BB[[11. fn unconfirmed_pool::retrieve_by_excess_sigs]]
         BA <--> BC[[12. fn reorg_pool::retrieve_by_excess_sigs]]
+        BA <--> BD[[12a. fn select_disjoint_kernel_cover]]
     end
     
     B --> C{13. has all excess signatures?}
@@ -32,7 +33,8 @@ flowchart TD
     CA --> CC[(15. fn mempool::insert_all)]
     CC --> CE{16. all transactions found?}
     CE --no --> CJ
-    CE --yes --> CD[18. BlockBuilder with transactions]
+    CE --yes --> CF[16a. fn select_disjoint_kernel_cover]
+    CF --> CD[18. BlockBuilder with transactions]
     C --yes --> CB[19. fn calculate_mmr_roots]
     CB --invalid --> CJ[17. fn outbound_interface::request_full_block_from_peer]
     CJ --> CK[return Block]

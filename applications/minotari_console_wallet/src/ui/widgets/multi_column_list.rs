@@ -80,12 +80,12 @@ where T: Into<Vec<ListItem<'a>>>
         // This accounts for the box border
         let mut constraints = vec![Constraint::Length(1)];
         let mut sum_width = 0u16;
-        for i in 0..self.columns.len().saturating_sub(1) {
-            if let Some(w) = self.columns[i].width {
+        for column in self.columns.iter().take(self.columns.len().saturating_sub(1)) {
+            if let Some(w) = column.width {
                 constraints.push(Constraint::Length(w));
                 sum_width = sum_width.saturating_add(w);
             } else {
-                constraints.push(Constraint::Length(self.columns[i].heading.unwrap_or(" ").len() as u16));
+                constraints.push(Constraint::Length(column.heading.unwrap_or(" ").len() as u16));
             }
         }
 
