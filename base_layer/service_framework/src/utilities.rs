@@ -38,11 +38,27 @@ impl<T> RegisterHandle<T> {
 #[async_trait]
 impl<T: Send + Sync + 'static> ServiceInitializer for RegisterHandle<T> {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        context.register_handle(
-            self.handle
-                .take()
-                .expect("RegisterHandle: ServiceInitializer called more than once"),
-        );
+        let handle = self
+            .handle
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("RegisterHandle: ServiceInitializer called more than once"))?;
+        context.register_handle(handle);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_shutdown::{Shutdown, oneshot_trigger::OneshotTrigger};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn register_handle_returns_error_on_second_initialize() {
+        let shutdown = Shutdown::new();
+        let context = ServiceInitializerContext::new(shutdown.to_signal(), OneshotTrigger::new().to_signal());
+        let mut init = RegisterHandle::new(42u32);
+        assert!(init.initialize(context.clone()).await.is_ok());
+        assert!(init.initialize(context).await.is_err());
     }
 }

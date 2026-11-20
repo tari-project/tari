@@ -24,11 +24,13 @@ use std::{
     any,
     any::{Any, TypeId},
     collections::HashMap,
+    pin::Pin,
     sync::{Arc, Mutex},
+    task::{Context, Poll},
 };
 
 use anyhow::anyhow;
-use futures::{Future, future, future::Either};
+use futures::{Future, FutureExt, future, future::Either};
 use tari_shutdown::{
     ShutdownSignal,
     oneshot_trigger::{OneshotSignal, OneshotTrigger},
@@ -113,8 +115,19 @@ impl ServiceInitializerContext {
         Fut::Output: Send + 'static,
     {
         task::spawn(async move {
-            let shutdown_signal = self.get_shutdown_signal();
-            let handles = self.wait_ready().await.ok()?;
+            let mut shutdown_signal = self.get_shutdown_signal();
+            if shutdown_signal.is_triggered() {
+                return None;
+            }
+            let wait_ready = self.wait_ready();
+            futures::pin_mut!(wait_ready);
+            let handles = match future::select(&mut shutdown_signal, wait_ready).await {
+                Either::Left((_, _)) => return None,
+                Either::Right((res, _)) => res.ok()?,
+            };
+            if shutdown_signal.is_triggered() {
+                return None;
+            }
             let fut = f(handles);
             futures::pin_mut!(fut);
             let either = future::select(shutdown_signal, fut).await;
@@ -144,6 +157,17 @@ impl ServiceInitializerContext {
 
     pub fn into_inner(self) -> ServiceHandles {
         self.inner
+    }
+}
+
+impl Future for ServiceInitializerContext {
+    type Output = ServiceHandles;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.ready_signal.poll_unpin(cx) {
+            Poll::Ready(Some(())) => Poll::Ready(self.inner.clone()),
+            Poll::Ready(None) | Poll::Pending => Poll::Pending,
+        }
     }
 }
 
@@ -254,5 +278,44 @@ mod test {
         context.register_handle(TestHandle);
         context.inner.expect_handle::<TestHandle>();
         assert!(context.inner.get_handle::<()>().is_none());
+    }
+
+    #[tokio::test]
+    async fn lazy_service_resolves_once_notified() {
+        use tower::{Service, ServiceExt, service_fn};
+
+        #[derive(Clone)]
+        struct Multiplier(u32);
+
+        let shutdown = Shutdown::new();
+        let (mut notifier, context) = create_context_notifier_pair(shutdown.to_signal());
+        context.register_handle(Multiplier(7));
+
+        let mut lazy = context.lazy_service(|handles| {
+            let m = handles.expect_handle::<Multiplier>().0;
+            service_fn(move |x: u32| future::ready(Ok::<_, ()>(x * m)))
+        });
+
+        notifier.broadcast(());
+        let out = lazy.ready().await.unwrap().call(6).await.unwrap();
+        assert_eq!(out, 42);
+    }
+
+    #[tokio::test]
+    async fn spawn_until_shutdown_exits_without_running_closure_if_shutdown_triggered_before_ready() {
+        let shutdown = Shutdown::new();
+        let (mut notifier, context) = create_context_notifier_pair(shutdown.to_signal());
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let ran_clone = ran.clone();
+
+        let join = context.spawn_until_shutdown(move |_| async move {
+            ran_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+            1u32
+        });
+
+        shutdown.trigger();
+        notifier.broadcast(());
+        assert_eq!(join.await.unwrap(), None);
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 }
