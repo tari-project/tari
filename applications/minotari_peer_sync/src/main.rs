@@ -235,6 +235,17 @@ fn clear_peer_database(dir: &PathBuf, database_name: &str) -> Result<(), ExitErr
     Ok(())
 }
 
+/// Resolves the tor data directory: `<libtor_data_dir>/libtor/peer_sync` if `--libtor-data-dir` is given,
+/// otherwise `<base_path>/libtor/peer_sync` (matching `minotari_node`, which uses `<path>/libtor/base_node`).
+#[cfg_attr(not(all(unix, feature = "libtor")), allow(dead_code))]
+fn resolve_libtor_data_dir(cli: &Cli, base_path: &Path) -> PathBuf {
+    cli.libtor_data_dir
+        .clone()
+        .unwrap_or_else(|| base_path.to_path_buf())
+        .join("libtor")
+        .join("peer_sync")
+}
+
 /// Starts the bundled tor instance when the transport needs tor, pointing the transport at its control port. This is
 /// the same thing the base node does with `use_libtor`, so a run needs no externally managed tor.
 ///
@@ -248,12 +259,7 @@ fn start_libtor(cli: &Cli, config: &mut PeerSyncConfig, base_path: &Path) -> Res
         return Ok(None);
     }
     // Its own data directory: a base node's libtor instance owns (and locks) the one under its own directory.
-    let mut data_dir = cli
-        .libtor_data_dir
-        .clone()
-        .unwrap_or_else(|| base_path.to_path_buf())
-        .join("libtor")
-        .join("peer_sync");
+    let mut data_dir = resolve_libtor_data_dir(cli, base_path);
     // Tor refuses to run two instances against one data directory: it waits five seconds for the lock and then exits,
     // which surfaces later as an unexplained listener failure. Give a concurrent run its own directory instead. The
     // shared one is kept as the default because it caches the consensus, which is what makes startup quick.
@@ -426,14 +432,18 @@ async fn dial_rounds(
         };
         // Round 1 inherits everything the seed sync found; later rounds only count what asking added.
         let num_discovered = if round == 1 {
-            peers_before
+            report.num_downloaded
         } else {
             peer_manager.count().await.saturating_sub(peers_before)
         };
 
         let (candidates, num_undialled) = undialled_candidates(cli, peer_manager, &dialled).await?;
         if candidates.is_empty() {
-            report.stopped_after = Some(format!("round {round}: no peers left that have not been dialled"));
+            report.stopped_after = Some(if num_undialled > 0 {
+                format!("round {round}: `--max-peers 0` left {num_undialled} peer(s) undialled")
+            } else {
+                format!("round {round}: no peers left that have not been dialled")
+            });
             break;
         }
 
@@ -1096,16 +1106,33 @@ fn generalize_failure(reason: &Sanitized) -> Sanitized {
         .as_str()
         .split_whitespace()
         .map(|token| {
-            // Keep any trailing punctuation, so that `<address>:` still reads as a prefix of the message after it
-            let core_len = token
-                .trim_end_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '/' || c == '.'))
+            // Keep any leading/trailing punctuation (such as quotes, brackets, or sentence periods) around placeholders
+            let leading_len = token.len().saturating_sub(
+                token
+                    .trim_start_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/')
+                    .len(),
+            );
+            let leading = token.get(..leading_len).unwrap_or("");
+            let rest = token.get(leading_len..).unwrap_or("");
+            let core_len = rest
+                .trim_end_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '/'))
                 .len();
-            let trailing = token.get(core_len..).unwrap_or("");
-            let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/');
-            if trimmed.starts_with('/') {
-                format!("<address>{trailing}")
-            } else if trimmed.len() >= 20 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
-                format!("<peer>{trailing}")
+            let core = rest.get(..core_len).unwrap_or("");
+            let trailing = rest.get(core_len..).unwrap_or("");
+            if core.starts_with('/') {
+                let is_fqdn_dot = trailing.starts_with('.') &&
+                    !trailing.starts_with("..") &&
+                    core.rsplit('/')
+                        .next()
+                        .is_some_and(|seg| seg.chars().any(|c| c.is_ascii_alphabetic()));
+                let trailing = if is_fqdn_dot {
+                    trailing.get(1..).unwrap_or("")
+                } else {
+                    trailing
+                };
+                format!("{leading}<address>{trailing}")
+            } else if core.len() >= 20 && core.chars().all(|c| c.is_ascii_hexdigit()) {
+                format!("{leading}<peer>{trailing}")
             } else {
                 token.to_string()
             }
@@ -1156,7 +1183,10 @@ impl AddressMix {
             .addresses
             .address_iter()
             .fold((0usize, 0usize), |(onion, other), addr| {
-                if addr.iter().any(|p| matches!(p, Protocol::Onion3(_))) {
+                if addr
+                    .iter()
+                    .any(|p| matches!(p, Protocol::Onion(_, _) | Protocol::Onion3(_)))
+                {
                     (onion.saturating_add(1), other)
                 } else {
                     (onion, other.saturating_add(1))
@@ -1456,11 +1486,13 @@ impl Report {
     }
 
     fn fmt_rounds(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if !self.round_stats.is_empty() {
+        if !self.round_stats.is_empty() || self.stopped_after.is_some() {
             writeln!(
                 f,
                 "------------------------------------ Rounds ------------------------------------"
             )?;
+        }
+        if !self.round_stats.is_empty() {
             writeln!(
                 f,
                 "Round 1 dials what the seed sync found. Every later round asks the peers that answered for\ntheir \
@@ -1483,9 +1515,9 @@ impl Report {
                     r.round, asked, r.num_discovered, r.num_undialled, r.num_dialled, r.num_connected, r.num_failed
                 )?;
             }
-            if let Some(reason) = &self.stopped_after {
-                writeln!(f, "  stopped early - {reason}")?;
-            }
+        }
+        if let Some(reason) = &self.stopped_after {
+            writeln!(f, "  stopped early - {reason}")?;
         }
 
         Ok(())
@@ -1924,12 +1956,62 @@ mod test {
             generalize("All peer addresses are excluded for peer a1b68fcda89ce0366858fd9c66"),
             "All peer addresses are excluded for peer <peer>"
         );
+        assert_eq!(
+            generalize("Failed to dial (/ip4/1.2.3.4/tcp/18189) for peer 'a1b68fcda89ce0366858fd9c66'."),
+            "Failed to dial (<address>) for peer '<peer>'."
+        );
+        assert_eq!(
+            generalize("Connection refused at /ip4/1.2.3.4/tcp/18189."),
+            "Connection refused at <address>."
+        );
+        assert_eq!(
+            generalize("Failed to resolve /dns4/seed.example.com. on bootstrap"),
+            "Failed to resolve <address> on bootstrap"
+        );
+        assert_eq!(
+            generalize("Failed to resolve (/dns4/seed.example.com.) on bootstrap"),
+            "Failed to resolve (<address>) on bootstrap"
+        );
     }
 
     #[test]
     fn generalize_failure_leaves_plain_messages_alone() {
         let msg = "Noise handshake error: peer closed the connection during the noise handshake";
         assert_eq!(generalize(msg), msg);
+    }
+
+    #[test]
+    fn resolve_libtor_data_dir_appends_libtor_peer_sync_to_base_or_override() {
+        let base = std::path::Path::new("/var/tari/testnet");
+        let default_cli = Cli::parse_from(["minotari_peer_sync"]);
+        assert_eq!(
+            super::resolve_libtor_data_dir(&default_cli, base),
+            std::path::PathBuf::from("/var/tari/testnet/libtor/peer_sync")
+        );
+
+        let custom_cli = Cli::parse_from(["minotari_peer_sync", "--libtor-data-dir", "/tmp/custom-tor"]);
+        assert_eq!(
+            super::resolve_libtor_data_dir(&custom_cli, base),
+            std::path::PathBuf::from("/tmp/custom-tor/libtor/peer_sync")
+        );
+    }
+
+    #[test]
+    fn address_mix_recognizes_both_onion_and_onion3_protocols() {
+        use tari_comms::net_address::PeerAddressSource;
+
+        let onion_v2: super::Multiaddr = "/onion/a2b3c4d5e6f7g2h3:18141".parse().unwrap();
+        let ip4: super::Multiaddr = "/ip4/1.2.3.4/tcp/18189".parse().unwrap();
+
+        let mut p_v2 = downloaded_peer();
+        p_v2.addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![onion_v2.clone()], &PeerAddressSource::Config);
+        assert_eq!(super::AddressMix::of(&p_v2), super::AddressMix::OnionOnly);
+
+        let mut p_mixed = p_v2;
+        p_mixed.addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![onion_v2, ip4], &PeerAddressSource::Config);
+        assert_eq!(super::AddressMix::of(&p_mixed), super::AddressMix::Mixed);
     }
 
     /// A peer chooses its own advertised address, and for `/dns4/` and friends the peer validator never constrains
@@ -1991,5 +2073,116 @@ mod test {
         assert_eq!(escape_untrusted("a\u{202e}b"), "a\\u{202e}b");
         assert_eq!(escape_untrusted("a\u{200b}b"), "a\\u{200b}b");
         assert_eq!(escape_untrusted("a\u{feff}b"), "a\\u{feff}b");
+    }
+
+    #[tokio::test]
+    async fn dial_rounds_tracks_round_one_discovered_and_renders_max_peers_zero_stop_reason() {
+        use std::sync::Arc;
+
+        use tari_comms::net_address::PeerAddressSource;
+        use tari_p2p::{comms_connector::InboundDomainConnector, initialization::initialize_local_test_comms};
+        use tari_shutdown::Shutdown;
+        use tari_utilities::hex::Hex;
+        use tokio::sync::mpsc;
+
+        let identity = Arc::new(NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/127.0.0.1/tcp/18189".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        let temp_dir = std::env::temp_dir().join(format!("minotari_peer_sync_test_{}", identity.node_id().to_hex()));
+        let _ignore = std::fs::remove_dir_all(&temp_dir);
+
+        let mut seed = seed_peer();
+        seed.addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec!["/ip4/127.0.0.1/tcp/18190".parse().unwrap()],
+            &PeerAddressSource::Config,
+        );
+
+        let (sink, _rx) = mpsc::channel(1);
+        let shutdown = Shutdown::new();
+        let (comms, _dht, _events) = initialize_local_test_comms(
+            identity.clone(),
+            InboundDomainConnector::new(sink),
+            &temp_dir,
+            StdDuration::from_secs(1),
+            vec![seed],
+            shutdown.to_signal(),
+        )
+        .await
+        .unwrap();
+
+        let peer_manager = comms.peer_manager();
+        let connectivity = comms.connectivity();
+        // Drop `comms` so its unspawned connectivity receiver closes and dials fail immediately without waiting.
+        drop(comms);
+
+        for port in [18191u16, 18192u16] {
+            let mut p = downloaded_peer();
+            p.addresses = MultiaddressesWithStats::from_addresses_with_source(
+                vec![format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap()],
+                &PeerAddressSource::Config,
+            );
+            peer_manager.add_or_update_peer(p).await.unwrap();
+        }
+
+        let config = PeerSyncConfig::default();
+
+        // 1. `--max-peers 0`: stops before dialing any round and prints the stop reason in the Rounds section.
+        let cli_zero = Cli::parse_from(["minotari_peer_sync", "--max-peers", "0"]);
+        let mut report_zero = Report::new(&cli_zero, &config, &identity, false);
+        report_zero.num_seed_peers = 1;
+        report_zero.num_downloaded = 2;
+        report_zero.num_peers_in_db = 3;
+
+        super::dial_rounds(
+            &cli_zero,
+            &config,
+            &identity,
+            &peer_manager,
+            &connectivity,
+            &mut report_zero,
+        )
+        .await
+        .unwrap();
+
+        assert!(report_zero.round_stats.is_empty());
+        assert_eq!(
+            report_zero.stopped_after.as_deref(),
+            Some("round 1: `--max-peers 0` left 3 peer(s) undialled")
+        );
+        let rendered = report_zero.to_string();
+        assert!(
+            rendered.contains("stopped early - round 1: `--max-peers 0` left 3 peer(s) undialled"),
+            "stop reason was omitted when round_stats was empty:\n{rendered}"
+        );
+
+        // 2. Round 1 `num_discovered` records `report.num_downloaded` (2) rather than total DB peers (3, which includes
+        //    the seed peer).
+        let cli_one = Cli::parse_from(["minotari_peer_sync", "--rounds", "1", "--dial-timeout", "1"]);
+        let mut report_one = Report::new(&cli_one, &config, &identity, false);
+        report_one.num_seed_peers = 1;
+        report_one.num_downloaded = 2;
+        report_one.num_peers_in_db = 3;
+
+        super::dial_rounds(
+            &cli_one,
+            &config,
+            &identity,
+            &peer_manager,
+            &connectivity,
+            &mut report_one,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report_one.round_stats.len(), 1);
+        let first_round = report_one.round_stats.first().unwrap();
+        assert_eq!(first_round.num_discovered, 2);
+        assert_eq!(first_round.num_undialled, 3);
+        assert_eq!(first_round.num_dialled, 3);
+
+        drop(shutdown);
+        let _ignore = std::fs::remove_dir_all(&temp_dir);
     }
 }
