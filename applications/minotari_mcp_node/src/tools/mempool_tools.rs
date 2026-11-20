@@ -43,7 +43,49 @@ struct MempoolSamples {
 
 /// Index into a sorted distribution for the given percentile, clamped to the last element
 fn percentile_index(len: usize, percentile: usize) -> usize {
-    len.saturating_mul(percentile).saturating_div(100)
+    if len == 0 {
+        return 0;
+    }
+    len.saturating_mul(percentile)
+        .saturating_div(100)
+        .min(len.saturating_sub(1))
+}
+
+/// Parse an excess signature provided either as `"<public_nonce_hex>:<signature_hex>"`
+/// (or comma-separated) or as a 64-byte (128-hex-character) concatenated `public_nonce || signature`.
+fn parse_excess_signature(excess_sig_hex: &str) -> McpResult<Signature> {
+    let trimmed = excess_sig_hex.trim();
+    if let Some((nonce_hex, sig_hex)) = trimmed.split_once(':').or_else(|| trimmed.split_once(',')) {
+        let public_nonce = hex::decode(nonce_hex.trim())
+            .map_err(|e| McpError::invalid_request(format!("Invalid hex public nonce: {e}")))?;
+        let signature = hex::decode(sig_hex.trim())
+            .map_err(|e| McpError::invalid_request(format!("Invalid hex signature: {e}")))?;
+        if public_nonce.len() != 32 || signature.len() != 32 {
+            return Err(McpError::invalid_request(
+                "Excess signature components must each be 32 bytes (64 hex characters)".to_string(),
+            ));
+        }
+        return Ok(Signature {
+            public_nonce,
+            signature,
+        });
+    }
+
+    let bytes =
+        hex::decode(trimmed).map_err(|e| McpError::invalid_request(format!("Invalid hex excess signature: {e}")))?;
+    if bytes.len() != 64 {
+        return Err(McpError::invalid_request(
+            "Excess signature must be 64 bytes (128 hex characters) as public_nonce || signature, or \
+             '<public_nonce_hex>:<signature_hex>'"
+                .to_string(),
+        ));
+    }
+
+    let (nonce, sig) = bytes.split_at(32);
+    Ok(Signature {
+        public_nonce: nonce.to_vec(),
+        signature: sig.to_vec(),
+    })
 }
 
 /// Tool for getting mempool statistics
@@ -251,18 +293,7 @@ impl McpTool for GetTransactionStateTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let excess_sig_hex = get_required_string_param(&params, "excess_signature")?;
-
-        // Parse excess signature - this would need to be properly structured
-        // For now, we'll assume it's provided in the correct format
-        let excess_sig_bytes = hex::decode(&excess_sig_hex)
-            .map_err(|e| McpError::invalid_request(format!("Invalid hex excess signature: {e}")))?;
-
-        // Create signature object - this is a simplified version
-        // In reality, we'd need to properly parse the signature components
-        let signature = Signature {
-            public_nonce: excess_sig_bytes.clone(),
-            signature: excess_sig_bytes,
-        };
+        let signature = parse_excess_signature(&excess_sig_hex)?;
 
         let request = Request::new(TransactionStateRequest {
             excess_sig: Some(signature),
@@ -462,5 +493,37 @@ impl McpTool for AnalyzeMempoolTool {
                 }
             }
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percentile_index_clamps_to_last_element() {
+        assert_eq!(percentile_index(0, 50), 0);
+        assert_eq!(percentile_index(10, 50), 5);
+        assert_eq!(percentile_index(10, 100), 9);
+        assert_eq!(percentile_index(10, 150), 9);
+    }
+
+    #[test]
+    fn parse_excess_signature_splits_nonce_and_signature() {
+        let nonce_hex = "11".repeat(32);
+        let sig_hex = "22".repeat(32);
+
+        let concat = format!("{nonce_hex}{sig_hex}");
+        let parsed_concat = parse_excess_signature(&concat).unwrap();
+        assert_eq!(parsed_concat.public_nonce, vec![0x11; 32]);
+        assert_eq!(parsed_concat.signature, vec![0x22; 32]);
+
+        let delimited = format!("{nonce_hex}:{sig_hex}");
+        let parsed_delimited = parse_excess_signature(&delimited).unwrap();
+        assert_eq!(parsed_delimited.public_nonce, vec![0x11; 32]);
+        assert_eq!(parsed_delimited.signature, vec![0x22; 32]);
+
+        // 32-byte single component must be rejected rather than duplicated into both fields
+        assert!(parse_excess_signature(&nonce_hex).is_err());
     }
 }
