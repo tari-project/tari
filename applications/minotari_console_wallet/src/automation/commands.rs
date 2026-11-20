@@ -4519,7 +4519,7 @@ mod test {
 
     #[test]
     fn make_it_rain_tx_count_handles_zero_and_fractional_inputs() {
-        let cases = [
+        let cases: [(f64, Duration, f64, usize); 8] = [
             (25.0, Duration::ZERO, 25.0, 0),
             (0.01, Duration::from_secs(60), 0.01, 0),
             (0.0, Duration::from_secs(60), 0.01, 0),
