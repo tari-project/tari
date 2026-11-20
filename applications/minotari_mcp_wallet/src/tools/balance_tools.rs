@@ -173,11 +173,15 @@ impl McpTool for GetUnspentAmountsTool {
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {e}")))?
             .into_inner();
 
+        let total_unspent = sum_unspent_amounts(&response.amount);
+
         Ok(json!({
             "unspent_amount": response.amount,
+            "total_unspent": total_unspent,
             "formatted": {
-                "tari": (response.amount.first().copied().unwrap_or(0) as f64 / 1_000_000.0).round() / 1.0, // Convert from µT to T
+                "tari": (total_unspent as f64 / 1_000_000.0), // Convert from µT to T
                 "microtari": response.amount,
+                "total_microtari": total_unspent,
             },
             "info": {
                 "description": "Total value of all unspent transaction outputs",
@@ -186,6 +190,57 @@ impl McpTool for GetUnspentAmountsTool {
             }
         }))
     }
+}
+
+fn sum_unspent_amounts(amounts: &[u64]) -> u64 {
+    amounts.iter().copied().fold(0u64, u64::saturating_add)
+}
+
+fn build_spending_recommendations(
+    total_balance: u64,
+    liquid_balance: u64,
+    pending_incoming_balance: u64,
+    requested_amount: u64,
+) -> Vec<String> {
+    let liquidity_ratio = if total_balance > 0 {
+        liquid_balance as f64 / total_balance as f64
+    } else {
+        0.0
+    };
+    let can_spend_requested = requested_amount > 0 && liquid_balance >= requested_amount;
+    let mut recommendations = Vec::new();
+
+    if liquid_balance == 0 && total_balance > 0 {
+        recommendations.push("All funds are locked or pending - wait for transactions to confirm".to_string());
+    } else if liquidity_ratio < 0.5 && total_balance > 0 {
+        recommendations.push("Consider reducing pending transactions to improve liquidity".to_string());
+    } else {
+        // clippy
+    }
+
+    if requested_amount > 0 {
+        if can_spend_requested {
+            let remaining_after = liquid_balance.saturating_sub(requested_amount);
+            if remaining_after < 10000 {
+                // Less than 0.01 T remaining
+                recommendations.push("Transaction would use almost all available funds".to_string());
+            }
+        } else if liquid_balance == 0 {
+            recommendations.push("No funds available for spending".to_string());
+        } else {
+            recommendations.push(format!(
+                "Requested amount ({requested_amount} µT) exceeds available balance ({liquid_balance} µT)"
+            ));
+        }
+    }
+
+    if pending_incoming_balance > 0 {
+        recommendations.push(format!(
+            "Incoming funds ({pending_incoming_balance} µT) will be available once confirmed"
+        ));
+    }
+
+    recommendations
 }
 
 /// Tool for comprehensive balance analysis
@@ -281,36 +336,12 @@ impl McpTool for BalanceAnalysisTool {
         let spending_capacity = liquid_balance;
 
         // Generate recommendations
-        let mut recommendations = Vec::new();
-
-        if liquid_balance == 0 && total_balance > 0 {
-            recommendations.push("All funds are locked or pending - wait for transactions to confirm".to_string());
-        } else if liquidity_ratio < 0.5 && total_balance > 0 {
-            recommendations.push("Consider reducing pending transactions to improve liquidity".to_string());
-        } else {
-            // clippy
-        }
-
-        if requested_amount > 0 && can_spend_requested {
-            let remaining_after = liquid_balance.saturating_sub(requested_amount);
-            if remaining_after < 10000 {
-                // Less than 0.01 T remaining
-                recommendations.push("Transaction would use almost all available funds".to_string());
-            } else if liquid_balance == 0 {
-                recommendations.push("No funds available for spending".to_string());
-            } else {
-                recommendations.push(format!(
-                    "Requested amount ({requested_amount} µT) exceeds available balance ({liquid_balance} µT)"
-                ));
-            }
-        }
-
-        if balance_response.pending_incoming_balance > 0 {
-            recommendations.push(format!(
-                "Incoming funds ({} µT) will be available once confirmed",
-                balance_response.pending_incoming_balance
-            ));
-        }
+        let recommendations = build_spending_recommendations(
+            total_balance,
+            liquid_balance,
+            balance_response.pending_incoming_balance,
+            requested_amount,
+        );
 
         Ok(json!({
             "balance_overview": {
@@ -320,7 +351,8 @@ impl McpTool for BalanceAnalysisTool {
                 "pending_incoming": balance_response.pending_incoming_balance,
                 "pending_outgoing": balance_response.pending_outgoing_balance,
                 "timelocked": balance_response.timelocked_balance,
-                "unspent_utxos_value": unspent_response.amount,
+                "unspent_utxos_value": sum_unspent_amounts(&unspent_response.amount),
+                "unspent_utxos": unspent_response.amount,
             },
             "liquidity_analysis": {
                 "liquidity_ratio": (liquidity_ratio * 100.0).round(),
@@ -587,5 +619,50 @@ impl McpTool for BalanceMonitorTool {
                 }
             }
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sum_unspent_amounts_sums_all_utxos_with_saturation() {
+        assert_eq!(sum_unspent_amounts(&[]), 0);
+        assert_eq!(sum_unspent_amounts(&[500_000, 1_250_000, 250_000]), 2_000_000);
+        assert_eq!(sum_unspent_amounts(&[u64::MAX, 10]), u64::MAX);
+    }
+
+    #[test]
+    fn build_spending_recommendations_does_not_report_deficit_when_spend_is_feasible() {
+        let recs = build_spending_recommendations(1_000_000, 1_000_000, 0, 500_000);
+        assert!(
+            recs.is_empty(),
+            "feasible spend with ample remaining funds should not emit error recommendations: {recs:?}"
+        );
+    }
+
+    #[test]
+    fn build_spending_recommendations_warns_when_nearly_all_funds_used() {
+        let recs = build_spending_recommendations(100_000, 100_000, 0, 95_000);
+        assert_eq!(recs, vec!["Transaction would use almost all available funds"]);
+    }
+
+    #[test]
+    fn build_spending_recommendations_reports_exceeds_balance_when_insufficient() {
+        let recs = build_spending_recommendations(100_000, 100_000, 0, 250_000);
+        assert_eq!(recs, vec![
+            "Requested amount (250000 µT) exceeds available balance (100000 µT)"
+        ]);
+    }
+
+    #[test]
+    fn build_spending_recommendations_reports_no_funds_when_liquid_balance_is_zero() {
+        let recs = build_spending_recommendations(500_000, 0, 500_000, 100_000);
+        assert_eq!(recs, vec![
+            "All funds are locked or pending - wait for transactions to confirm",
+            "No funds available for spending",
+            "Incoming funds (500000 µT) will be available once confirmed",
+        ]);
     }
 }

@@ -298,38 +298,52 @@ impl McpTool for AddressValidationTool {
 
     #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let address = get_required_string_param(&params, "address")?;
+        let raw_address = get_required_string_param(&params, "address")?;
+        Ok(validate_address_value(&raw_address))
+    }
+}
 
-        // Basic validation checks
-        let mut validation_results = Vec::new();
-        let mut is_valid = true;
-        let mut address_type = "UNKNOWN";
-        let mut format_type = "UNKNOWN";
+fn validate_address_value(raw_address: &str) -> Value {
+    let address = raw_address.trim();
 
-        // Check if it's a hex address
-        if address.starts_with("0x") || address.chars().all(|c| c.is_ascii_hexdigit()) {
-            let hex_addr = if let Some(stripped) = address.strip_prefix("0x") {
-                stripped
-            } else {
-                &address
-            };
+    // Basic validation checks
+    let mut validation_results = Vec::new();
+    let mut is_valid = true;
+    let mut address_type = "UNKNOWN";
+    let mut format_type = "UNKNOWN";
 
+    if address.is_empty() {
+        is_valid = false;
+        validation_results.push("Address cannot be empty".to_string());
+    }
+    // Check if it's a hex address
+    else if address.starts_with("0x") || address.starts_with("0X") || address.chars().all(|c| c.is_ascii_hexdigit()) {
+        let hex_addr = address
+            .strip_prefix("0x")
+            .or_else(|| address.strip_prefix("0X"))
+            .unwrap_or(address);
+
+        if hex_addr.is_empty() {
+            is_valid = false;
+            validation_results.push("Invalid hexadecimal format".to_string());
+        } else {
             match hex::decode(hex_addr) {
                 Ok(bytes) => {
                     format_type = "HEX";
                     match bytes.len() {
-                        33 => {
+                        33 | 67..=323 => {
                             address_type = "INTERACTIVE";
-                            validation_results.push("Valid interactive address length (33 bytes)".to_string());
+                            validation_results
+                                .push(format!("Valid interactive address length ({} bytes)", bytes.len()));
                         },
-                        32 => {
+                        32 | 35 => {
                             address_type = "ONE_SIDED";
-                            validation_results.push("Valid one-sided address length (32 bytes)".to_string());
+                            validation_results.push(format!("Valid one-sided address length ({} bytes)", bytes.len()));
                         },
                         _ => {
                             is_valid = false;
                             validation_results.push(format!(
-                                "Invalid address length: {} bytes (expected 32 or 33)",
+                                "Invalid address length: {} bytes (expected 32, 33, 35, or 67..=323)",
                                 bytes.len()
                             ));
                         },
@@ -341,96 +355,97 @@ impl McpTool for AddressValidationTool {
                 },
             }
         }
-        // Check if it's a Base58 address (Tari addresses typically start with specific characters)
-        else if address.len() > 40 &&
-            address
-                .chars()
-                .all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c))
-        {
-            format_type = "BASE58";
-            address_type = "INTERACTIVE"; // Most Base58 addresses are interactive
-            validation_results.push("Valid Base58 format detected".to_string());
-
-            // Additional Base58 validation could be added here
-            if address.len() < 44 || address.len() > 88 {
-                validation_results.push("Warning: Base58 address length seems unusual".to_string());
-            }
-        }
-        // Check if it's an emoji address
-        else if address.chars().any(|c| (c as u32) > 127) {
-            format_type = "EMOJI";
-            address_type = "INTERACTIVE";
-            validation_results.push("Emoji address format detected".to_string());
-
-            let emoji_count = address.chars().filter(|c| (*c as u32) > 127).count();
-            if emoji_count < 8 {
-                validation_results.push("Warning: Emoji address seems too short".to_string());
-            }
-        } else {
-            is_valid = false;
-            validation_results.push("Unrecognized address format".to_string());
-        }
-
-        // Generate recommendations
-        let mut recommendations = Vec::new();
-
-        if is_valid {
-            recommendations.push("Address format appears valid".to_string());
-
-            match format_type {
-                "HEX" => {
-                    recommendations.push("Hex addresses are valid but Base58 format is more user-friendly".to_string())
-                },
-                "BASE58" => recommendations.push("Base58 format is recommended for sharing with users".to_string()),
-                "EMOJI" => {
-                    recommendations.push("Emoji format is fun but verify carefully before sending funds".to_string())
-                },
-                _ => {},
-            }
-
-            if address_type == "INTERACTIVE" {
-                recommendations.push("Interactive addresses support full Mimblewimble protocol features".to_string());
-            } else if address_type == "ONE_SIDED" {
-                recommendations.push("One-sided addresses provide enhanced sender privacy".to_string());
-            } else { // clippy
-            }
-        } else {
-            recommendations.push("Verify the address was copied correctly".to_string());
-            recommendations.push("Check with the sender for the correct address format".to_string());
-        }
-
-        Ok(json!({
-            "address": address,
-            "validation": {
-                "is_valid": is_valid,
-                "address_type": address_type,
-                "format_type": format_type,
-                "checks_performed": validation_results,
-            },
-            "analysis": {
-                "length": address.len(),
-                "character_count": address.chars().count(),
-                "contains_special_chars": address.chars().any(|c| !c.is_alphanumeric()),
-                "estimated_type": match (format_type, address_type) {
-                    ("BASE58", "INTERACTIVE") => "Standard interactive Tari address",
-                    ("HEX", "INTERACTIVE") => "Raw interactive address bytes",
-                    ("HEX", "ONE_SIDED") => "Raw one-sided address bytes",
-                    ("EMOJI", _) => "Emoji-encoded Tari address",
-                    _ => "Unknown or invalid address type",
-                }
-            },
-            "recommendations": recommendations,
-            "usage_notes": {
-                "sending_funds": if is_valid {
-                    "Address appears valid for receiving Tari"
-                } else {
-                    "Do not send funds to this address - validation failed"
-                },
-                "preferred_format": "Base58 format is recommended for most users",
-                "verification": "Always verify addresses with the recipient before sending funds",
-            }
-        }))
     }
+    // Check if it's a Base58 address (Tari addresses typically start with specific characters)
+    else if address.len() > 40 &&
+        address
+            .chars()
+            .all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c))
+    {
+        format_type = "BASE58";
+        address_type = "INTERACTIVE"; // Most Base58 addresses are interactive
+        validation_results.push("Valid Base58 format detected".to_string());
+
+        // Standard Tari Base58 addresses are ~47-49 chars (35-byte one-sided) or ~91-93 chars (67-byte dual)
+        if address.len() < 44 || address.len() > 120 {
+            validation_results.push("Warning: Base58 address length seems unusual".to_string());
+        }
+    }
+    // Check if it's an emoji address
+    else if address.chars().any(|c| (c as u32) > 127) {
+        format_type = "EMOJI";
+        address_type = "INTERACTIVE";
+        validation_results.push("Emoji address format detected".to_string());
+
+        let emoji_count = address.chars().filter(|c| (*c as u32) > 127).count();
+        if emoji_count < 8 {
+            is_valid = false;
+            validation_results.push("Warning: Emoji address seems too short".to_string());
+        }
+    } else {
+        is_valid = false;
+        validation_results.push("Unrecognized address format".to_string());
+    }
+
+    // Generate recommendations
+    let mut recommendations = Vec::new();
+
+    if is_valid {
+        recommendations.push("Address format appears valid".to_string());
+
+        match format_type {
+            "HEX" => {
+                recommendations.push("Hex addresses are valid but Base58 format is more user-friendly".to_string())
+            },
+            "BASE58" => recommendations.push("Base58 format is recommended for sharing with users".to_string()),
+            "EMOJI" => {
+                recommendations.push("Emoji format is fun but verify carefully before sending funds".to_string())
+            },
+            _ => {},
+        }
+
+        if address_type == "INTERACTIVE" {
+            recommendations.push("Interactive addresses support full Mimblewimble protocol features".to_string());
+        } else if address_type == "ONE_SIDED" {
+            recommendations.push("One-sided addresses provide enhanced sender privacy".to_string());
+        } else { // clippy
+        }
+    } else {
+        recommendations.push("Verify the address was copied correctly".to_string());
+        recommendations.push("Check with the sender for the correct address format".to_string());
+    }
+
+    json!({
+        "address": address,
+        "validation": {
+            "is_valid": is_valid,
+            "address_type": address_type,
+            "format_type": format_type,
+            "checks_performed": validation_results,
+        },
+        "analysis": {
+            "length": address.len(),
+            "character_count": address.chars().count(),
+            "contains_special_chars": address.chars().any(|c| !c.is_alphanumeric()),
+            "estimated_type": match (format_type, address_type) {
+                ("BASE58", "INTERACTIVE") => "Standard interactive Tari address",
+                ("HEX", "INTERACTIVE") => "Raw interactive address bytes",
+                ("HEX", "ONE_SIDED") => "Raw one-sided address bytes",
+                ("EMOJI", _) if is_valid => "Emoji-encoded Tari address",
+                _ => "Unknown or invalid address type",
+            }
+        },
+        "recommendations": recommendations,
+        "usage_notes": {
+            "sending_funds": if is_valid {
+                "Address appears valid for receiving Tari"
+            } else {
+                "Do not send funds to this address - validation failed"
+            },
+            "preferred_format": "Base58 format is recommended for most users",
+            "verification": "Always verify addresses with the recipient before sending funds",
+        }
+    })
 }
 
 /// Tool for address format conversion
@@ -482,36 +497,45 @@ impl McpTool for AddressConverterTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let address = get_required_string_param(&params, "address")?;
+        let raw_address = get_required_string_param(&params, "address")?;
         let target_format = get_optional_string_param(&params, "target_format").unwrap_or_else(|| "all".to_string());
 
         // This is a simplified conversion - in a real implementation, we'd need
         // proper address parsing and conversion logic
 
+        let address = raw_address.trim();
+
         let mut conversions = json!({});
         let mut errors = Vec::new();
 
         // Try to determine the input format and convert
-        if address.starts_with("0x") || address.chars().all(|c| c.is_ascii_hexdigit()) {
+        if !address.is_empty() &&
+            (address.starts_with("0x") ||
+                address.starts_with("0X") ||
+                address.chars().all(|c| c.is_ascii_hexdigit()))
+        {
             // Input is hex format
-            let hex_addr = if let Some(stripped) = address.strip_prefix("0x") {
-                stripped
+            let hex_addr = address
+                .strip_prefix("0x")
+                .or_else(|| address.strip_prefix("0X"))
+                .unwrap_or(address);
+
+            if hex_addr.is_empty() {
+                errors.push("Invalid hex format: empty hex payload".to_string());
             } else {
-                &address
-            };
+                match hex::decode(hex_addr) {
+                    Ok(_bytes) => {
+                        conversions["hex"] = json!(format!("0x{hex_addr}"));
+                        conversions["original_format"] = json!("hex");
 
-            match hex::decode(hex_addr) {
-                Ok(_bytes) => {
-                    conversions["hex"] = json!(format!("0x{}", hex_addr));
-                    conversions["original_format"] = json!("hex");
-
-                    // Note: Real conversion to Base58 and emoji would require
-                    // proper Tari address encoding libraries
-                    conversions["note"] = json!("Full format conversion requires Tari address encoding libraries");
-                },
-                Err(e) => {
-                    errors.push(format!("Invalid hex format: {e}"));
-                },
+                        // Note: Real conversion to Base58 and emoji would require
+                        // proper Tari address encoding libraries
+                        conversions["note"] = json!("Full format conversion requires Tari address encoding libraries");
+                    },
+                    Err(e) => {
+                        errors.push(format!("Invalid hex format: {e}"));
+                    },
+                }
             }
         } else {
             errors.push("Address format conversion is limited in this implementation".to_string());
@@ -530,5 +554,48 @@ impl McpTool for AddressConverterTool {
                 "Always verify converted addresses before using them for transactions"
             ]
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_address_value_rejects_empty_and_short_emoji_inputs() {
+        let empty = validate_address_value("   ");
+        assert_eq!(empty["validation"]["is_valid"], json!(false));
+        assert_eq!(empty["validation"]["format_type"], json!("UNKNOWN"));
+
+        let empty_hex = validate_address_value("0x");
+        assert_eq!(empty_hex["validation"]["is_valid"], json!(false));
+
+        let short_emoji = validate_address_value("🍕🎉");
+        assert_eq!(short_emoji["validation"]["is_valid"], json!(false));
+        assert_eq!(short_emoji["validation"]["format_type"], json!("EMOJI"));
+    }
+
+    #[test]
+    fn validate_address_value_accepts_35_and_67_byte_hex_and_92_char_base58() {
+        let one_sided_35 = "aa".repeat(35);
+        let res_35 = validate_address_value(&one_sided_35);
+        assert_eq!(res_35["validation"]["is_valid"], json!(true));
+        assert_eq!(res_35["validation"]["format_type"], json!("HEX"));
+        assert_eq!(res_35["validation"]["address_type"], json!("ONE_SIDED"));
+
+        let dual_67 = format!("0X{}", "bb".repeat(67));
+        let res_67 = validate_address_value(&dual_67);
+        assert_eq!(res_67["validation"]["is_valid"], json!(true));
+        assert_eq!(res_67["validation"]["format_type"], json!("HEX"));
+        assert_eq!(res_67["validation"]["address_type"], json!("INTERACTIVE"));
+
+        let base58_92 = "f".repeat(91) + "Z";
+        let res_b58 = validate_address_value(&base58_92);
+        assert_eq!(res_b58["validation"]["is_valid"], json!(true));
+        assert_eq!(res_b58["validation"]["format_type"], json!("BASE58"));
+        assert_eq!(
+            res_b58["validation"]["checks_performed"],
+            json!(["Valid Base58 format detected"])
+        );
     }
 }
