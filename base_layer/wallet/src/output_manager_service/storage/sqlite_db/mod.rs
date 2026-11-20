@@ -22,7 +22,7 @@
 
 use std::{ops::Range, str::FromStr};
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use derivative::Derivative;
 use diesel::{connection::SimpleConnection, prelude::*, result::Error as DieselError};
 use log::*;
@@ -185,8 +185,10 @@ impl OutputManagerSqliteDatabase {
                             OutputStatus::UnspentMinedUnconfirmed as i32
                         },
                         // Quoted timestamp, or an unquoted SQL NULL (a quoted 'NULL' would be stored as text)
-                        DateTime::from_timestamp(update.mined_timestamp as i64, 0)
-                            .map_or_else(|| "NULL".to_string(), |val| format!("'{}'", val.naive_utc())),
+                        OffsetDateTime::from_unix_timestamp(update.mined_timestamp as i64)
+                            .map_or_else(|_| "NULL".to_string(), |val| {
+                                format!("'{}'", PrimitiveDateTime::new(val.date(), val.time()))
+                            }),
                     )
                 })
                 .collect::<Vec<String>>()
@@ -519,7 +521,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let outputs = OutputSql::index_invalid(
-            &DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap().naive_utc(),
+            &{
+            let dt = OffsetDateTime::from_unix_timestamp(timestamp).unwrap_or(OffsetDateTime::UNIX_EPOCH);
+            PrimitiveDateTime::new(dt.date(), dt.time())
+        },
             &mut conn,
         )?;
 
@@ -719,7 +724,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
-                outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
+                outputs::mined_timestamp.eq::<Option<PrimitiveDateTime>>(None),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
                 outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
             ))
@@ -825,7 +830,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
-                outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
+                outputs::mined_timestamp.eq::<Option<PrimitiveDateTime>>(None),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
                 outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
             ))
@@ -857,7 +862,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
 
-        let last_validation_timestamp = Utc::now().naive_utc();
+        let last_validation_timestamp = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
 
         // Three queries were evaluated to determine the most efficient way to update the last validation timestamp
         // during system-level stress testing:
@@ -1146,8 +1151,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             )
             .set((
                 outputs::status.eq(OutputStatus::CancelledInbound as i32),
-                outputs::last_validation_timestamp
-                    .eq(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc()),
+                outputs::last_validation_timestamp.eq({
+                    let now = OffsetDateTime::now_utc();
+                    PrimitiveDateTime::new(now.date(), now.time())
+                }),
             ))
             .execute(conn)?;
 
@@ -1311,7 +1318,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         UpdateOutput {
                             status: Some(OutputStatus::CancelledInbound),
                             last_validation_timestamp: Some(Some(
-                                DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc(),
+                                {
+                                    let now = OffsetDateTime::now_utc();
+                                    PrimitiveDateTime::new(now.date(), now.time())
+                                },
                             )),
                             ..Default::default()
                         },
@@ -1670,7 +1680,7 @@ pub struct UpdateOutput {
     metadata_signature_u_y: Option<Vec<u8>>,
     mined_height: Option<Option<u64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
-    last_validation_timestamp: Option<Option<NaiveDateTime>>,
+    last_validation_timestamp: Option<Option<PrimitiveDateTime>>,
     encrypted_data: Option<Vec<u8>>,
 }
 
@@ -1689,7 +1699,7 @@ pub struct UpdateOutputSql {
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
     encrypted_data: Option<Vec<u8>>,
-    last_validation_timestamp: Option<Option<NaiveDateTime>>,
+    last_validation_timestamp: Option<Option<PrimitiveDateTime>>,
 }
 
 /// Map a Rust friendly UpdateOutput to the Sql data type form

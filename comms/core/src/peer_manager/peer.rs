@@ -30,7 +30,7 @@ use std::{
 };
 
 use bitflags::bitflags;
-use chrono::{NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::serialize_to_hex;
@@ -80,7 +80,7 @@ pub struct Peer {
     pub addresses: MultiaddressesWithStats,
     /// Flags for the peer.
     pub flags: PeerFlags,
-    pub banned_until: Option<NaiveDateTime>,
+    pub banned_until: Option<PrimitiveDateTime>,
     pub banned_reason: String,
     /// Features supported by the peer
     pub features: PeerFeatures,
@@ -88,14 +88,14 @@ pub struct Peer {
     /// used as information for more efficient protocol negotiation.
     pub supported_protocols: Vec<ProtocolId>,
     /// Timestamp of when the peer was added to this nodes peer list
-    pub added_at: NaiveDateTime,
+    pub added_at: PrimitiveDateTime,
     /// User agent advertised by the peer
     pub user_agent: String,
     /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
     /// We use a hashmap here so that we can use more than one "info set"
     pub metadata: HashMap<u8, Vec<u8>>,
     /// If this peer has been deleted.
-    pub deleted_at: Option<NaiveDateTime>,
+    pub deleted_at: Option<PrimitiveDateTime>,
 }
 
 impl Peer {
@@ -118,7 +118,7 @@ impl Peer {
             features,
             banned_until: None,
             banned_reason: String::new(),
-            added_at: Utc::now().naive_utc(),
+            added_at: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
             supported_protocols,
             user_agent,
             metadata: HashMap::new(),
@@ -134,14 +134,14 @@ impl Peer {
         node_id: NodeId,
         addresses: MultiaddressesWithStats,
         flags: PeerFlags,
-        banned_until: Option<NaiveDateTime>,
+        banned_until: Option<PrimitiveDateTime>,
         banned_reason: String,
         features: PeerFeatures,
         supported_protocols: Vec<ProtocolId>,
-        added_at: NaiveDateTime,
+        added_at: PrimitiveDateTime,
         user_agent: String,
         metadata: HashMap<u8, Vec<u8>>,
-        deleted_at: Option<NaiveDateTime>,
+        deleted_at: Option<PrimitiveDateTime>,
     ) -> Peer {
         Peer {
             id,
@@ -202,7 +202,7 @@ impl Peer {
         &self.supported_protocols
     }
 
-    pub fn last_connect_attempt(&self) -> Option<NaiveDateTime> {
+    pub fn last_connect_attempt(&self) -> Option<PrimitiveDateTime> {
         self.addresses
             .addresses()
             .iter()
@@ -224,7 +224,7 @@ impl Peer {
         self.addresses.offline_at().is_some()
     }
 
-    pub fn offline_at(&self) -> Option<NaiveDateTime> {
+    pub fn offline_at(&self) -> Option<PrimitiveDateTime> {
         self.addresses.offline_at()
     }
 
@@ -232,8 +232,11 @@ impl Peer {
     pub fn offline_since(&self) -> Option<Duration> {
         let offline_at = self.addresses.offline_at();
         offline_at
-            .map(|offline_at| Utc::now().naive_utc().signed_duration_since(offline_at))
-            .map(|since| Duration::from_secs(u64::try_from(since.num_seconds()).unwrap_or(0)))
+            .map(|offline_at| {
+                let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+                now - offline_at
+            })
+            .map(|since| Duration::from_secs(u64::try_from(since.whole_seconds()).unwrap_or(0)))
     }
 
     pub(super) fn set_id(&mut self, id: PeerId) {
@@ -246,7 +249,7 @@ impl Peer {
     }
 
     /// Provides that date time of the last successful interaction with the peer
-    pub fn last_seen(&self) -> Option<NaiveDateTime> {
+    pub fn last_seen(&self) -> Option<PrimitiveDateTime> {
         self.addresses.last_seen()
     }
 
@@ -257,8 +260,8 @@ impl Peer {
 
     /// Provides that length of time since the last successful interaction with the peer
     pub fn last_seen_since(&self) -> Option<Duration> {
-        self.last_seen()
-            .and_then(|dt| Utc::now().naive_utc().signed_duration_since(dt).to_std().ok())
+        let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+        self.last_seen().and_then(|dt| Duration::try_from(now - dt).ok())
     }
 
     /// Returns the ban status of the peer
@@ -274,7 +277,7 @@ impl Peer {
     /// Bans the peer for a specified duration
     pub fn ban_for(&mut self, duration: Duration, reason: String) {
         let dt = safe_future_datetime_from_duration(duration);
-        self.banned_until = Some(dt.naive_utc());
+        self.banned_until = Some(PrimitiveDateTime::new(dt.date(), dt.time()));
         self.banned_reason = reason;
     }
 
@@ -284,8 +287,8 @@ impl Peer {
         self.banned_reason = "".to_string();
     }
 
-    pub fn banned_until(&self) -> Option<&NaiveDateTime> {
-        self.banned_until.as_ref().filter(|dt| *dt > &Utc::now().naive_utc())
+    pub fn banned_until(&self) -> Option<&PrimitiveDateTime> {
+        self.banned_until.as_ref().filter(|dt| *dt > &PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))
     }
 
     /// This will store metadata inside of the metadata field in the peer.
@@ -484,7 +487,7 @@ mod test {
 
     #[test]
     fn configured_address_becomes_config_when_merged_over_a_claim() {
-        use chrono::Utc;
+        use time::OffsetDateTime;
         use tari_crypto::keys::SecretKey;
 
         use crate::{
@@ -536,7 +539,7 @@ mod test {
         // Stored by an older build: the configured address carries the peer's claim
         let mut stored = peer_with(MultiaddressesWithStats::from_addresses_with_source(
             vec![dns_address.clone(), ip_address.clone()],
-            &claim_at(Utc::now() - chrono::Duration::hours(1)),
+            &claim_at(OffsetDateTime::now_utc() - Duration::hours(1)),
         ));
         assert!(!dns_source(&stored).is_config());
 
@@ -552,7 +555,7 @@ mod test {
         // A strictly newer claim that includes the configured address leaves it config
         stored.merge(&peer_with(MultiaddressesWithStats::from_addresses_with_source(
             vec![dns_address.clone(), ip_address.clone()],
-            &claim_at(Utc::now()),
+            &claim_at(OffsetDateTime::now_utc()),
         )));
         assert!(dns_source(&stored).is_config());
         let ip = stored.addresses.iter().find(|a| a.address() == &ip_address).unwrap();

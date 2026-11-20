@@ -28,7 +28,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use log::warn;
 use tari_common_types::{
     burn_proof::PartialBurnClaimProof,
@@ -237,7 +237,7 @@ pub enum TransactionServiceRequest {
         source_address: TariAddress,
         import_status: LegacyImportStatus,
         current_height: Option<u64>,
-        mined_timestamp: Option<DateTime<Utc>>,
+        mined_timestamp: Option<OffsetDateTime>,
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,
@@ -803,7 +803,7 @@ pub struct PaymentDetails {
     pub direction: TransactionDirection,
     pub block_height: u64,
     pub confirmations: u64,
-    pub timestamp: Option<DateTime<Utc>>,
+    pub timestamp: Option<OffsetDateTime>,
     pub payment_id: Option<Vec<u8>>,
     pub tx_id: TxId,
 }
@@ -1533,7 +1533,7 @@ impl TransactionServiceHandle {
         source_address: TariAddress,
         import_status: LegacyImportStatus,
         current_height: Option<u64>,
-        mined_timestamp: Option<DateTime<Utc>>,
+        mined_timestamp: Option<OffsetDateTime>,
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,

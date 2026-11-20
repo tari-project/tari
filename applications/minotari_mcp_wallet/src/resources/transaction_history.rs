@@ -143,7 +143,7 @@ impl McpResource for TransactionHistoryResource {
             "summary": {
                 "total_completed": completed_transactions.len(),
                 "total_pending": pending_transactions.len(),
-                "last_updated": chrono::Utc::now().timestamp()
+                "last_updated": OffsetDateTime::now_utc().unix_timestamp()
             }
         }))
     }

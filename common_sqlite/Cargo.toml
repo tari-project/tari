@@ -19,7 +19,7 @@ diesel = { version = "2.4.0", features = [
     "sqlite",
     "r2d2",
     "serde_json",
-    "chrono",
+    "time",
     "64-column-tables",
 ] }
 diesel_migrations = "2.4"

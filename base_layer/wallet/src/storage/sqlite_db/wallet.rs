@@ -1051,7 +1051,7 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 mod test {
     #![allow(clippy::indexing_slicing)]
 
-    use chrono::Utc;
+    use time::OffsetDateTime;
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
     use tari_common_types::{
         encryption::{Encryptable, decrypt_bytes_integral_nonce},
@@ -1775,14 +1775,14 @@ mod test {
             header_hash: FixedHash::from_hex("0000000000000000000769b1c3f6a1b4b3c2d1e0f9e8d7c6b5a4b3c2d1e0f9e8")
                 .unwrap(),
             height: 700000,
-            timestamp: Utc::now().naive_utc(),
+            timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
         };
 
         let block2 = ScannedBlock {
             header_hash: FixedHash::from_hex("0000000000000000000769b1c3f6a1b4b3c2d1e0f9e8d7c6b5a4b3c2d1e0f9e8")
                 .unwrap(),
             height: 700001,
-            timestamp: Utc::now().naive_utc(),
+            timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
         };
 
         wallet.save_scanned_block(block1).unwrap();

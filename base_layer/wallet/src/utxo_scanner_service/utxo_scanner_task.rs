@@ -28,7 +28,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use chrono::{DateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
@@ -228,7 +228,7 @@ where
             Ok(ScannedBlock {
                 height: next_header.height,
                 header_hash: next_header_hash,
-                timestamp: Utc::now().naive_utc(),
+                timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
             })
         } else {
             // The node does not know of any of our cached headers so we will start the scan anew from the
@@ -246,7 +246,7 @@ where
             Ok(ScannedBlock {
                 height: scanning_start_height_hash.height,
                 header_hash: scanning_start_height_hash.header_hash,
-                timestamp: Utc::now().naive_utc(),
+                timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
             })
         }
     }
@@ -432,7 +432,7 @@ where
             Ok(Some(ScannedBlock {
                 height: sb.height,
                 header_hash: sb.header_hash,
-                timestamp: Utc::now().naive_utc(),
+                timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
             }))
         } else {
             warn!(
@@ -539,8 +539,8 @@ where
                     blocks_scanned = blocks_scanned.saturating_add(1);
                     let current_height = response.height;
                     let current_header_hash = response.header_hash;
-                    let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
-                        .unwrap_or(DateTime::<Utc>::MIN_UTC);
+                    let mined_timestamp = OffsetDateTime::from_unix_timestamp(response.mined_timestamp as i64)
+                        .unwrap_or_else(|_| PrimitiveDateTime::MIN.assume_utc());
                     let outputs = response.outputs;
                     total_scanned = total_scanned.saturating_add(outputs.len());
 
@@ -627,7 +627,7 @@ where
                     prev_scanned_block = Some(ScannedBlock {
                         header_hash: block_hash,
                         height: current_height,
-                        timestamp: Utc::now().naive_utc(),
+                        timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
                     });
                 }
                 starting_header_vec = response.next_header_to_scan;
@@ -815,7 +815,7 @@ where
         &mut self,
         utxos: &[(WalletOutput, LegacyImportStatus, TransactionOutput, RecoveryProvenance)],
         current_height: u64,
-        mined_timestamp: DateTime<Utc>,
+        mined_timestamp: OffsetDateTime,
     ) -> Result<(u64, MicroMinotari), anyhow::Error> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
@@ -859,7 +859,7 @@ where
     fn set_recovery_mode(&self) -> Result<(), anyhow::Error> {
         self.resources
             .db
-            .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
+            .set_client_key_value(RECOVERY_KEY.to_owned(), OffsetDateTime::now_utc().to_string())?;
         Ok(())
     }
 
@@ -880,7 +880,7 @@ where
         source_address: TariAddress,
         import_status: LegacyImportStatus,
         current_height: u64,
-        mined_timestamp: DateTime<Utc>,
+        mined_timestamp: OffsetDateTime,
         scanned_output: TransactionOutput,
         provenance: RecoveryProvenance,
     ) -> Result<(), WalletError> {
@@ -924,7 +924,7 @@ where
             "Wallet birthday is {birthday} at epoch time {epoch_time_birthday}"
         );
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
-        let now = u64::try_from(Utc::now().timestamp()).unwrap_or(0);
+        let now = u64::try_from(OffsetDateTime::now_utc().unix_timestamp()).unwrap_or(0);
         let block_height_scanning_start = if is_birthday_in_the_future(birthday, now) {
             warn!(
                 target: LOG_TARGET,

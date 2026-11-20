@@ -92,7 +92,7 @@ impl McpResource for NetworkStatusResource {
                                           else { "poor" }
                 }
             },
-            "last_updated": chrono::Utc::now().timestamp()
+            "last_updated": OffsetDateTime::now_utc().unix_timestamp()
         }))
     }
 }

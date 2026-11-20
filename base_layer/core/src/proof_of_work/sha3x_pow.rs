@@ -56,7 +56,7 @@ fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u
 pub mod test {
     // Overflow in test code panics, which is the desired failure mode for a test.
     #![allow(clippy::arithmetic_side_effects)]
-    use chrono::{DateTime, NaiveDate, Utc};
+    use time::{Date, OffsetDateTime};
     use tari_node_components::blocks::BlockHeader;
     use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
     use tari_utilities::epoch_time::EpochTime;
@@ -79,14 +79,8 @@ pub mod test {
         let mut header = BlockHeader::new(2);
 
         #[allow(clippy::cast_sign_loss)]
-        let epoch_secs = DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDate::from_ymd_opt(2000, 1, 1)
-                .unwrap()
-                .and_hms_opt(1, 1, 1)
-                .unwrap(),
-            Utc,
-        )
-        .timestamp() as u64;
+        let epoch_secs = Date::from_calendar_date(2000, Month::try_from(1).unwrap(), 1).unwrap().with_hms(1, 1, 1).unwrap().assume_utc()
+        .unix_timestamp() as u64;
         header.timestamp = EpochTime::from_secs_since_epoch(epoch_secs);
         header.pow.pow_algo = PowAlgorithm::Sha3x;
         header

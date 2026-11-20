@@ -27,7 +27,7 @@ use std::{
 };
 
 use borsh::BorshDeserialize;
-use chrono::NaiveDateTime;
+use time::PrimitiveDateTime;
 use derivative::Derivative;
 use diesel::{
     dsl::{count_star, not, sql},
@@ -119,11 +119,11 @@ pub struct OutputSql {
     pub features_json: String,
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
-    pub mined_timestamp: Option<NaiveDateTime>,
+    pub mined_timestamp: Option<PrimitiveDateTime>,
     pub encrypted_data: Vec<u8>,
     pub minimum_value_promise: i64,
     pub source: i32,
-    pub last_validation_timestamp: Option<NaiveDateTime>,
+    pub last_validation_timestamp: Option<PrimitiveDateTime>,
     pub payment_id: Option<Vec<u8>>,
     pub user_payment_id: Option<Vec<u8>>,
 }
@@ -584,7 +584,7 @@ impl OutputSql {
     }
 
     pub fn index_invalid(
-        timestamp: &NaiveDateTime,
+        timestamp: &PrimitiveDateTime,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
@@ -1333,7 +1333,7 @@ impl OutputSql {
             status: self.status.try_into()?,
             mined_height: self.mined_height.map(|mh| mh as u64),
             mined_in_block,
-            mined_timestamp: self.mined_timestamp.map(|mt| mt.and_utc()),
+            mined_timestamp: self.mined_timestamp.map(|mt| mt.assume_utc()),
             marked_deleted_at_height: self.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block,
             spending_priority,

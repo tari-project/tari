@@ -23,7 +23,7 @@
 use std::{cmp::min, collections::HashMap, str::FromStr, time::Duration};
 
 use bytes::Bytes;
-use chrono::{NaiveDateTime, TimeDelta};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use diesel::{
     self,
     ExpressionMethods,
@@ -75,7 +75,7 @@ const LOG_TARGET: &str = "comms::peer_manager::storage::db";
 /// How recently a peer must have been seen to still count as "known good" when selecting random
 /// peers. Peers are gossiped far faster than they are re-verified, so without a recency bound the
 /// candidate set is dominated by peers that were reachable once and have long since gone.
-const KNOWN_GOOD_LAST_SEEN_WINDOW: TimeDelta = TimeDelta::hours(1);
+const KNOWN_GOOD_LAST_SEEN_WINDOW: time::Duration = time::Duration::hours(1);
 
 /// `db_metadata` key holding the [`ADDRESS_CLASSIFIER_VERSION`] this database was last classified
 /// with.
@@ -97,7 +97,7 @@ const GARBAGE_COLLECTION_BATCH_SIZE: usize = 500;
 /// How many garbage collection candidates one plain read fetches, to be deleted in batches.
 const GARBAGE_COLLECTION_READ_SIZE: i64 = 5000;
 /// How long a soft-deleted peer is kept before garbage collection removes it for good.
-const SOFT_DELETED_PEER_RETENTION: TimeDelta = TimeDelta::hours(24);
+const SOFT_DELETED_PEER_RETENTION: time::Duration = time::Duration::hours(24);
 
 /// What one run of [`PeerDatabaseSql::garbage_collect`] removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -127,10 +127,10 @@ enum GarbageCollectionPass {
 
 /// What every garbage collection pass needs to decide eligibility
 struct GarbageCollectionContext {
-    now: NaiveDateTime,
-    deleted_before: NaiveDateTime,
+    now: PrimitiveDateTime,
+    deleted_before: PrimitiveDateTime,
     /// An address last seen before this no longer counts as reached
-    seen_since: NaiveDateTime,
+    seen_since: PrimitiveDateTime,
     config_source: String,
     connected_hex: Vec<String>,
 }
@@ -814,7 +814,7 @@ impl PeerDatabaseSql {
 
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
-                .set(peers::deleted_at.eq(chrono::Utc::now().naive_utc()))
+                .set(peers::deleted_at.eq(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time())))
                 .execute(conn)?;
             if affected > 0 {
                 Ok(Some(node_id.clone()))
@@ -860,12 +860,12 @@ impl PeerDatabaseSql {
         let banned_reason = sanitize_ban_reason(&banned_reason);
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let banned_until =
-                clamp_to_max_stored_datetime(safe_future_datetime_from_duration(ban_duration).naive_utc());
+                clamp_to_max_stored_datetime(PrimitiveDateTime::new(safe_future_datetime_from_duration(ban_duration).date(), safe_future_datetime_from_duration(ban_duration).time()));
 
             let existing = peers::table
                 .filter(peers::node_id.eq(node_id.to_string()))
                 .select(peers::banned_until)
-                .first::<Option<NaiveDateTime>>(conn)
+                .first::<Option<PrimitiveDateTime>>(conn)
                 .optional()?;
             let Some(existing) = existing else {
                 return Ok(None);
@@ -908,11 +908,11 @@ impl PeerDatabaseSql {
 
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let banned_until =
-                clamp_to_max_stored_datetime(safe_future_datetime_from_duration(ban_duration).naive_utc());
+                clamp_to_max_stored_datetime(PrimitiveDateTime::new(safe_future_datetime_from_duration(ban_duration).date(), safe_future_datetime_from_duration(ban_duration).time()));
             let existing = peers::table
                 .filter(peers::node_id.eq(node_id.to_hex()))
                 .select(peers::banned_until)
-                .first::<Option<NaiveDateTime>>(conn)
+                .first::<Option<PrimitiveDateTime>>(conn)
                 .optional()?;
             if existing.flatten().is_some_and(|existing| existing >= banned_until) {
                 return Ok(node_id.clone());
@@ -970,15 +970,15 @@ impl PeerDatabaseSql {
         &self,
         max_peer_rows: usize,
         connected: &[NodeId],
-        seen_since: NaiveDateTime,
+        seen_since: PrimitiveDateTime,
     ) -> Result<GarbageCollectionStats, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        let now = chrono::Utc::now().naive_utc();
+        let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
         let context = GarbageCollectionContext {
             now,
             deleted_before: now
-                .checked_sub_signed(SOFT_DELETED_PEER_RETENTION)
-                .unwrap_or(NaiveDateTime::MIN),
+                .checked_sub(SOFT_DELETED_PEER_RETENTION)
+                .unwrap_or(PrimitiveDateTime::MIN),
             seen_since,
             // Matches the JSON stored in `multi_addresses.source` for `PeerAddressSource::Config`
             config_source: serde_json::to_string(&PeerAddressSource::Config)
@@ -1097,7 +1097,7 @@ impl PeerDatabaseSql {
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
                 .set((
-                    peers::banned_until.eq(None::<NaiveDateTime>),
+                    peers::banned_until.eq(None::<PrimitiveDateTime>),
                     peers::banned_reason.eq(String::new()),
                 ))
                 .execute(conn)?;
@@ -1116,7 +1116,7 @@ impl PeerDatabaseSql {
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let affected = diesel::update(peers::table.filter(peers::banned_until.is_not_null()))
                 .set((
-                    peers::banned_until.eq(None::<NaiveDateTime>),
+                    peers::banned_until.eq(None::<PrimitiveDateTime>),
                     peers::banned_reason.eq(String::new()),
                 ))
                 .execute(conn)?;
@@ -1140,7 +1140,7 @@ impl PeerDatabaseSql {
                 .filter(multi_addresses::connection_attempts.ne(0))
                 .set((
                     multi_addresses::connection_attempts.eq(0),
-                    multi_addresses::last_attempted.eq(None::<NaiveDateTime>),
+                    multi_addresses::last_attempted.eq(None::<PrimitiveDateTime>),
                     multi_addresses::last_failed_reason.eq(None::<String>),
                 ))
                 .execute(conn)?;
@@ -1153,7 +1153,7 @@ impl PeerDatabaseSql {
     pub fn set_last_seen(
         &self,
         node_id: &NodeId,
-        last_seen: NaiveDateTime,
+        last_seen: PrimitiveDateTime,
         address: &Multiaddr,
     ) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
@@ -1195,7 +1195,7 @@ impl PeerDatabaseSql {
                     )
                     .filter(multi_addresses::address_bytes.eq(address.to_vec())),
             )
-            .set(multi_addresses::last_seen.eq(None::<NaiveDateTime>))
+            .set(multi_addresses::last_seen.eq(None::<PrimitiveDateTime>))
             .execute(conn)?;
 
             if affected > 0 {
@@ -1413,7 +1413,7 @@ impl PeerDatabaseSql {
                 .filter(
                     peers::banned_until
                         .is_null()
-                        .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+                        .or(peers::banned_until.lt(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))),
                 )
                 .filter(peers::deleted_at.is_null())
                 .select(peers::node_id)
@@ -1440,7 +1440,7 @@ impl PeerDatabaseSql {
         randomize: bool,
         max_per_netgroup: usize,
         netgroups_taken: &HashMap<String, usize>,
-        seen_since: NaiveDateTime,
+        seen_since: PrimitiveDateTime,
     ) -> Result<Vec<Peer>, StorageError> {
         if let Some(n) = n &&
             n == 0
@@ -1509,7 +1509,7 @@ impl PeerDatabaseSql {
         // ?1: an address last seen before this no longer counts as reached; ?2: now
         let node_ids = diesel::sql_query(sql)
             .bind::<diesel::sql_types::Timestamp, _>(seen_since)
-            .bind::<diesel::sql_types::Timestamp, _>(chrono::Utc::now().naive_utc())
+            .bind::<diesel::sql_types::Timestamp, _>(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))
             .load::<NodeIdRow>(&mut conn)?
             .into_iter()
             .map(|row| row.node_id)
@@ -1618,7 +1618,7 @@ impl PeerDatabaseSql {
             .filter(
                 peers::banned_until
                     .is_not_null()
-                    .and(peers::banned_until.gt(chrono::Utc::now().naive_utc())),
+                    .and(peers::banned_until.gt(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))),
             )
             .select((peers::all_columns, multi_addresses::all_columns.nullable()))
             .load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(&mut conn)?;
@@ -1698,7 +1698,7 @@ impl PeerDatabaseSql {
             .filter(
                 peers::banned_until
                     .is_null()
-                    .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+                    .or(peers::banned_until.lt(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))),
             )
             .filter(peers::deleted_at.is_null())
             .filter(peers::node_id.ne_all(excluded_node_ids_hex))
@@ -1728,10 +1728,10 @@ impl PeerDatabaseSql {
                 threshold,
                 Duration::from_secs(i64::MAX.unsigned_abs().saturating_sub(1)),
             );
-            let stale_threshold = chrono::Utc::now()
-                .naive_utc()
-                .checked_sub_signed(chrono::Duration::from_std(threshold).unwrap_or(TimeDelta::MAX))
-                .unwrap_or(chrono::NaiveDateTime::MIN);
+            let now = OffsetDateTime::now_utc();
+            let stale_threshold = PrimitiveDateTime::new(now.date(), now.time())
+                .checked_sub(time::Duration::try_from(threshold).unwrap_or(time::Duration::MAX))
+                .unwrap_or(PrimitiveDateTime::MIN);
             query = query.filter(
                 multi_addresses::last_seen
                     // Never tried to connect
@@ -1847,7 +1847,7 @@ impl PeerDatabaseSql {
                 .filter(
                     peers::banned_until
                         .is_null()
-                        .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+                        .or(peers::banned_until.lt(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))),
                 )
                 .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
                     "features & {} != 0",
@@ -1866,10 +1866,10 @@ impl PeerDatabaseSql {
                 // network it costs a slow rendezvous that fails, crowding out a live peer. Callers
                 // that cannot fill `n` from this set fall back to a relaxed query, so narrowing it
                 // costs nothing when few recent peers are known.
-                let cutoff = chrono::Utc::now()
-                    .naive_utc()
-                    .checked_sub_signed(KNOWN_GOOD_LAST_SEEN_WINDOW)
-                    .unwrap_or(chrono::NaiveDateTime::MIN);
+                let now = OffsetDateTime::now_utc();
+                let cutoff = PrimitiveDateTime::new(now.date(), now.time())
+                    .checked_sub(KNOWN_GOOD_LAST_SEEN_WINDOW)
+                    .unwrap_or(PrimitiveDateTime::MIN);
                 query = query.filter(multi_addresses::last_seen.gt(cutoff));
             }
             if let Some(flags) = peer_flags {
@@ -1989,14 +1989,14 @@ pub struct NewPeerSql {
     pub public_key: String,
     pub node_id: String,
     pub flags: i32,
-    pub banned_until: Option<NaiveDateTime>,
+    pub banned_until: Option<PrimitiveDateTime>,
     pub banned_reason: String,
     pub features: i32,
     pub supported_protocols: String,
-    pub added_at: NaiveDateTime,
+    pub added_at: PrimitiveDateTime,
     pub user_agent: String,
     pub metadata: Option<Vec<u8>>,
-    pub deleted_at: Option<NaiveDateTime>,
+    pub deleted_at: Option<PrimitiveDateTime>,
 }
 
 #[derive(Clone, Debug, AsChangeset, PartialEq, Eq)]
@@ -2004,13 +2004,13 @@ pub struct NewPeerSql {
 pub struct UpdatePeerSql {
     pub node_id: Option<String>,
     pub flags: Option<i32>,
-    pub banned_until: Option<Option<NaiveDateTime>>,
+    pub banned_until: Option<Option<PrimitiveDateTime>>,
     pub banned_reason: Option<String>,
     pub features: Option<i32>,
     pub supported_protocols: Option<String>,
     pub user_agent: Option<String>,
     pub metadata: Option<Option<Vec<u8>>>,
-    pub deleted_at: Option<Option<NaiveDateTime>>,
+    pub deleted_at: Option<Option<PrimitiveDateTime>>,
 }
 
 #[derive(Clone, Debug)]
@@ -2026,13 +2026,13 @@ pub struct NewMultiaddrWithStatsSql {
     pub peer_id: i64,
     pub address: String,
     pub is_external: bool,
-    pub last_seen: Option<NaiveDateTime>,
+    pub last_seen: Option<PrimitiveDateTime>,
     pub connection_attempts: i32,
     pub avg_initial_dial_time: Option<i64>,
     pub initial_dial_time_sample_count: i32,
     pub avg_latency: Option<i64>,
     pub latency_sample_count: i32,
-    pub last_attempted: Option<NaiveDateTime>,
+    pub last_attempted: Option<PrimitiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
     pub source: String,
@@ -2045,13 +2045,13 @@ pub struct NewMultiaddrWithStatsSql {
 pub struct UpdateMultiaddrWithStatsSql {
     pub address: Option<String>,
     pub is_external: Option<bool>,
-    pub last_seen: Option<Option<NaiveDateTime>>,
+    pub last_seen: Option<Option<PrimitiveDateTime>>,
     pub connection_attempts: Option<i32>,
     pub avg_initial_dial_time: Option<Option<i64>>,
     pub initial_dial_time_sample_count: Option<i32>,
     pub avg_latency: Option<Option<i64>>,
     pub latency_sample_count: Option<i32>,
-    pub last_attempted: Option<Option<NaiveDateTime>>,
+    pub last_attempted: Option<Option<PrimitiveDateTime>>,
     pub last_failed_reason: Option<Option<String>>,
     pub quality_score: Option<Option<i32>>,
     pub source: Option<String>,
@@ -2254,7 +2254,6 @@ mod tests {
     #![allow(clippy::indexing_slicing)]
     use std::{collections::HashMap, time::Duration};
 
-    use chrono::TimeDelta;
     use diesel::{self, ExpressionMethods, QueryDsl, RunQueryDsl};
     use tari_common_sqlite::connection::DbConnection;
     use tari_utilities::{ByteArray, hex::Hex};
@@ -2741,8 +2740,8 @@ mod tests {
         );
 
         // Test 'set_last_seen'
-        let last_seen = chrono::Utc::now().naive_utc() -
-            chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
+        let last_seen = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()) -
+            time::Duration::try_from(Duration::from_secs(120)).unwrap_or(time::Duration::MAX);
         for address in node_peers[8].addresses.addresses() {
             peers_db
                 .set_last_seen(&node_peers[8].node_id, last_seen, address.address())
@@ -3437,8 +3436,8 @@ mod tests {
     }
 
     /// A `seen_since` under which any sighting counts as reached
-    fn long_ago() -> chrono::NaiveDateTime {
-        chrono::NaiveDateTime::MIN
+    fn long_ago() -> PrimitiveDateTime {
+        PrimitiveDateTime::MIN
     }
 
     fn new_test_db() -> PeerDatabaseSql {
@@ -3458,7 +3457,7 @@ mod tests {
         if seen {
             peer.addresses.mark_last_seen_now(&addresses[0]);
         }
-        peer.added_at = chrono::Utc::now().naive_utc().checked_sub_signed(age).unwrap();
+        peer.added_at = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()).checked_sub(age).unwrap();
         peer
     }
 
@@ -3871,7 +3870,7 @@ mod tests {
         let recently_deleted = node_peer_with_addresses(vec![address(6)], true, TimeDelta::zero());
         peers_db.add_or_update_peer(recently_deleted.clone()).unwrap();
         let mut conn = peers_db.connection.get_pooled_connection().unwrap();
-        let two_days_ago = chrono::Utc::now().naive_utc() - TimeDelta::days(2);
+        let two_days_ago = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()) - TimeDelta::days(2);
         diesel::update(
             peers::table.filter(peers::node_id.eq_any(vec![soft_deleted.node_id.to_hex(), banned.node_id.to_hex()])),
         )
@@ -4006,7 +4005,7 @@ mod tests {
         // Soft deleted long ago, an active ban still keeps the row
         let mut conn = peers_db.connection.get_pooled_connection().unwrap();
         diesel::update(peers::table.filter(peers::node_id.eq(banned_forever.node_id.to_hex())))
-            .set(peers::deleted_at.eq(chrono::Utc::now().naive_utc() - TimeDelta::days(2)))
+            .set(peers::deleted_at.eq(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()) - TimeDelta::days(2)))
             .execute(&mut conn)
             .unwrap();
         drop(conn);
@@ -4076,7 +4075,7 @@ mod tests {
         let expire_ban = |node_id: &NodeId| {
             let mut conn = peers_db.connection.get_pooled_connection().unwrap();
             diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_hex())))
-                .set(peers::banned_until.eq(chrono::Utc::now().naive_utc() - TimeDelta::hours(1)))
+                .set(peers::banned_until.eq(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()) - TimeDelta::hours(1)))
                 .execute(&mut conn)
                 .unwrap();
         };
@@ -4128,7 +4127,7 @@ mod tests {
         let address: Multiaddr = "/ip4/23.1.1.1/tcp/18189".parse().unwrap();
         let stale = node_peer_with_addresses(vec![address.clone()], false, TimeDelta::hours(100));
         peers_db.add_or_update_peer(stale.clone()).unwrap();
-        let two_days_ago = chrono::Utc::now().naive_utc() - TimeDelta::days(2);
+        let two_days_ago = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()) - TimeDelta::days(2);
         peers_db.set_last_seen(&stale.node_id, two_days_ago, &address).unwrap();
         let mut fresh = Vec::new();
         for i in 2..12u8 {
@@ -4137,7 +4136,7 @@ mod tests {
             peers_db.add_or_update_peer(peer.clone()).unwrap();
             fresh.push(peer.node_id);
         }
-        let seen_since = chrono::Utc::now().naive_utc() - TimeDelta::days(1);
+        let seen_since = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()) - TimeDelta::days(1);
 
         // Not ranked first: it is one of eleven unreached peers, so it is rarely first
         let mut first_count = 0;
@@ -4212,7 +4211,7 @@ mod tests {
             .unwrap();
         let mut conn = peers_db.connection.get_pooled_connection().unwrap();
         diesel::update(peers::table.filter(peers::node_id.eq(expired.to_hex())))
-            .set(peers::banned_until.eq(chrono::Utc::now().naive_utc().checked_sub_signed(TimeDelta::hours(1))))
+            .set(peers::banned_until.eq(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()).checked_sub(TimeDelta::hours(1))))
             .execute(&mut conn)
             .unwrap();
         drop(conn);
@@ -4320,10 +4319,10 @@ mod tests {
             peers_db.add_or_update_peer(peer.clone()).unwrap();
             peers.push(peer);
         }
-        let now = chrono::Utc::now().naive_utc();
+        let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
         let context = GarbageCollectionContext {
             now,
-            deleted_before: now.checked_sub_signed(TimeDelta::hours(24)).unwrap(),
+            deleted_before: now.checked_sub(TimeDelta::hours(24)).unwrap(),
             seen_since: long_ago(),
             config_source: serde_json::to_string(&PeerAddressSource::Config).unwrap(),
             connected_hex: vec![],

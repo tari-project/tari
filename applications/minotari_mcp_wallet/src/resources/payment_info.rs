@@ -149,7 +149,7 @@ impl McpResource for PaymentInfoResource {
             "matching_transactions": matching_transactions,
             "transaction_count": matching_transactions.len(),
             "search_criteria": "Payment ID or message content",
-            "last_updated": chrono::Utc::now().timestamp()
+            "last_updated": OffsetDateTime::now_utc().unix_timestamp()
         }))
     }
 

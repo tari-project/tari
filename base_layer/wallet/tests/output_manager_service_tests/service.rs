@@ -25,7 +25,7 @@
 #![allow(clippy::arithmetic_side_effects)]
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use diesel::prelude::*;
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -733,7 +733,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     let scanned_block = ScannedBlock {
         header_hash: HashOutput::zero(),
         height: 6,
-        timestamp: Utc::now().naive_utc(),
+        timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
     };
     backend.save_last_scanned_height(scanned_block).unwrap();
     let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
@@ -866,7 +866,7 @@ async fn test_utxo_selection_with_tx_priority() {
     let scanned_block = ScannedBlock {
         header_hash: HashOutput::zero(),
         height: 6,
-        timestamp: Utc::now().naive_utc(),
+        timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
     };
     backend.save_last_scanned_height(scanned_block).unwrap();
     let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
@@ -3382,7 +3382,7 @@ async fn test_txo_validation_does_not_revive_invalid_outputs_with_bad_commitment
 fn last_validation_timestamp(
     connection: &minotari_wallet::storage::sqlite_utilities::WalletDbConnection,
     kmo: &DbWalletOutput,
-) -> Option<chrono::NaiveDateTime> {
+) -> Option<PrimitiveDateTime> {
     let mut conn = connection.get_pooled_connection().unwrap();
     outputs::table
         .select(outputs::last_validation_timestamp)

@@ -603,7 +603,7 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use std::str::FromStr;
 
-    use chrono::{DateTime, TimeZone, Utc};
+    use time::{Date, Month, OffsetDateTime, UtcOffset, format_description::well_known::Rfc2822};
     use crc32fast::Hasher as CrcHasher;
     use tari_utilities::{Hidden, SafePassword, hex::to_hex};
 
@@ -889,8 +889,12 @@ mod test {
         let day_less_to_days = day - u32::from(to_days);
 
         // Verify birthday genesis from unix epoch constant
-        let date = Utc.with_ymd_and_hms(2022, 1, 1, 0, 0, 0);
-        let seconds_since_epoch = date.unwrap().timestamp();
+        let date = Date::from_calendar_date(2022, Month::January, 1)
+            .unwrap()
+            .with_hms(0, 0, 0)
+            .unwrap()
+            .assume_utc();
+        let seconds_since_epoch = date.unix_timestamp();
         assert_eq!(
             BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
             u64::try_from(seconds_since_epoch).unwrap()
@@ -900,10 +904,14 @@ mod test {
         let birthday_epoch_time = i64::try_from(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH).unwrap() +
             i64::from(birthday) * i64::try_from(SECONDS_PER_DAY).unwrap();
         assert_eq!(birthday_epoch_time, 1738108800i64);
-        let birthday_epoch_time_date = Utc.timestamp_opt(birthday_epoch_time, 0);
+        let birthday_epoch_time_date = OffsetDateTime::from_unix_timestamp(birthday_epoch_time).ok();
         assert_eq!(
             birthday_epoch_time_date.unwrap(),
-            Utc.with_ymd_and_hms(year, month, day, 0, 0, 0).unwrap()
+            Date::from_calendar_date(year, Month::try_from(month).unwrap(), day)
+                .unwrap()
+                .with_hms(0, 0, 0)
+                .unwrap()
+                .assume_utc()
         );
 
         // The wallet will request blocks from the base node 14 days before its birthday
@@ -914,15 +922,20 @@ mod test {
             i64::try_from(get_birthday_from_unix_epoch_in_seconds(birthday, to_days)).unwrap()
         );
         assert_eq!(birthday_epoch_time_less_to_days, 1736899200i64);
-        let birthday_epoch_time_less_to_days_date = Utc.timestamp_opt(birthday_epoch_time_less_to_days, 0);
+        let birthday_epoch_time_less_to_days_date =
+            OffsetDateTime::from_unix_timestamp(birthday_epoch_time_less_to_days).ok();
         assert_eq!(
             birthday_epoch_time_less_to_days_date.unwrap(),
-            Utc.with_ymd_and_hms(year, month, day_less_to_days, 0, 0, 0).unwrap()
+            Date::from_calendar_date(year, Month::try_from(month).unwrap(), day_less_to_days)
+                .unwrap()
+                .with_hms(0, 0, 0)
+                .unwrap()
+                .assume_utc()
         );
 
         // The base node will return the genesis block as the first block to scan from
-        let genesis_date_time = DateTime::parse_from_rfc2822("28 Jan 2025 08:00:00 +0200").unwrap();
-        let genesis_epoch_time = genesis_date_time.timestamp();
+        let genesis_date_time = OffsetDateTime::parse("28 Jan 2025 08:00:00 +0200", &Rfc2822).unwrap();
+        let genesis_epoch_time = genesis_date_time.unix_timestamp();
         assert_eq!(genesis_epoch_time, 1738044000i64);
         assert!(genesis_epoch_time > birthday_epoch_time_less_to_days);
         assert!(genesis_epoch_time < birthday_epoch_time);

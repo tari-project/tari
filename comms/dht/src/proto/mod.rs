@@ -26,7 +26,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use rand::Rng;
 use tari_comms::{
     NodeIdentity,
@@ -176,8 +176,8 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
             .map_err(|e| anyhow!("Invalid public nonce: {e}"))?;
         let signature =
             CommsSecretKey::from_canonical_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {e}"))?;
-        let updated_at = DateTime::<Utc>::from_timestamp(value.updated_at, 0)
-            .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
+        let updated_at = OffsetDateTime::from_unix_timestamp(value.updated_at)
+            .map_err(|_| anyhow::anyhow!("updated_at overflowed"))?;
 
         Ok(Self::new(
             version,
@@ -193,7 +193,7 @@ impl From<&IdentitySignature> for common::IdentitySignature {
             version: u32::from(identity_sig.version()),
             signature: identity_sig.signature().get_signature().to_vec(),
             public_nonce: identity_sig.signature().get_compressed_public_nonce().to_vec(),
-            updated_at: identity_sig.updated_at().timestamp(),
+            updated_at: identity_sig.updated_at().unix_timestamp(),
         }
     }
 }

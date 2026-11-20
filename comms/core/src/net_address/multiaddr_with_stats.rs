@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use log::trace;
 use multiaddr::{Multiaddr, Protocol};
 use serde::{Deserialize, Serialize};
@@ -141,13 +141,13 @@ fn is_internal_dns_name(addr: &str) -> bool {
 #[derive(Debug, Eq, Clone, Deserialize, Serialize)]
 pub struct MultiaddrWithStats {
     address: Multiaddr,
-    last_seen: Option<NaiveDateTime>,
+    last_seen: Option<PrimitiveDateTime>,
     connection_attempts: u32,
     avg_initial_dial_time: Option<Duration>,
     initial_dial_time_sample_count: u32,
     avg_latency: Option<Duration>,
     latency_sample_count: u32,
-    last_attempted: Option<NaiveDateTime>,
+    last_attempted: Option<PrimitiveDateTime>,
     last_failed_reason: Option<String>,
     quality_score: Option<i32>,
     source: PeerAddressSource,
@@ -177,13 +177,13 @@ impl MultiaddrWithStats {
     /// quality score.
     pub fn new_with_stats(
         address: Multiaddr,
-        last_seen: Option<NaiveDateTime>,
+        last_seen: Option<PrimitiveDateTime>,
         connection_attempts: u32,
         avg_initial_dial_time: Option<Duration>,
         initial_dial_time_sample_count: u32,
         avg_latency: Option<Duration>,
         latency_sample_count: u32,
-        last_attempted: Option<NaiveDateTime>,
+        last_attempted: Option<PrimitiveDateTime>,
         last_failed_reason: Option<String>,
         quality_score: Option<i32>,
         source: PeerAddressSource,
@@ -284,7 +284,7 @@ impl MultiaddrWithStats {
         is_external_address(&self.address)
     }
 
-    pub fn offline_at(&self) -> Option<NaiveDateTime> {
+    pub fn offline_at(&self) -> Option<PrimitiveDateTime> {
         if self.last_failed_reason.is_some() {
             self.last_attempted
         } else {
@@ -301,7 +301,7 @@ impl MultiaddrWithStats {
     /// small weighted change to the avg_latency. The previous avg_latency will have a weight of
     /// MAX_LATENCY_SAMPLE_COUNT and the new latency_measurement will have a weight of 1.
     pub fn update_latency(&mut self, latency_measurement: Duration) {
-        self.last_seen = Some(Utc::now().naive_utc());
+        self.last_seen = Some(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()));
         self.last_failed_reason = None;
 
         self.avg_latency = Some(
@@ -325,7 +325,7 @@ impl MultiaddrWithStats {
     }
 
     pub fn update_initial_dial_time(&mut self, initial_dial_time: Duration) {
-        self.last_seen = Some(Utc::now().naive_utc());
+        self.last_seen = Some(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()));
         self.last_failed_reason = None;
 
         self.avg_initial_dial_time = Some(
@@ -348,7 +348,7 @@ impl MultiaddrWithStats {
             target: LOG_TARGET, "mark_last_seen_now: from {}, address '{}', previous {:?}",
             self.source, self.address, self.last_seen
         );
-        self.last_seen = Some(Utc::now().naive_utc());
+        self.last_seen = Some(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()));
         self.last_failed_reason = None;
         self.reset_connection_attempts();
         self.update_quality_score();
@@ -383,14 +383,14 @@ impl MultiaddrWithStats {
     }
 
     #[cfg(test)]
-    pub fn mark_last_attempted(&mut self, timestamp: NaiveDateTime) -> &mut Self {
+    pub fn mark_last_attempted(&mut self, timestamp: PrimitiveDateTime) -> &mut Self {
         self.last_attempted = Some(timestamp);
         self.update_quality_score();
         self
     }
 
     pub fn mark_last_attempted_now(&mut self) -> &mut Self {
-        self.last_attempted = Some(Utc::now().naive_utc());
+        self.last_attempted = Some(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()));
         self.update_quality_score();
         self
     }
@@ -436,8 +436,10 @@ impl MultiaddrWithStats {
         //   - less than 1s, add '100' points
         let last_seen_seconds: i32 = self
             .last_seen
-            .map(|x| Utc::now().naive_utc().signed_duration_since(x))
-            .map(|x| x.num_seconds())
+            .map(|x| {
+                let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+                (now - x).whole_seconds()
+            })
             .unwrap_or(i64::MAX / 2)
             .try_into()
             .unwrap_or(i32::MAX);
@@ -459,7 +461,7 @@ impl MultiaddrWithStats {
         &self.source
     }
 
-    pub fn last_seen(&self) -> Option<NaiveDateTime> {
+    pub fn last_seen(&self) -> Option<PrimitiveDateTime> {
         self.last_seen
     }
 
@@ -483,7 +485,7 @@ impl MultiaddrWithStats {
         self.latency_sample_count
     }
 
-    pub fn last_attempted(&self) -> Option<NaiveDateTime> {
+    pub fn last_attempted(&self) -> Option<PrimitiveDateTime> {
         self.last_attempted
     }
 

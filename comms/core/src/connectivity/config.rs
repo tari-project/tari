@@ -22,6 +22,8 @@
 
 use std::time::Duration;
 
+use time::{OffsetDateTime, PrimitiveDateTime};
+
 use super::connection_stats::PeerConnectionStats;
 
 /// Connectivity actor configuration
@@ -92,12 +94,12 @@ pub struct ConnectivityConfig {
 impl ConnectivityConfig {
     /// Addresses last seen before the returned time no longer count as reached. See
     /// [`Self::expire_peer_last_seen_duration`].
-    pub(crate) fn seen_since(&self) -> chrono::NaiveDateTime {
-        let now = chrono::Utc::now().naive_utc();
-        chrono::Duration::from_std(self.expire_peer_last_seen_duration)
+    pub(crate) fn seen_since(&self) -> PrimitiveDateTime {
+        let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+        time::Duration::try_from(self.expire_peer_last_seen_duration)
             .ok()
-            .and_then(|expiry| now.checked_sub_signed(expiry))
-            .unwrap_or(chrono::NaiveDateTime::MIN)
+            .and_then(|expiry| now.checked_sub(expiry))
+            .unwrap_or(PrimitiveDateTime::MIN)
     }
 
     /// Whether this peer's circuit breaker is currently open, i.e. it has failed

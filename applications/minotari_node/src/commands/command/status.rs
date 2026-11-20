@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Error, anyhow};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use ::time::{OffsetDateTime, format_description::well_known::Rfc2822};
 use clap::Parser;
 use minotari_app_utilities::consts;
 use tari_comms::connection_manager::SelfLivenessStatus;
@@ -71,10 +71,10 @@ impl CommandContext {
             .await?
             .ok_or_else(|| anyhow!("No last header"))?;
         let last_block_time =
-            DateTime::<Utc>::from_timestamp(last_header.header().timestamp.as_u64() as i64, 0).unwrap_or_default();
+            OffsetDateTime::from_unix_timestamp(last_header.header().timestamp.as_u64() as i64).unwrap_or(OffsetDateTime::UNIX_EPOCH);
         status_line.add_field(
             "Tip",
-            format!("{} ({})", metadata.best_block_height(), last_block_time.to_rfc2822()),
+            format!("{} ({})", metadata.best_block_height(), last_block_time.format(&Rfc2822).unwrap()),
         );
 
         let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());

@@ -489,7 +489,7 @@ mod test {
             &secret,
             claim.features,
             &claim.addresses,
-            chrono::Utc::now() + chrono::Duration::days(2),
+            OffsetDateTime::now_utc() + Duration::days(2),
         );
         let err = validate_and_filter_peer_identity_claim_addresses(&config, &public_key_future, &claim).unwrap_err();
         assert!(

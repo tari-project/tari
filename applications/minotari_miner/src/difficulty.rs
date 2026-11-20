@@ -99,7 +99,7 @@ impl BlockHeaderSha3 {
 
 #[cfg(test)]
 pub mod test {
-    use chrono::{DateTime, NaiveDate, Utc};
+    use time::{Date, OffsetDateTime};
     use tari_core::proof_of_work::sha3x_difficulty as core_sha3x_difficulty;
 
     use super::*;
@@ -107,14 +107,8 @@ pub mod test {
     #[allow(clippy::cast_sign_loss)]
     pub fn get_header() -> (grpc_header, BlockHeader) {
         let mut header = BlockHeader::new(0);
-        header.timestamp = (DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDate::from_ymd_opt(2000, 1, 1)
-                .unwrap()
-                .and_hms_opt(1, 1, 1)
-                .unwrap(),
-            Utc,
-        )
-        .timestamp() as u64)
+        header.timestamp = (Date::from_calendar_date(2000, Month::try_from(1).unwrap(), 1).unwrap().with_hms(1, 1, 1).unwrap().assume_utc()
+        .unix_timestamp() as u64)
             .into();
         header.pow.pow_algo = tari_transaction_components::tari_proof_of_work::PowAlgorithm::Sha3x;
         (header.clone().into(), header)

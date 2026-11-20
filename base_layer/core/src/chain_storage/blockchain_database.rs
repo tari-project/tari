@@ -6359,7 +6359,7 @@ impl ChainTips {
 /// verdict that can change stops the walk with `is_rebuilt` still false, so the next startup tries again.
 ///
 /// The two named cases are the ones that are about the *environment* or the *chain* rather than the header:
-/// `InvalidTimestampFutureTimeLimit` is measured against `Utc::now()`, so a node whose clock is more than the
+/// `InvalidTimestampFutureTimeLimit` is measured against `OffsetDateTime::now_utc()`, so a node whose clock is more than the
 /// future time limit slow - a VM resumed from suspend, a container that has not finished talking to NTP - fails it
 /// on every recent header, and `OldSeedHash` is measured against the chain the header is on.
 ///

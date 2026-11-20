@@ -28,7 +28,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Local, NaiveDateTime};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use log::*;
 use minotari_wallet::{
     WalletConfig,
@@ -356,7 +356,7 @@ impl AppState {
         self.wallet_config.num_required_confirmations
     }
 
-    pub fn get_notifications(&self) -> &[(DateTime<Local>, String)] {
+    pub fn get_notifications(&self) -> &[(OffsetDateTime, String)] {
         &self.cached_data.notifications
     }
 
@@ -759,7 +759,7 @@ impl AppStateInner {
     }
 
     pub fn add_notification(&mut self, notification: String) {
-        self.data.notifications.push((Local::now(), notification));
+        self.data.notifications.push((OffsetDateTime::now_utc(), notification));
         self.data.new_notification_count = self.data.new_notification_count.saturating_add(1);
 
         const MAX_NOTIFICATIONS: usize = 100;
@@ -792,8 +792,8 @@ pub struct CompletedTransactionInfo {
     pub excess_signature: String,
     pub maturity: u64,
     pub status: LegacyTransactionStatus,
-    pub timestamp: NaiveDateTime,
-    pub mined_timestamp: Option<NaiveDateTime>,
+    pub timestamp: PrimitiveDateTime,
+    pub mined_timestamp: Option<PrimitiveDateTime>,
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
     pub mined_height: Option<u64>,
@@ -849,8 +849,8 @@ impl CompletedTransactionInfo {
             excess_signature,
             maturity: tx.lock_height,
             status: tx.status,
-            timestamp: tx.timestamp.naive_utc(),
-            mined_timestamp: tx.mined_timestamp.map(|t| t.naive_utc()),
+            timestamp: PrimitiveDateTime::new(tx.timestamp.date(), tx.timestamp.time()),
+            mined_timestamp: tx.mined_timestamp.map(|t| PrimitiveDateTime::new(t.date(), t.time())),
             cancelled: tx.cancelled,
             direction: tx.direction,
             mined_height: tx.mined_height,
@@ -877,7 +877,7 @@ struct AppStateData {
     balance: Balance,
     base_node_state: BaseNodeState,
     all_events: VecDeque<EventListItem>,
-    notifications: Vec<(DateTime<Local>, String)>,
+    notifications: Vec<(OffsetDateTime, String)>,
     new_notification_count: u32,
     wallet_scanned_height: u64,
     wallet_tip_height: u64,

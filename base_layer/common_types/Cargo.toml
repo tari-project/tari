@@ -52,7 +52,7 @@ getrandom = { version = "0.4.2", features = ["wasm_js"] }
 js-sys = { version = "0.3.55" }
 
 [dev-dependencies]
-chrono = { version = "0.4", default-features = false, features = ["serde"] }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "macros", "parsing", "formatting"] }
 hex = "0.4"
 
 [lib]

@@ -9,6 +9,7 @@
 // add_notification method.
 
 #![allow(clippy::indexing_slicing)]
+use time::macros::format_description;
 use tokio::runtime::Handle;
 use tui::{
     Frame,
@@ -54,7 +55,8 @@ impl NotificationTab {
             .map(|(time, line)| {
                 Spans::from(vec![
                     Span::styled(
-                        time.format("%Y-%m-%d %H:%M:%S ").to_string(),
+                        time.format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second] "))
+                            .unwrap_or_default(),
                         Style::default().fg(Color::LightGreen),
                     ),
                     Span::raw(line),

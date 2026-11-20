@@ -22,7 +22,7 @@
 
 use std::io::stdout;
 
-use chrono::{Datelike, Utc};
+use ::time::OffsetDateTime;
 use crossterm::{execute, terminal::SetTitle};
 
 /// returns the top or bottom box line of the specified length
@@ -160,7 +160,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     println!(
         "{}",
         box_data(
-            format!("Copyright 2019-{}. {}", Utc::now().year(), "The Tari Project"),
+            format!("Copyright 2019-{}. {}", OffsetDateTime::now_utc().year(), "The Tari Project"),
             target_line_length
         )
     );

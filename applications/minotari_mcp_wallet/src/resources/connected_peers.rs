@@ -93,7 +93,7 @@ impl McpResource for ConnectedPeersResource {
                                     else if peers.len() >= 1 { "good" }
                                     else { "disconnected" }
             },
-            "last_updated": chrono::Utc::now().timestamp()
+            "last_updated": OffsetDateTime::now_utc().unix_timestamp()
         }))
     }
 }

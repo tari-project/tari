@@ -4,7 +4,7 @@
 #![allow(clippy::indexing_slicing)]
 use std::collections::HashMap;
 
-use chrono::{DateTime, Local};
+use ::time::{OffsetDateTime, macros::format_description};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::{
@@ -152,8 +152,8 @@ impl TransactionsTab {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
-                            .format("%Y-%m-%d %H:%M:%S")
+                        mined_timestamp.assume_utc()
+                            .format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()
                     ),
                 },
                 Style::default().fg(text_color),
@@ -324,8 +324,8 @@ impl TransactionsTab {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
-                            .format("%Y-%m-%d %H:%M:%S")
+                        mined_timestamp.assume_utc()
+                            .format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()
                     ),
                 },
                 Style::default().fg(text_color),
@@ -519,23 +519,23 @@ impl TransactionsTab {
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
 
             // let mined_time = DateTime::<Local>::from_naive_utc_and_offset(tx.mined_timestamp,
-            // Local::now().offset().to_owned());
+            // OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).offset().to_owned());
             let mined_timestamp = Span::styled(
                 match tx.mined_timestamp {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
-                            .format("%Y-%m-%d %H:%M:%S")
+                        mined_timestamp.assume_utc()
+                            .format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()
                     ),
                 },
                 Style::default().fg(Color::White),
             );
 
             let imported_time =
-                DateTime::<Local>::from_naive_utc_and_offset(tx.timestamp, Local::now().offset().to_owned());
+                tx.timestamp.assume_utc();
             let imported_timestamp = Span::styled(
-                format!("{}", imported_time.format("%Y-%m-%d %H:%M:%S")),
+                format!("{}", imported_time.format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()),
                 Style::default().fg(Color::White),
             );
 

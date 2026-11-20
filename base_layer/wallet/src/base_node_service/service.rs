@@ -22,7 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use futures::StreamExt;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -47,7 +47,7 @@ const LOG_TARGET: &str = "wallet::base_node_service::service";
 pub struct BaseNodeState {
     pub chain_metadata: Option<ChainMetadata>,
     pub is_synced: Option<bool>,
-    pub updated: Option<DateTime<Utc>>,
+    pub updated: Option<OffsetDateTime>,
     pub latency: Option<Duration>,
 }
 

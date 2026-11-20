@@ -14,7 +14,7 @@ mod test {
     };
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-    use chrono::{DateTime, Utc};
+    use time::OffsetDateTime;
     use minotari_wallet::{
         legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         output_manager_service::{
@@ -297,7 +297,7 @@ mod test {
             rtp,
             LegacyTransactionStatus::Pending,
             MemoField::new_open_from_string("1", TxType::PaymentToOther).unwrap(),
-            Utc::now(),
+            OffsetDateTime::now_utc(),
         );
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
             .unwrap();
@@ -328,7 +328,7 @@ mod test {
                 PrivateKey::default(),
             ),
             LegacyTransactionStatus::Completed,
-            Utc::now(),
+            OffsetDateTime::now_utc(),
             TransactionDirection::Inbound,
             None,
             None,
@@ -354,7 +354,7 @@ mod test {
             stp,
             LegacyTransactionStatus::Pending,
             MemoField::new_open_from_string("3", TxType::PaymentToOther).unwrap(),
-            Utc::now(),
+            OffsetDateTime::now_utc(),
             false,
         );
         db.add_pending_outbound_transaction(3u64.into(), outbound_tx.clone())
@@ -403,10 +403,10 @@ mod test {
                 PrivateKey::default(),
             ),
             LegacyTransactionStatus::OneSidedUnconfirmed,
-            Utc::now(),
+            OffsetDateTime::now_utc(),
             TransactionDirection::Inbound,
             Some(2),
-            Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
+            Some(DateTime::from_timestamp(0, 0).unwrap_or(OffsetDateTime::MIN)),
             MemoField::new_open_from_string("6", TxType::PaymentToOther).unwrap(),
             0,
         )
@@ -440,7 +440,7 @@ mod test {
                 PrivateKey::default(),
             ),
             LegacyTransactionStatus::OneSidedConfirmed,
-            Utc::now(),
+            OffsetDateTime::now_utc(),
             TransactionDirection::Inbound,
             Some(5),
             Some(DateTime::from_timestamp(0, 0).unwrap()),

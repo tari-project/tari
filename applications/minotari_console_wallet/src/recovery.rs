@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::offset::Local;
+use time::OffsetDateTime;
 use log::*;
 use minotari_wallet::{WalletSqlite, utxo_scanner_service::handle::UtxoScannerEvent};
 use rustyline::Editor;
@@ -108,7 +108,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
                     .unwrap_or(100);
                 let msg = format!(
                     "{}: Recovery process {}% complete (Block {} of {}).",
-                    Local::now(),
+                    OffsetDateTime::now_utc(),
                     percentage_progress,
                     current_height,
                     tip_height

@@ -25,8 +25,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 #[cfg(not(test))]
-use chrono::Duration;
-use chrono::{DateTime, Utc};
+use time::Duration;
+use time::OffsetDateTime;
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
 use tari_core::{AuxChainHashes, proof_of_work::monero_rx::FixedByteArray};
@@ -47,7 +47,7 @@ pub(crate) struct BlockTemplateRepository {
 #[derive(Debug, Clone)]
 pub(crate) struct BlockRepositoryItem {
     pub data: FinalBlockTemplateData,
-    datetime: DateTime<Utc>,
+    datetime: OffsetDateTime,
 }
 
 impl BlockRepositoryItem {
@@ -55,12 +55,12 @@ impl BlockRepositoryItem {
     pub fn new(final_block: FinalBlockTemplateData) -> Self {
         Self {
             data: final_block,
-            datetime: Utc::now(),
+            datetime: OffsetDateTime::now_utc(),
         }
     }
 
     /// Get the timestamp of creation.
-    pub fn datetime(&self) -> DateTime<Utc> {
+    pub fn datetime(&self) -> OffsetDateTime {
         self.datetime
     }
 }
@@ -91,11 +91,11 @@ impl BlockTemplateRepository {
         trace!(target: LOG_TARGET, "Removing outdated final block templates");
         let mut b = self.blocks.write().await;
         #[cfg(test)]
-        let threshold = Utc::now();
+        let threshold = OffsetDateTime::now_utc();
         #[cfg(not(test))]
-        let threshold = Utc::now()
-            .checked_sub_signed(Duration::minutes(20))
-            .unwrap_or(chrono::DateTime::<Utc>::MIN_UTC);
+        let threshold = OffsetDateTime::now_utc()
+            .checked_sub(Duration::minutes(20))
+            .unwrap_or(OffsetDateTime::MIN);
         *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
     }
 

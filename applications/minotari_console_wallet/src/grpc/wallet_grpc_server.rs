@@ -1808,7 +1808,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         is_cancelled: txn.cancelled.is_some(),
                         direction: TransactionDirection::from(txn.direction) as i32,
                         fee: txn.fee.into(),
-                        timestamp: txn.timestamp.timestamp() as u64,
+                        timestamp: txn.timestamp.unix_timestamp() as u64,
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
@@ -1956,7 +1956,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_cancelled: txn.cancelled.is_some(),
                     direction: TransactionDirection::from(txn.direction) as i32,
                     fee: txn.fee.into(),
-                    timestamp: txn.timestamp.timestamp() as u64,
+                    timestamp: txn.timestamp.unix_timestamp() as u64,
                     excess_sig: txn
                         .transaction
                         .first_kernel_excess_sig()
@@ -2120,7 +2120,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         is_cancelled: txn.cancelled.is_some(),
                         direction: TransactionDirection::from(txn.direction) as i32,
                         fee: txn.fee.into(),
-                        timestamp: txn.timestamp.timestamp() as u64,
+                        timestamp: txn.timestamp.unix_timestamp() as u64,
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
@@ -2270,7 +2270,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 is_cancelled: txn.cancelled.is_some(),
                 direction: TransactionDirection::from(txn.direction) as i32,
                 fee: txn.fee.into(),
-                timestamp: txn.timestamp.timestamp() as u64,
+                timestamp: txn.timestamp.unix_timestamp() as u64,
                 excess_sig: txn
                     .transaction
                     .first_kernel_excess_sig()
@@ -4039,7 +4039,7 @@ fn db_wallet_output_to_info(
         status: format!("{}", o.status),
         mined_height: o.mined_height.unwrap_or(0),
         mined_in_block: o.mined_in_block.map(|b| b.to_vec()).unwrap_or_default(),
-        mined_timestamp: o.mined_timestamp.map(|t| t.timestamp() as u64).unwrap_or(0),
+        mined_timestamp: o.mined_timestamp.map(|t| t.unix_timestamp() as u64).unwrap_or(0),
         marked_deleted_at_height: o.marked_deleted_at_height.unwrap_or(0),
         marked_deleted_in_block: o.marked_deleted_in_block.map(|b| b.to_vec()).unwrap_or_default(),
         spending_priority: format!("{:?}", o.spending_priority),
@@ -4206,7 +4206,7 @@ fn completed_tx_to_transaction_info(
         is_cancelled: txn.cancelled.is_some(),
         direction: TransactionDirection::from(txn.direction) as i32,
         fee: txn.fee.into(),
-        timestamp: txn.timestamp.timestamp() as u64,
+        timestamp: txn.timestamp.unix_timestamp() as u64,
         excess_sig: txn
             .transaction
             .first_kernel_excess_sig()
@@ -4264,7 +4264,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 direction: TransactionDirection::Inbound as i32,
                 fee: 0,
                 excess_sig: Default::default(),
-                timestamp: tx.timestamp.timestamp() as u64,
+                timestamp: tx.timestamp.unix_timestamp() as u64,
                 raw_payment_id: tx.payment_id.to_bytes(),
                 user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
@@ -4303,7 +4303,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 direction: TransactionDirection::Outbound as i32,
                 fee: tx.fee.into(),
                 excess_sig: Default::default(),
-                timestamp: tx.timestamp.timestamp() as u64,
+                timestamp: tx.timestamp.unix_timestamp() as u64,
                 raw_payment_id: tx.payment_id.to_bytes(),
                 user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
@@ -4347,7 +4347,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 is_cancelled: tx.cancelled.is_some(),
                 direction: TransactionDirection::from(tx.direction) as i32,
                 fee: tx.fee.into(),
-                timestamp: tx.timestamp.timestamp() as u64,
+                timestamp: tx.timestamp.unix_timestamp() as u64,
                 excess_sig: tx
                     .transaction
                     .first_kernel_excess_sig()

@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use log::trace;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,7 @@ impl MultiaddressesWithStats {
 
     /// Returns the newest `updated_at` among signed address sources in this set - this can only be `None` if the source
     /// is from config.
-    pub fn newest_claim_updated_at(&self) -> Option<DateTime<Utc>> {
+    pub fn newest_claim_updated_at(&self) -> Option<OffsetDateTime> {
         self.addresses
             .iter()
             .filter_map(|a| a.source().peer_identity_claim().map(|c| c.signature.updated_at()))
@@ -64,14 +64,14 @@ impl MultiaddressesWithStats {
     }
 
     /// Provides the date and time of the last successful communication with this peer
-    pub fn last_seen(&self) -> Option<NaiveDateTime> {
+    pub fn last_seen(&self) -> Option<PrimitiveDateTime> {
         self.addresses
             .iter()
             .max_by_key(|a| a.last_seen())
             .and_then(|a| a.last_seen())
     }
 
-    pub fn offline_at(&self) -> Option<NaiveDateTime> {
+    pub fn offline_at(&self) -> Option<PrimitiveDateTime> {
         self.addresses
             .iter()
             .min_by_key(|a| a.offline_at())
@@ -79,7 +79,7 @@ impl MultiaddressesWithStats {
     }
 
     /// Return the time of last attempted connection to this collection of addresses
-    pub fn last_attempted(&self) -> Option<NaiveDateTime> {
+    pub fn last_attempted(&self) -> Option<PrimitiveDateTime> {
         self.addresses
             .iter()
             .max_by_key(|a| a.last_attempted())
@@ -664,7 +664,7 @@ mod test {
     fn create_identity_signature(addresses: &[Multiaddr]) -> IdentitySignature {
         let secret = CommsSecretKey::random(&mut rand::rng());
         let public_key = CommsPublicKey::from_secret_key(&secret);
-        let updated_at = Utc::now();
+        let updated_at = OffsetDateTime::now_utc();
         let identity = IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, addresses, updated_at);
         identity
             .verify(&public_key, PeerFeatures::COMMUNICATION_NODE, addresses)
@@ -725,14 +725,14 @@ mod test {
             vec![config_address.clone()],
             &PeerAddressSource::Config,
         );
-        let older = Utc::now() - chrono::Duration::hours(1);
+        let older = OffsetDateTime::now_utc() - Duration::hours(1);
         addresses.add_or_update_addresses(
             std::slice::from_ref(&claimed_address),
             &claim_at(vec![claimed_address.clone()], older),
         );
         // A strictly newer claim that includes the configured address
         let both = vec![config_address.clone(), claimed_address.clone()];
-        addresses.add_or_update_addresses(&both, &claim_at(both.clone(), Utc::now()));
+        addresses.add_or_update_addresses(&both, &claim_at(both.clone(), OffsetDateTime::now_utc()));
 
         let config = addresses.iter().find(|a| a.address() == &config_address).unwrap();
         assert!(config.source().is_config());
@@ -796,8 +796,8 @@ mod test {
                 updated_at,
             ),
         };
-        let old_claim = claim_at(Utc::now() - chrono::Duration::hours(1));
-        let current_claim = claim_at(Utc::now());
+        let old_claim = claim_at(OffsetDateTime::now_utc() - Duration::hours(1));
+        let current_claim = claim_at(OffsetDateTime::now_utc());
 
         let mut stored = MultiaddressesWithStats::from_addresses_with_source(
             vec![address.clone()],
@@ -824,7 +824,7 @@ mod test {
         }
 
         // The peer re-signs its claim with the same address: the claim is replaced, the failure mark is kept
-        let newer_claim = claim_at(Utc::now() + chrono::Duration::minutes(1));
+        let newer_claim = claim_at(OffsetDateTime::now_utc() + Duration::minutes(1));
         let resigned = MultiaddressesWithStats::from_addresses_with_source(
             vec![address.clone()],
             &PeerAddressSource::FromPeerConnection {
@@ -850,7 +850,7 @@ mod test {
                 &secret,
                 PeerFeatures::COMMUNICATION_NODE,
                 std::slice::from_ref(&other_address),
-                Utc::now() + chrono::Duration::minutes(2),
+                OffsetDateTime::now_utc() + Duration::minutes(2),
             ),
         };
         moved.merge(&MultiaddressesWithStats::from_addresses_with_source(

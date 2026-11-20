@@ -47,7 +47,7 @@ async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
 blake2 = "0.10"
 borsh = { workspace = true, features = ["derive"] }
-chrono = { version = "0.4", default-features = false, features = ["serde"] }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "serde-well-known", "macros", "parsing", "formatting"] }
 digest = "0.10"
 dirs-next = "1.0.2"
 fs2 = "0.4.0"

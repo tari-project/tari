@@ -22,7 +22,7 @@
 
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::Utc;
+use time::{OffsetDateTime, PrimitiveDateTime};
 use clap::Parser;
 use tari_comms::peer_manager::PeerFeatures;
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
@@ -73,10 +73,12 @@ impl CommandContext {
                 }
 
                 if let Some(dt) = peer.banned_until() {
+                    let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+                    let remaining = *dt - now;
+                    let remaining = if remaining.is_negative() { time::Duration::ZERO } else { remaining };
                     s.push(format!(
                         "BANNED({}, {})",
-                        dt.signed_duration_since(Utc::now().naive_utc())
-                            .to_std()
+                        std::time::Duration::try_from(remaining)
                             .map(format_duration_basic)
                             .unwrap_or_else(|_| "∞".to_string()),
                         peer.banned_reason
@@ -91,10 +93,8 @@ impl CommandContext {
                 }
 
                 if let Some(last_seen) = peer.addresses.last_seen() {
-                    let duration = Utc::now()
-                        .naive_utc()
-                        .signed_duration_since(last_seen)
-                        .to_std()
+                    let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+                    let duration = std::time::Duration::try_from(now - last_seen)
                         .map(format_duration_basic)
                         .unwrap_or_else(|_| "?".into());
                     s.push(format!("last seen: {duration}"));

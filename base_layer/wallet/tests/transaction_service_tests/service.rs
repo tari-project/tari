@@ -25,7 +25,7 @@ use std::{mem::size_of, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use chrono::{Days, Utc};
+use time::OffsetDateTime;
 use digest::consts::U32;
 use minotari_wallet::{
     base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
@@ -2393,7 +2393,7 @@ async fn a_mempool_policy_refusal_is_retried_until_the_submission_budget_is_spen
         fee: MicroMinotari::from(20),
         transaction: tx.clone(),
         status: LegacyTransactionStatus::Completed,
-        timestamp: Utc::now(),
+        timestamp: OffsetDateTime::now_utc(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
         send_count: 0,
@@ -2485,7 +2485,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         fee: MicroMinotari::from(20),
         transaction: tx.clone(),
         status: LegacyTransactionStatus::Completed,
-        timestamp: Utc::now(),
+        timestamp: OffsetDateTime::now_utc(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
         send_count: 0,
@@ -2703,7 +2703,7 @@ async fn test_update_faux_tx_on_oms_validation() {
     let scanned_block = ScannedBlock {
         header_hash: HashOutput::zero(),
         height: 10,
-        timestamp: Utc::now().naive_utc(),
+        timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
     };
     let chain_metadata = ChainMetadata::new(10, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap();
     alice_ts_interface
@@ -2905,7 +2905,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
     let scanned_block = ScannedBlock {
         header_hash: HashOutput::zero(),
         height: 10,
-        timestamp: Utc::now().naive_utc(),
+        timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
     };
     let chain_metadata = ChainMetadata::new(10, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap();
     alice_ts_interface
@@ -3013,7 +3013,7 @@ fn create_mock_completed_transaction(
             PrivateKey::random(&mut rand::rng()),
         ),
         status: LegacyTransactionStatus::Completed,
-        timestamp: Utc::now(),
+        timestamp: OffsetDateTime::now_utc(),
         cancelled: None,
         direction,
         send_count: 0,
@@ -3021,7 +3021,7 @@ fn create_mock_completed_transaction(
         transaction_signature: CompressedSignature::default(),
         mined_height: None,
         mined_in_block: None,
-        mined_timestamp: Utc::now().checked_add_days(Days::new(1)),
+        mined_timestamp: OffsetDateTime::now_utc().checked_add(Duration::days(1)),
         payment_id: MemoField::new_open_from_string(description, TxType::PaymentToOther).unwrap(),
         change_output_hashes: vec![],
         received_output_hashes: vec![],
@@ -3347,7 +3347,7 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
         fee,
         tx,
         LegacyTransactionStatus::Broadcast,
-        Utc::now(),
+        OffsetDateTime::now_utc(),
         TransactionDirection::Outbound,
         None,
         None,
@@ -4227,7 +4227,7 @@ async fn an_undecodable_pending_outbound_transaction_can_be_cancelled() {
                 SenderTransactionProtocol::new_placeholder(),
                 LegacyTransactionStatus::Pending,
                 MemoField::new_empty(),
-                Utc::now(),
+                OffsetDateTime::now_utc(),
                 false,
             ),
         )

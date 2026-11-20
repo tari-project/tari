@@ -22,7 +22,7 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 use tari_node_components::blocks::ChainBlock;
@@ -35,7 +35,8 @@ pub struct Reorg {
     pub prev_hash: HashOutput,
     pub num_blocks_added: u64,
     pub num_blocks_removed: u64,
-    pub local_time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub local_time: OffsetDateTime,
 }
 
 impl Reorg {
@@ -48,7 +49,7 @@ impl Reorg {
             prev_hash: removed.first().map(|b| *b.hash()).unwrap_or_default(),
             num_blocks_added: added.len() as u64,
             num_blocks_removed: removed.len() as u64,
-            local_time: Utc::now(),
+            local_time: OffsetDateTime::now_utc(),
         }
     }
 }

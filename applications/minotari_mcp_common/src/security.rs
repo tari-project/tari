@@ -24,7 +24,7 @@
 
 use std::{collections::HashMap, net::IpAddr};
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -57,8 +57,8 @@ struct Session {
     id: Uuid,
     client_ip: IpAddr,
     #[allow(dead_code)]
-    created_at: DateTime<Utc>,
-    last_activity: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    last_activity: OffsetDateTime,
     #[allow(dead_code)]
     request_count: u32,
 }
@@ -66,7 +66,7 @@ struct Session {
 #[derive(Debug, Clone)]
 struct RateLimiter {
     requests_per_minute: u32,
-    client_requests: HashMap<IpAddr, Vec<DateTime<Utc>>>,
+    client_requests: HashMap<IpAddr, Vec<OffsetDateTime>>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,7 +77,7 @@ pub struct AuditLogger {
 
 #[derive(Debug, Serialize)]
 pub struct AuditEntry {
-    timestamp: DateTime<Utc>,
+    timestamp: OffsetDateTime,
     session_id: Uuid,
     client_ip: IpAddr,
     operation: String,
@@ -178,7 +178,7 @@ impl SecurityContext {
     }
 
     fn create_or_update_session(&mut self, client_ip: IpAddr) -> Uuid {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
 
         // Find existing session for this IP
         if let Some(existing) = self.sessions.values_mut().find(|s| s.client_ip == client_ip) {
@@ -202,9 +202,9 @@ impl SecurityContext {
 
     pub fn cleanup_expired_sessions(&mut self) {
         // On the (impossible in practice) overflow, keep every session rather than dropping them all
-        let cutoff = Utc::now()
-            .checked_sub_signed(chrono::Duration::hours(1))
-            .unwrap_or(DateTime::<Utc>::MIN_UTC);
+        let cutoff = OffsetDateTime::now_utc()
+            .checked_sub(Duration::hours(1))
+            .unwrap_or(OffsetDateTime::MIN);
         self.sessions.retain(|_, session| session.last_activity > cutoff);
     }
 }
@@ -218,11 +218,11 @@ impl RateLimiter {
     }
 
     fn check_rate_limit(&mut self, client_ip: IpAddr) -> bool {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         // On the (impossible in practice) overflow, keep every request, i.e. rate limit more strictly
         let cutoff = now
-            .checked_sub_signed(chrono::Duration::minutes(1))
-            .unwrap_or(DateTime::<Utc>::MIN_UTC);
+            .checked_sub(Duration::minutes(1))
+            .unwrap_or(OffsetDateTime::MIN);
 
         let requests = self.client_requests.entry(client_ip).or_default();
 
@@ -262,7 +262,7 @@ impl AuditLogger {
         }
 
         let _entry = AuditEntry {
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             session_id,
             client_ip,
             operation: operation.to_string(),

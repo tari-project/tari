@@ -25,7 +25,7 @@ use std::{
     sync::{RwLock, RwLockReadGuard},
 };
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -214,7 +214,7 @@ impl NodeIdentity {
             self.secret_key(),
             self.features,
             &*acquire_read_lock!(self.public_addresses),
-            Utc::now(),
+            OffsetDateTime::now_utc(),
         );
 
         *acquire_write_lock!(self.identity_signature) = Some(identity_sig);
@@ -230,7 +230,7 @@ impl NodeIdentity {
                 &self.secret_key,
                 self.features,
                 &self.public_addresses(),
-                Utc::now(),
+                OffsetDateTime::now_utc(),
             ),
         };
         Peer::new(

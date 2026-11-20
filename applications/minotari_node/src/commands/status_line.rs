@@ -22,7 +22,7 @@
 
 use std::{fmt, fmt::Display};
 
-use chrono::Local;
+use time::{OffsetDateTime, macros::format_description};
 use strum::{Display, EnumString};
 
 #[derive(Debug, Display, EnumString, Clone)]
@@ -55,7 +55,7 @@ impl StatusLine {
 
 impl Display for StatusLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ", Local::now().format("%H:%M"))?;
+        write!(f, "{} ", OffsetDateTime::now_utc().format(&format_description!("[hour]:[minute]")).unwrap())?;
         let s = self.fields.iter().map(|(k, v)| format(k, v)).collect::<Vec<_>>();
 
         write!(f, "{}", s.join(" "))

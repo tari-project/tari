@@ -26,7 +26,7 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     payment_reference::{PaymentReference, generate_payment_reference},
@@ -55,11 +55,11 @@ pub struct InboundTransaction {
     pub receiver_protocol: ReceiverTransactionProtocol,
     pub status: LegacyTransactionStatus,
     pub payment_id: MemoField,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: OffsetDateTime,
     pub cancelled: bool,
     pub direct_send_success: bool,
     pub send_count: u32,
-    pub last_send_timestamp: Option<DateTime<Utc>>,
+    pub last_send_timestamp: Option<OffsetDateTime>,
     /// Hashes of outputs received from others (excluding change)
     pub received_output_hashes: Vec<FixedHash>,
 }
@@ -72,7 +72,7 @@ impl InboundTransaction {
         receiver_protocol: ReceiverTransactionProtocol,
         status: LegacyTransactionStatus,
         payment_id: MemoField,
-        timestamp: DateTime<Utc>,
+        timestamp: OffsetDateTime,
     ) -> Self {
         Self {
             tx_id,
@@ -110,11 +110,11 @@ pub struct OutboundTransaction {
     pub sender_protocol: SenderTransactionProtocol,
     pub status: LegacyTransactionStatus,
     pub payment_id: MemoField,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: OffsetDateTime,
     pub cancelled: bool,
     pub direct_send_success: bool,
     pub send_count: u32,
-    pub last_send_timestamp: Option<DateTime<Utc>>,
+    pub last_send_timestamp: Option<OffsetDateTime>,
     /// Hashes of outputs being sent to others (excluding change)
     pub sent_output_hashes: Vec<FixedHash>,
 }
@@ -128,7 +128,7 @@ impl OutboundTransaction {
         sender_protocol: SenderTransactionProtocol,
         status: LegacyTransactionStatus,
         payment_id: MemoField,
-        timestamp: DateTime<Utc>,
+        timestamp: OffsetDateTime,
         direct_send_success: bool,
     ) -> Self {
         Self {
@@ -156,7 +156,7 @@ impl OutboundTransaction {
         sender_protocol: SenderTransactionProtocol,
         status: LegacyTransactionStatus,
         payment_id: MemoField,
-        timestamp: DateTime<Utc>,
+        timestamp: OffsetDateTime,
         direct_send_success: bool,
         sent_output_hashes: Vec<FixedHash>,
     ) -> Self {
@@ -197,15 +197,15 @@ pub struct CompletedTransaction {
     pub fee: MicroMinotari,
     pub transaction: Transaction,
     pub status: LegacyTransactionStatus,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: OffsetDateTime,
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
     pub send_count: u32,
-    pub last_send_timestamp: Option<DateTime<Utc>>,
+    pub last_send_timestamp: Option<OffsetDateTime>,
     pub transaction_signature: CompressedSignature,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
-    pub mined_timestamp: Option<DateTime<Utc>>,
+    pub mined_timestamp: Option<OffsetDateTime>,
     pub payment_id: MemoField,
     /// Hashes of outputs being sent to others (excluding change)
     pub sent_output_hashes: Vec<FixedHash>,
@@ -234,10 +234,10 @@ impl CompletedTransaction {
         fee: MicroMinotari,
         transaction: Transaction,
         status: LegacyTransactionStatus,
-        timestamp: DateTime<Utc>,
+        timestamp: OffsetDateTime,
         direction: TransactionDirection,
         mined_height: Option<u64>,
-        mined_timestamp: Option<DateTime<Utc>>,
+        mined_timestamp: Option<OffsetDateTime>,
         payment_id: MemoField,
         lock_height: u64,
     ) -> Result<Self, TransactionStorageError> {
@@ -437,10 +437,10 @@ impl CompletedTransaction {
         fee: MicroMinotari,
         transaction: Transaction,
         status: LegacyTransactionStatus,
-        timestamp: DateTime<Utc>,
+        timestamp: OffsetDateTime,
         direction: TransactionDirection,
         mined_height: Option<u64>,
-        mined_timestamp: Option<DateTime<Utc>>,
+        mined_timestamp: Option<OffsetDateTime>,
         payment_id: MemoField,
         sent_output_hashes: Vec<FixedHash>,
         received_output_hashes: Vec<FixedHash>,
@@ -861,7 +861,7 @@ impl Display for TxCancellationReason {
 
 #[cfg(test)]
 mod test {
-    use chrono::Utc;
+    use time::OffsetDateTime;
     use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::TariAddress,
@@ -944,7 +944,7 @@ mod test {
             fee: MicroMinotari::from(100),
             transaction,
             status: LegacyTransactionStatus::Completed,
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: None,
             direction: TransactionDirection::Outbound,
             send_count: 0,

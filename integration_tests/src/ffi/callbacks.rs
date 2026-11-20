@@ -149,7 +149,7 @@ impl Callbacks {
         let pending_inbound_transaction = PendingInboundTransaction::from_ptr(ptr);
         println!(
             "{} received Transaction with txID {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             pending_inbound_transaction.get_transaction_id()
         );
         *self.transaction_received.lock().unwrap() += 1;
@@ -159,7 +159,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} received reply for Transaction with txID {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id()
         );
         *self.transaction_reply_received.lock().unwrap() += 1;
@@ -169,7 +169,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} received finalization for Transaction with txID {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id()
         );
         *self.transaction_finalized.lock().unwrap() += 1;
@@ -179,7 +179,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} Transaction with txID {} was broadcast.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id()
         );
         *self.transaction_broadcast.lock().unwrap() += 1;
@@ -189,7 +189,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} Transaction with txID {} was mined.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id()
         );
         *self.transaction_mined.lock().unwrap() += 1;
@@ -199,7 +199,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} Transaction with txID {} is mined unconfirmed with {} confirmations.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id(),
             confirmations
         );
@@ -210,7 +210,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} Faux transaction with txID {} was confirmed.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id(),
         );
         *self.transaction_faux_confirmed.lock().unwrap() += 1;
@@ -220,7 +220,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} Faux transaction with txID {} is mined unconfirmed with {} confirmations.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id(),
             confirmations
         );
@@ -231,7 +231,7 @@ impl Callbacks {
         let transaction_send_status = TransactionSendStatus::from_ptr(ptr);
         println!(
             "{} callbackTransactionSendResult ({}: ({}))",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             tx_id,
             transaction_send_status.send_status_decode()
         );
@@ -241,7 +241,7 @@ impl Callbacks {
         let completed_transaction = CompletedTransaction::from_ptr(ptr);
         println!(
             "{} transaction with txID {} was cancelled with reason code {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             completed_transaction.get_transaction_id(),
             reason,
         );
@@ -251,7 +251,7 @@ impl Callbacks {
     pub fn on_txo_validation_complete(&mut self, request_key: u64, validation_results: u64) {
         println!(
             "{} callbackTxoValidationComplete({}, {}).",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             request_key,
             validation_results
         );
@@ -265,7 +265,7 @@ impl Callbacks {
         println!(
             "{} callbackBalanceUpdated: available = {}, time locked = {}, pending incoming = {}, pending outgoing = \
              {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             balance.get_available(),
             balance.get_time_locked(),
             balance.get_pending_incoming(),
@@ -277,7 +277,7 @@ impl Callbacks {
     pub fn on_transaction_validation_complete(&mut self, request_key: u64, validation_results: u64) {
         println!(
             "{} callbackTransactionValidationComplete({}, {}).",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             request_key,
             validation_results
         );
@@ -289,7 +289,7 @@ impl Callbacks {
     pub fn on_connectivity_status(&mut self, status: u64, latency: u64) {
         println!(
             "{} Connectivity Status Changed to {} / latency {} ms.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             status,
             latency
         );
@@ -306,7 +306,7 @@ impl Callbacks {
         *self.basenode_state_updated.lock().unwrap() += 1;
         println!(
             "{} Base node state changed to {:#?}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]/[month]/[day] [hour]:[minute]:[second]")).unwrap(),
             state
         );
     }

@@ -939,10 +939,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
- "js-sys",
  "num-traits",
- "serde",
- "wasm-bindgen",
  "windows-link",
 ]
 
@@ -1909,6 +1906,9 @@ name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "derivative"
@@ -2094,7 +2094,6 @@ checksum = "9824c36a57a17ece4c8883baed41dc3eb81b2b949364c174750acc462e19b5ec"
 dependencies = [
  "bigdecimal",
  "bitflags 2.13.0",
- "chrono",
  "diesel_derives",
  "downcast-rs",
  "libsqlite3-sys",
@@ -4375,7 +4374,6 @@ name = "minotari_console_wallet"
 version = "6.3.0-pre.5"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "config",
  "console-subscriber",
@@ -4419,6 +4417,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tonic 0.13.1",
  "tui",
@@ -4486,7 +4485,6 @@ version = "6.3.0-pre.5"
 dependencies = [
  "anyhow",
  "async-trait",
- "chrono",
  "hex",
  "log",
  "minotari_node_grpc_client",
@@ -4498,6 +4496,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tokio-test",
  "tonic 0.13.1",
@@ -4511,7 +4510,6 @@ name = "minotari_mcp_node"
 version = "6.3.0-pre.5"
 dependencies = [
  "async-trait",
- "chrono",
  "clap",
  "hex",
  "log",
@@ -4523,6 +4521,7 @@ dependencies = [
  "serde_json",
  "tari_common",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tonic 0.13.1",
 ]
@@ -4532,7 +4531,6 @@ name = "minotari_mcp_wallet"
 version = "6.3.0-pre.5"
 dependencies = [
  "async-trait",
- "chrono",
  "clap",
  "hex",
  "log",
@@ -4544,6 +4542,7 @@ dependencies = [
  "serde_json",
  "tari_common",
  "tari_utilities",
+ "time",
  "tokio",
  "tonic 0.13.1",
 ]
@@ -4557,7 +4556,6 @@ dependencies = [
  "blake2 0.10.6",
  "borsh",
  "bytes",
- "chrono",
  "clap",
  "config",
  "crossterm 0.28.1",
@@ -4589,6 +4587,7 @@ dependencies = [
  "tari_transaction_components",
  "tari_utilities",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tonic 0.13.1",
  "tracing",
@@ -4602,7 +4601,6 @@ dependencies = [
  "base64 0.22.1",
  "borsh",
  "bufstream",
- "chrono",
  "clap",
  "config",
  "crossbeam",
@@ -4628,6 +4626,7 @@ dependencies = [
  "tari_transaction_components",
  "tari_utilities",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tonic 0.13.1",
 ]
@@ -4642,7 +4641,6 @@ dependencies = [
  "bincode",
  "borsh",
  "bytes",
- "chrono",
  "clap",
  "config",
  "console-subscriber",
@@ -4686,6 +4684,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "toml 0.5.11",
  "tonic 0.13.1",
@@ -4798,7 +4797,6 @@ dependencies = [
  "blake2 0.10.6",
  "borsh",
  "chacha20poly1305",
- "chrono",
  "derivative",
  "diesel",
  "diesel_migrations",
@@ -4839,6 +4837,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tower 0.5.3",
  "url",
@@ -4853,7 +4852,6 @@ dependencies = [
  "borsh",
  "cbindgen",
  "chacha20poly1305",
- "chrono",
  "env_logger",
  "futures 0.3.32",
  "itertools 0.10.5",
@@ -4882,6 +4880,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "zeroize",
 ]
@@ -7859,7 +7858,6 @@ dependencies = [
  "bs58",
  "chacha20 0.7.3",
  "chacha20poly1305",
- "chrono",
  "crc32fast",
  "digest 0.10.7",
  "getrandom 0.2.17",
@@ -7882,6 +7880,7 @@ dependencies = [
  "tari_sidechain",
  "tari_utilities",
  "thiserror 2.0.21",
+ "time",
  "utoipa",
  "wasm-bindgen",
  "zeroize",
@@ -7896,7 +7895,6 @@ dependencies = [
  "bitflags 2.13.0",
  "blake2 0.10.6",
  "bytes",
- "chrono",
  "cidr",
  "data-encoding",
  "derivative",
@@ -7930,6 +7928,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -7948,7 +7947,6 @@ dependencies = [
  "bitflags 2.13.0",
  "blake2 0.10.6",
  "chacha20poly1305",
- "chrono",
  "clap",
  "diesel",
  "diesel_migrations",
@@ -7975,6 +7973,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tokio-stream",
  "tower 0.5.3",
@@ -8006,7 +8005,6 @@ dependencies = [
  "bincode",
  "blake2 0.10.6",
  "borsh",
- "chrono",
  "config",
  "criterion",
  "digest 0.10.7",
@@ -8060,6 +8058,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tracing",
  "url",
@@ -8111,7 +8110,6 @@ version = "6.3.0-pre.5"
 dependencies = [
  "anyhow",
  "async-trait",
- "chrono",
  "cucumber",
  "fs2",
  "futures 0.3.32",
@@ -8242,7 +8240,6 @@ version = "6.3.0-pre.5"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
- "chrono",
  "digest 0.10.7",
  "getrandom 0.2.17",
  "js-sys",
@@ -8253,6 +8250,7 @@ dependencies = [
  "tari_transaction_components",
  "tari_utilities",
  "thiserror 2.0.21",
+ "time",
  "wasm-bindgen",
 ]
 
@@ -8389,7 +8387,6 @@ dependencies = [
  "borsh",
  "bytes",
  "chacha20poly1305",
- "chrono",
  "decimal-rs",
  "digest 0.10.7",
  "hex",
@@ -8423,6 +8420,7 @@ dependencies = [
  "tari_test_utils",
  "tari_utilities",
  "thiserror 2.0.21",
+ "time",
  "toml 0.5.11",
  "utoipa",
  "uuid",
@@ -8437,7 +8435,6 @@ dependencies = [
  "async-trait",
  "blake2 0.10.6",
  "chacha20poly1305",
- "chrono",
  "derivative",
  "diesel",
  "diesel_migrations",
@@ -8459,6 +8456,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "zeroize",
 ]
@@ -8617,6 +8615,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85c17d80feb7334b40c484e45ed1a5273dfd8bfda537c3be2e74a06a6686f327"
 dependencies = [
  "deranged",
+ "js-sys",
  "num-conv",
  "powerfmt",
  "serde_core",

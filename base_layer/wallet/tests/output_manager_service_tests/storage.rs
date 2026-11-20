@@ -1593,7 +1593,7 @@ async fn test_fetch_invalid_outputs_skips_undecodable_rows() {
     }
 
     let invalid = db
-        .fetch_invalid_outputs(chrono::Utc::now().timestamp() + 60, &key_manager)
+        .fetch_invalid_outputs(OffsetDateTime::now_utc().unix_timestamp() + 60, &key_manager)
         .unwrap();
     assert_eq!(invalid.len(), 1);
     assert_eq!(invalid[0].commitment, good.commitment);
@@ -1649,7 +1649,7 @@ fn completed_tx(tx_id: u64, status: LegacyTransactionStatus, direction: Transact
             PrivateKey::default(),
         ),
         status,
-        chrono::Utc::now(),
+        OffsetDateTime::now_utc(),
         direction,
         None,
         None,
@@ -1731,7 +1731,7 @@ async fn test_invalid_mask_migration_cancels_coupled_transactions() {
                 ReceiverTransactionProtocol::new_placeholder(),
                 LegacyTransactionStatus::Pending,
                 MemoField::new_open_from_string("test", TxType::PaymentToOther).unwrap(),
-                chrono::Utc::now(),
+                OffsetDateTime::now_utc(),
             ),
         )
         .unwrap();

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use chacha20poly1305::XChaCha20Poly1305;
-use chrono::{NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use diesel::prelude::*;
 use log::*;
 use tari_common_types::{
@@ -46,7 +46,7 @@ pub struct ImportedKeySql {
     pub id: i32,
     pub private_key: Vec<u8>,
     pub public_key: String,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: PrimitiveDateTime,
 }
 
 /// Struct used to create a new Key manager in the database
@@ -55,7 +55,7 @@ pub struct ImportedKeySql {
 pub struct NewImportedKeySql {
     pub private_key: Vec<u8>,
     pub public_key: String,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: PrimitiveDateTime,
 }
 
 impl NewImportedKeySql {
@@ -64,7 +64,7 @@ impl NewImportedKeySql {
         let imported_key_sql = NewImportedKeySql {
             private_key: key.private_key.to_vec(),
             public_key: key.public_key.to_hex(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
         };
         let key = imported_key_sql
             .encrypt(cipher)
@@ -238,7 +238,7 @@ mod test {
         NewImportedKeySql {
             private_key: ciphertext,
             public_key: row_public_key.to_hex(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
         }
         .commit(conn)
         .unwrap();

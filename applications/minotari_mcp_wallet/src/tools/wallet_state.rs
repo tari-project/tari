@@ -152,7 +152,7 @@ impl WalletStateTool {
 
             // Record status change
             let status_info = json!({
-                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "timestamp": OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
                 "elapsed_seconds": elapsed.as_secs(),
                 "status": self.status_to_json(&current_status)
             });
@@ -296,7 +296,7 @@ impl McpTool for WalletStateTool {
                 let status = self.check_wallet_status().await;
                 Ok(json!({
                     "check_type": "quick",
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "timestamp": OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
                     "status": self.status_to_json(&status),
                     "recommendations": self.get_status_recommendations(&status)
                 }))
