@@ -270,5 +270,27 @@ mod test {
         // These must pass because they have been converted to the current format
         assert!(TariKeyId::from_str(&legacy_managed_converted.to_string()).is_ok());
         assert!(TariKeyId::from_str(&legacy_derived_converted.to_string()).is_ok());
+
+        // Converting current nested keys back to legacy produces valid legacy key strings that round-trip
+        let roundtrip_legacy = legacy_key_manager.convert_key_id_to_legacy_key_id(&legacy_derived_converted);
+        let parsed_legacy = LegacyTariKeyId::from_str(&roundtrip_legacy.to_string()).unwrap();
+        let roundtrip_current = legacy_key_manager
+            .convert_legacy_tari_key_id_to_current(&parsed_legacy)
+            .unwrap();
+        assert_eq!(roundtrip_current, legacy_derived_converted);
+
+        // Programmatically constructed over-deep LegacyTariKeyId is rejected by convert_legacy_tari_key_id_to_current
+        let overdeep = LegacyTariKeyId::Derived {
+            key: LegacySerializedKeyString::from(format!(
+                "{}{}",
+                "derived.".repeat(crate::legacy_key_manager::interface::MAX_LEGACY_KEY_ID_NESTING),
+                "managed.comms.0"
+            )),
+        };
+        assert!(
+            legacy_key_manager
+                .convert_legacy_tari_key_id_to_current(&overdeep)
+                .is_err()
+        );
     }
 }

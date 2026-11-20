@@ -128,10 +128,89 @@ pub enum LegacyTariKeyId {
     },
 }
 
+pub const MAX_LEGACY_KEY_ID_NESTING: usize = 16;
+pub const MAX_LEGACY_KEY_ID_LENGTH: usize = 1024;
+
+fn check_legacy_key_string(id: &str) -> Result<(), String> {
+    if id.len() > MAX_LEGACY_KEY_ID_LENGTH {
+        return Err(format!("Key id is longer than {MAX_LEGACY_KEY_ID_LENGTH} bytes"));
+    }
+    let mut rest = id;
+    let mut nesting = 0usize;
+    loop {
+        nesting = nesting.saturating_add(1);
+        if nesting > MAX_LEGACY_KEY_ID_NESTING + 1 {
+            return Err(format!("Key id nests more than {MAX_LEGACY_KEY_ID_NESTING} key ids"));
+        }
+        let (branch, tail) = match rest.split_once('.') {
+            Some((branch, tail)) => (branch, Some(tail)),
+            None => (rest, None),
+        };
+        rest = match branch {
+            MANAGED_KEY_BRANCH => {
+                let Some((managed_branch, index)) = tail
+                    .and_then(|t| t.split_once('.'))
+                    .filter(|(b, index)| !b.is_empty() && !index.contains('.'))
+                else {
+                    return Err("Wrong managed format".to_string());
+                };
+                let _ = managed_branch;
+                index
+                    .parse::<u64>()
+                    .map_err(|_| "Index for default, invalid u64".to_string())?;
+                return Ok(());
+            },
+            IMPORTED_KEY_BRANCH => {
+                let Some(pubkey_hex) = tail.filter(|t| !t.contains('.')) else {
+                    return Err("Wrong imported format".to_string());
+                };
+                CompressedPublicKey::from_hex(pubkey_hex).map_err(|_| "Invalid public key".to_string())?;
+                return Ok(());
+            },
+            ZERO_KEY_BRANCH => {
+                if tail.is_some() {
+                    return Err("Wrong zero format".to_string());
+                }
+                return Ok(());
+            },
+            CODE_TEMPLATE_AUTHOR => {
+                if tail.is_some() {
+                    return Err("Wrong code template key format".to_string());
+                }
+                return Ok(());
+            },
+            DERIVED_KEY_BRANCH => match tail {
+                Some(key) if !key.is_empty() => key,
+                _ => return Err("Wrong derived format".to_string()),
+            },
+            DH_COMMITMENT_MASK_BRANCH | DH_ENCRYPTED_DATA_BRANCH => {
+                let Some((public_key, private_key)) = tail.and_then(|t| t.split_once('.')) else {
+                    return Err(if branch == DH_COMMITMENT_MASK_BRANCH {
+                        "Wrong dh_commitment_mask format".to_string()
+                    } else {
+                        "Wrong encryted data format".to_string()
+                    });
+                };
+                CompressedPublicKey::from_hex(public_key).map_err(|_| "Invalid public key".to_string())?;
+                private_key
+            },
+            ENCRYPTED_BRANCH => {
+                let Some((encrypted, key)) = tail.and_then(|t| t.split_once('.')) else {
+                    return Err("Wrong encrypted format".to_string());
+                };
+                from_hex(encrypted).map_err(|_| "Invalid encrypted bytes".to_string())?;
+                key
+            },
+            _ => return Err("Wrong generic format".to_string()),
+        };
+    }
+}
+
 impl FromStr for LegacyTariKeyId {
     type Err = String;
 
     fn from_str(id: &str) -> Result<Self, Self::Err> {
+        check_legacy_key_string(id)?;
         let parts: Vec<&str> = id.split('.').collect();
         match parts.first() {
             None => Err("Out of bounds".to_string()),
@@ -358,5 +437,24 @@ mod test {
             "encrypted.[72 bytes].managed.comms.0"
         );
         assert!(!format!("{:?}", vec![encrypted, derived]).contains(&"ab".repeat(72)));
+    }
+
+    #[test]
+    fn legacy_key_id_from_str_rejects_malformed_nested_and_overdeep_strings() {
+        assert_eq!(LegacyTariKeyId::from_str("zero").unwrap(), LegacyTariKeyId::Zero);
+        assert!(LegacyTariKeyId::from_str("zero.extra").is_err());
+        assert!(LegacyTariKeyId::from_str("managed..0").is_err());
+        assert!(LegacyTariKeyId::from_str("encrypted.00.").is_err());
+        assert!(LegacyTariKeyId::from_str("encrypted.00.not_a_key").is_err());
+
+        let valid_nested = format!("{}{}", "derived.".repeat(MAX_LEGACY_KEY_ID_NESTING), "managed.comms.0");
+        assert!(LegacyTariKeyId::from_str(&valid_nested).is_ok());
+
+        let too_deep = format!(
+            "{}{}",
+            "derived.".repeat(MAX_LEGACY_KEY_ID_NESTING + 1),
+            "managed.comms.0"
+        );
+        assert!(LegacyTariKeyId::from_str(&too_deep).is_err());
     }
 }

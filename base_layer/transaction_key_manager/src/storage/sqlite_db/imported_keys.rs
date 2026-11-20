@@ -61,6 +61,11 @@ pub struct NewImportedKeySql {
 impl NewImportedKeySql {
     // Creates a new ImportedKey with encrypted values
     pub fn new_from_imported_key(key: ImportedKey, cipher: &XChaCha20Poly1305) -> Result<Self, KeyManagerStorageError> {
+        if CompressedPublicKey::from_secret_key(&key.private_key) != key.public_key {
+            return Err(KeyManagerStorageError::UnexpectedResult(
+                "Imported private key does not match its public key".to_string(),
+            ));
+        }
         let imported_key_sql = NewImportedKeySql {
             private_key: key.private_key.to_vec(),
             public_key: key.public_key.to_hex(),
@@ -254,6 +259,14 @@ mod test {
 
         // A key written now reads back
         let key = new_key();
+        let mismatched = ImportedKey {
+            public_key: new_key().public_key,
+            private_key: key.private_key.clone(),
+        };
+        assert!(matches!(
+            NewImportedKeySql::new_from_imported_key(mismatched, &cipher),
+            Err(KeyManagerStorageError::UnexpectedResult(_))
+        ));
         NewImportedKeySql::new_from_imported_key(key.clone(), &cipher)
             .unwrap()
             .commit(&mut conn)
