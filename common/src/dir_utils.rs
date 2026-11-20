@@ -20,9 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::OnceLock};
 
 use path_clean::PathClean;
+
+/// Records the resolved absolute fallback directory if the user home directory could not be determined.
+static FALLBACK_HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
 pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
@@ -46,19 +49,43 @@ pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
     String::from(home.to_str().expect("Invalid path value"))
 }
 
+fn resolve_home_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    let home_env = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+    #[cfg(not(windows))]
+    let home_env = std::env::var_os("HOME");
+
+    home_env.filter(|v| !v.is_empty())?;
+    dirs_next::home_dir()
+}
+
 pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
+    default_path_with_home_fn(filename, base_path, resolve_home_dir, &FALLBACK_HOME_DIR)
+}
+
+pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
+    filename: &str,
+    base_path: Option<&PathBuf>,
+    home_fn: F,
+    fallback_slot: &OnceLock<PathBuf>,
+) -> PathBuf {
     let mut home = base_path.cloned().unwrap_or_else(|| {
-        [
-            dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(".")),
-            PathBuf::from(".tari"),
-        ]
-        .iter()
-        .collect()
+        let home_dir = home_fn().unwrap_or_else(|| {
+            let fallback = PathBuf::from(".");
+            let _ = fallback_slot.set(absolute_path(&fallback));
+            fallback
+        });
+        [home_dir, PathBuf::from(".tari")].iter().collect()
     });
     for component in PathBuf::from(filename).components() {
         home.push(component);
     }
     home
+}
+
+/// Returns the absolute path of the fallback directory if an unset home directory fallback occurred.
+pub fn get_fallback_home_dir() -> Option<PathBuf> {
+    FALLBACK_HOME_DIR.get().cloned()
 }
 
 pub fn absolute_path<P>(path: P) -> PathBuf
@@ -74,7 +101,7 @@ where P: AsRef<std::path::Path> {
 
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
+    use std::{path::PathBuf, sync::OnceLock};
 
     use tari_test_utils::random::string;
     use tempfile::tempdir;
@@ -107,5 +134,31 @@ mod test {
         let relative_path = PathBuf::from("./01/02/");
         let joined_path = current_path.join(&relative_path);
         assert_eq!(dir_utils::absolute_path(&relative_path), joined_path);
+    }
+
+    #[test]
+    fn test_default_path_unset_home_records_fallback_once() {
+        let slot = OnceLock::new();
+        assert_eq!(slot.get(), None);
+
+        let fallback_abs = dir_utils::absolute_path(".");
+
+        let path1 = dir_utils::default_path_with_home_fn("test_file", None, || None, &slot);
+        assert_eq!(path1, PathBuf::from("./.tari/test_file"));
+        assert_eq!(slot.get(), Some(&fallback_abs));
+
+        // Second call should preserve the first recorded fallback
+        let path2 = dir_utils::default_path_with_home_fn("another_file", None, || None, &slot);
+        assert_eq!(path2, PathBuf::from("./.tari/another_file"));
+        assert_eq!(slot.get(), Some(&fallback_abs));
+    }
+
+    #[test]
+    fn test_default_path_with_explicit_base_path() {
+        let slot = OnceLock::new();
+        let base = PathBuf::from("/custom/base");
+        let path = dir_utils::default_path_with_home_fn("file.txt", Some(&base), || None, &slot);
+        assert_eq!(path, PathBuf::from("/custom/base/file.txt"));
+        assert_eq!(slot.get(), None);
     }
 }
