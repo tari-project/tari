@@ -142,8 +142,14 @@ pub async fn check_detected_transactions<
             "TxId: {}, {:?} ",
             tx.tx_id, output_info_for_tx_id
         );
-        if tx.mined_height.unwrap_or_default() != output_info_for_tx_id.mined_height.unwrap_or_default() {
-            // If the mined height has changed, we need to update the transaction
+        let mined_location_changed = has_mined_location_changed(
+            tx.mined_height,
+            tx.mined_in_block,
+            output_info_for_tx_id.mined_height,
+            output_info_for_tx_id.block_hash,
+        );
+        if mined_location_changed {
+            // If the mined height or block hash has changed, we need to update the transaction
             state_changed = true;
         }
         trace!(
@@ -175,7 +181,13 @@ pub async fn check_detected_transactions<
         let previously_locked = tx.status.is_locked();
         let must_be_unlocked = tip_height >= tx.lock_height;
 
-        if !(previously_confirmed && must_be_confirmed) || (previously_locked && must_be_unlocked) {
+        if should_update_detected_transaction(
+            previously_confirmed,
+            must_be_confirmed,
+            previously_locked,
+            must_be_unlocked,
+            mined_location_changed,
+        ) {
             let log_msg = format!(
                 "Updating faux transaction: TxId({}), mined_height({mined_height}), \
                  must_be_confirmed({must_be_confirmed}), output_status({output_status}), is_valid({is_valid})",
@@ -236,5 +248,181 @@ pub async fn check_detected_transactions<
                     "Error sending event, usually because there are no subscribers: {e:?}",
                 );
             });
+    }
+}
+
+fn has_mined_location_changed(
+    tx_mined_height: Option<u64>,
+    tx_mined_in_block: Option<FixedHash>,
+    output_mined_height: Option<u64>,
+    output_block_hash: Option<FixedHash>,
+) -> bool {
+    tx_mined_height != output_mined_height || tx_mined_in_block != output_block_hash
+}
+
+fn should_update_detected_transaction(
+    previously_confirmed: bool,
+    must_be_confirmed: bool,
+    previously_locked: bool,
+    must_be_unlocked: bool,
+    mined_location_changed: bool,
+) -> bool {
+    !(previously_confirmed && must_be_confirmed) || (previously_locked && must_be_unlocked) || mined_location_changed
+}
+
+#[cfg(test)]
+mod test {
+    use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+    use chrono::Utc;
+    use futures::StreamExt;
+    use rand::rngs::OsRng;
+    use tari_common::configuration::Network;
+    use tari_common_types::{
+        tari_address::TariAddress,
+        transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
+        types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
+    };
+    use tari_crypto::keys::SecretKey;
+    use tari_service_framework::reply_channel;
+    use tari_transaction_components::{
+        MicroMinotari,
+        transaction_components::{MemoField, Transaction, memo_field::TxType},
+    };
+    use tari_transaction_key_manager::legacy_key_manager::MemoryDbKeyManager;
+    use tokio::sync::broadcast;
+
+    use super::{check_detected_transactions, has_mined_location_changed, should_update_detected_transaction};
+    use crate::{
+        output_manager_service::{
+            handle::{OutputInfoByTxId, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
+            storage::OutputStatus,
+        },
+        storage::sqlite_utilities::run_migration_and_create_sqlite_memory_connection,
+        transaction_service::{
+            config::TransactionServiceConfig,
+            storage::{
+                database::TransactionDatabase,
+                models::CompletedTransaction,
+                sqlite_db::TransactionServiceSqliteDatabase,
+            },
+        },
+    };
+
+    #[test]
+    fn reorged_confirmed_detected_tx_updates_when_mined_location_changes() {
+        let old_hash = FixedHash::from([0x11u8; 32]);
+        let new_hash = FixedHash::from([0x22u8; 32]);
+
+        // Re-mined at a different height or different block hash while still meeting confirmations
+        assert!(has_mined_location_changed(
+            Some(100),
+            Some(old_hash),
+            Some(101),
+            Some(new_hash),
+        ));
+        assert!(has_mined_location_changed(
+            Some(100),
+            Some(old_hash),
+            Some(100),
+            Some(new_hash),
+        ));
+        assert!(should_update_detected_transaction(true, true, false, true, true));
+
+        // Unchanged confirmed unlocked transaction does not need a redundant DB write
+        assert!(!has_mined_location_changed(
+            Some(100),
+            Some(old_hash),
+            Some(100),
+            Some(old_hash),
+        ));
+        assert!(!should_update_detected_transaction(true, true, false, true, false));
+    }
+
+    #[tokio::test]
+    async fn check_detected_transactions_persists_reorged_mined_location() {
+        let connection = run_migration_and_create_sqlite_memory_connection().unwrap();
+        let cipher = XChaCha20Poly1305::new(Key::from_slice(&[7u8; 32]));
+        let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
+
+        let address = TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        )
+        .unwrap();
+        let tx_id = TxId::from(42u64);
+        let initial_hash = FixedHash::from([0x11u8; 32]);
+        let same_height_reorg_hash = FixedHash::from([0x22u8; 32]);
+        let new_height_reorg_hash = FixedHash::from([0x33u8; 32]);
+
+        let completed_tx = CompletedTransaction {
+            tx_id,
+            source_address: address.clone(),
+            destination_address: address,
+            amount: MicroMinotari::from(1_000),
+            fee: MicroMinotari::from(10),
+            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
+            status: LegacyTransactionStatus::OneSidedConfirmed,
+            timestamp: Utc::now(),
+            cancelled: None,
+            direction: TransactionDirection::Inbound,
+            send_count: 0,
+            last_send_timestamp: None,
+            sent_output_hashes: vec![],
+            received_output_hashes: vec![FixedHash::from([0xAAu8; 32])],
+            change_output_hashes: vec![],
+            transaction_signature: CompressedSignature::default(),
+            mined_height: Some(100),
+            mined_in_block: Some(initial_hash),
+            mined_timestamp: Some(Utc::now()),
+            payment_id: MemoField::new_open_from_string("test", TxType::PaymentToOther).unwrap(),
+            lock_height: 0,
+            rejection_reason: None,
+            source_address_claimed: false,
+        };
+        db.insert_completed_transaction(tx_id, completed_tx).unwrap();
+
+        let (om_sender, mut om_receiver) = reply_channel::unbounded();
+        let (om_event_tx, _) = broadcast::channel(10);
+        let output_manager = OutputManagerHandle::<MemoryDbKeyManager>::new(om_sender, om_event_tx);
+
+        let responses = vec![(100u64, same_height_reorg_hash), (101u64, new_height_reorg_hash)];
+        tokio::spawn(async move {
+            for (height, block_hash) in responses {
+                if let Some(req_ctx) = om_receiver.next().await {
+                    let (req, reply_tx) = req_ctx.split();
+                    if let OutputManagerRequest::GetOutputInfoByTxId(id) = req {
+                        assert_eq!(id, tx_id);
+                        let _ = reply_tx.send(Ok(OutputManagerResponse::OutputInfoByTxId(OutputInfoByTxId {
+                            statuses: vec![OutputStatus::Unspent],
+                            mined_height: Some(height),
+                            block_hash: Some(block_hash),
+                        })));
+                    }
+                }
+            }
+        });
+
+        let (event_tx, _event_rx) = broadcast::channel(10);
+        let config = TransactionServiceConfig::default();
+
+        // 1. Block-hash-only change at height 100 while still confirmed at tip 110
+        check_detected_transactions(
+            output_manager.clone(),
+            db.clone(),
+            event_tx.clone(),
+            config.clone(),
+            110,
+        )
+        .await;
+        let saved = db.get_completed_transaction(tx_id).unwrap();
+        assert_eq!(saved.mined_height, Some(100));
+        assert_eq!(saved.mined_in_block, Some(same_height_reorg_hash));
+
+        // 2. Both mined_height and mined_in_block change while still confirmed at tip 110
+        check_detected_transactions(output_manager, db.clone(), event_tx, config, 110).await;
+        let saved = db.get_completed_transaction(tx_id).unwrap();
+        assert_eq!(saved.mined_height, Some(101));
+        assert_eq!(saved.mined_in_block, Some(new_height_reorg_hash));
     }
 }
