@@ -69,6 +69,7 @@ use std::{
     iter,
     sync::{
         Arc,
+        Weak,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -156,6 +157,14 @@ const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(120);
 /// retried against another peer.
 const PROTOCOL_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// Maximum number of concurrent inbound responder exchanges permitted across all peers.
+///
+/// Unlike `PeerRpcServer` services, `t/mempool-sync/1` is a raw `ProtocolExtension` with no RPC
+/// session ceiling of its own; each active responder holds a `Mempool` clone, reads up to
+/// [`MAX_FRAME_SIZE`] per frame, and snapshots the mempool. Additional inbound substreams beyond
+/// this cap decline immediately rather than queueing.
+const MAX_CONCURRENT_RESPONDERS: usize = 16;
+
 /// How long to wait, on shutdown, for aborted peer protocol tasks to actually finish.
 ///
 /// Aborting is not enough on its own: `JoinSet::drop` requests cancellation without waiting, so the
@@ -202,6 +211,8 @@ pub struct MempoolSyncProtocol<TSubstream> {
     mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
+    responder_permits: Arc<Semaphore>,
+    active_responders: Vec<Weak<NodeId>>,
     connectivity: ConnectivityRequester,
     block_event_stream: BlockEventReceiver,
     shutdown_signal: ShutdownSignal,
@@ -229,6 +240,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
+            responder_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_RESPONDERS)),
+            active_responders: Vec::new(),
             connectivity,
             block_event_stream,
             shutdown_signal,
@@ -485,13 +498,38 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
     }
 
     fn spawn_inbound_handler(&mut self, node_id: NodeId, substream: TSubstream) {
+        self.active_responders.retain(|peer| peer.strong_count() > 0);
+        if self
+            .active_responders
+            .iter()
+            .any(|peer| peer.upgrade().is_some_and(|p| *p == node_id))
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Mempool responder protocol is already active with peer `{}`; dropping duplicate inbound substream",
+                node_id.short_str(),
+            );
+            return;
+        }
+        let Ok(responder_permit) = self.responder_permits.clone().try_acquire_owned() else {
+            debug!(
+                target: LOG_TARGET,
+                "Mempool responder concurrency limit ({MAX_CONCURRENT_RESPONDERS}) reached; dropping inbound substream from `{}`",
+                node_id.short_str(),
+            );
+            return;
+        };
+        let peer_session = Arc::new(node_id.clone());
+        self.active_responders.push(Arc::downgrade(&peer_session));
         let mempool = self.mempool.clone();
         let config = self.config.clone();
         self.tasks.spawn(async move {
+            let _responder_permit = responder_permit;
+            let _peer_session = peer_session;
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
             let mut protocol = MempoolPeerProtocol::new(config, framed, node_id.clone(), mempool);
-            // Aggregate deadline, as for the initiator: a responder holds no permit, but an
-            // unbounded exchange still keeps a `Mempool` clone alive indefinitely.
+            // Aggregate deadline, as for the initiator: an unbounded exchange would otherwise keep
+            // the peer session token, responder permit, and `Mempool` clone alive indefinitely.
             match time::timeout(PROTOCOL_TIMEOUT, protocol.start_responder()).await {
                 Err(_elapsed) => {
                     warn!(
@@ -864,17 +902,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
-        let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
-            .filter_map(|txn| {
-                match shared_proto::types::Transaction::try_from(txn) {
-                    Ok(txn) =>   Some(proto::TransactionItem {
-                        transaction: Some(txn),
-                    }),
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "Could not convert transaction: {e}");
-                        None
-                    }
-                }
+        let txns = transactions
+            .into_iter()
+            .take(self.config.initial_sync_max_transactions)
+            .filter_map(|txn| match shared_proto::types::Transaction::try_from(txn) {
+                Ok(txn) => Some(proto::TransactionItem { transaction: Some(txn) }),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Could not convert transaction: {e}");
+                    None
+                },
             })
             // Write an empty `TransactionItem` to indicate we're done
             .chain(iter::once(proto::TransactionItem::empty()));
