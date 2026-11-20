@@ -64,36 +64,35 @@ macro_rules! collect_stream {
         use tokio::time;
 
         // Evaluate $stream once, NOT in the loop 🐛🚨
-        let mut stream = &mut $stream;
+        let stream = &mut $stream;
+        let take = $take;
 
         let mut items = Vec::new();
-        loop {
+        while items.len() < take {
             if let Some(item) = time::timeout($timeout, futures::stream::StreamExt::next(stream))
                 .await
                 .expect(
                     format!(
                         "Timeout before stream could collect {} item(s). Got {} item(s).",
-                        $take,
+                        take,
                         items.len()
                     )
                     .as_str(),
                 )
             {
                 items.push(item);
-                if items.len() == $take {
-                    break items;
-                }
             } else {
-                break items;
+                break;
             }
         }
+        items
     }};
     ($stream:expr, timeout=$timeout:expr $(,)?) => {{
         use tokio::time;
 
-        let mut stream = &mut $stream;
+        let stream = &mut $stream;
         let mut items = Vec::new();
-        while let Some(item) = time::timeout($timeout, futures::stream::StreamExt::next($stream))
+        while let Some(item) = time::timeout($timeout, futures::stream::StreamExt::next(stream))
             .await
             .expect(format!("Timeout before stream was closed. Got {} items.", items.len()).as_str())
         {
@@ -109,26 +108,25 @@ macro_rules! collect_recv {
         use tokio::time;
 
         // Evaluate $stream once, NOT in the loop 🐛🚨
-        let mut stream = &mut $stream;
+        let stream = &mut $stream;
+        let take = $take;
 
         let mut items = Vec::new();
-        loop {
+        while items.len() < take {
             let item = time::timeout($timeout, stream.recv()).await.expect(&format!(
                 "Timeout before stream could collect {} item(s). Got {} item(s).",
-                $take,
+                take,
                 items.len()
             ));
 
-            items.push(item.expect(&format!("{}/{} recv ended early", items.len(), $take)));
-            if items.len() == $take {
-                break items;
-            }
+            items.push(item.expect(&format!("{}/{} recv ended early", items.len(), take)));
         }
+        items
     }};
     ($stream:expr, timeout=$timeout:expr $(,)?) => {{
         use tokio::time;
 
-        let mut stream = &mut $stream;
+        let stream = &mut $stream;
 
         let mut items = Vec::new();
         while let Some(item) = time::timeout($timeout, stream.recv())
@@ -147,26 +145,25 @@ macro_rules! collect_try_recv {
         use tokio::time;
 
         // Evaluate $stream once, NOT in the loop 🐛🚨
-        let mut stream = &mut $stream;
+        let stream = &mut $stream;
+        let take = $take;
 
         let mut items = Vec::new();
-        loop {
+        while items.len() < take {
             let item = time::timeout($timeout, stream.recv()).await.expect(&format!(
                 "Timeout before stream could collect {} item(s). Got {} item(s).",
-                $take,
+                take,
                 items.len()
             ));
 
-            items.push(item.expect(&format!("{}/{} recv returned unexpected result", items.len(), $take)));
-            if items.len() == $take {
-                break items;
-            }
+            items.push(item.expect(&format!("{}/{} recv returned unexpected result", items.len(), take)));
         }
+        items
     }};
     ($stream:expr, timeout=$timeout:expr $(,)?) => {{
         use tokio::time;
 
-        let mut stream = &mut $stream;
+        let stream = &mut $stream;
         let mut items = Vec::new();
         while let Ok(item) = time::timeout($timeout, stream.recv())
             .await
@@ -197,13 +194,11 @@ macro_rules! collect_try_recv {
 #[macro_export]
 macro_rules! collect_stream_count {
     ($stream:expr, take=$take:expr, timeout=$timeout:expr$(,)?) => {{
-        use std::collections::HashMap;
         let items = $crate::collect_stream!($stream, take = $take, timeout = $timeout);
         $crate::streams::get_item_counts(items)
     }};
 
     ($stream:expr, timeout=$timeout:expr $(,)?) => {{
-        use std::collections::HashMap;
         let items = $crate::collect_stream!($stream, timeout = $timeout);
         $crate::streams::get_item_counts(items)
     }};
@@ -279,4 +274,24 @@ where
     stream::unfold(rx, |mut rx| async move {
         Some(rx.borrow_mut().recv().await).map(|t| (t, rx))
     })
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use futures::stream;
+
+    #[tokio::test]
+    async fn collect_stream_evaluates_stream_once_and_handles_zero_take() {
+        let mut s = stream::iter(vec![10, 20, 30]);
+        let empty = collect_stream!(s, take = 0, timeout = Duration::from_secs(1));
+        assert!(empty.is_empty());
+
+        let remaining = collect_stream!(stream::iter(vec![1, 2, 3]), timeout = Duration::from_secs(1));
+        assert_eq!(remaining, vec![1, 2, 3]);
+
+        let counts = collect_stream_count!(stream::iter(vec![1, 2, 2, 3, 2]), timeout = Duration::from_secs(1));
+        assert_eq!(counts.get(&2), Some(&3));
+    }
 }

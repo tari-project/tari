@@ -74,7 +74,13 @@ macro_rules! unpack_enum {
         };
     };
 
-    ($($enum_key:ident)::+ ( $($idents:ident),* ) = $enum:expr) => {
+    ($($enum_key:ident)::+ () = $enum:expr) => {
+        match $enum {
+            $($enum_key)::+() => {},
+            v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
+        };
+    };
+    ($($enum_key:ident)::+ ( $($idents:ident),+ ) = $enum:expr) => {
         let ($(mut $idents),+) =  match $enum {
             $($enum_key)::+($($idents),+) => ($($idents),+),
             v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
@@ -92,5 +98,28 @@ macro_rules! unpack_enum {
             $( $pattern )|+ => {},
             v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
         };
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[derive(Debug)]
+    enum Sample {
+        EmptyTuple(),
+        Tuple(u32, &'static str),
+    }
+
+    #[test]
+    fn unpack_enum_handles_empty_and_non_empty_tuple_variants() {
+        let empty = Sample::EmptyTuple();
+        unpack_enum!(Sample::EmptyTuple() = empty);
+
+        let tuple = Sample::Tuple(7, "ok");
+        unpack_enum!(Sample::Tuple(num, label) = tuple);
+        assert_eq!(label, "ok");
+        num += 1;
+        label = "updated";
+        assert_eq!(num, 8);
+        assert_eq!(label, "updated");
     }
 }
