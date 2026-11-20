@@ -242,14 +242,19 @@ impl BasicAuthCredentials {
     }
 
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
+    ///
+    /// The returned value is marked sensitive, but the `Bytes` inside the `MetadataValue` cannot be zeroized; callers
+    /// should not log it.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         use base64::{Engine, prelude::BASE64_STANDARD};
         let password_str = Zeroizing::new(String::from_utf8(password.to_vec())?);
         let token_str = Zeroizing::new(format!("{username}:{}", password_str.as_str()));
         let mut token = BASE64_STANDARD.encode(token_str.deref());
-        let header = format!("Basic {token}");
+        let header = Zeroizing::new(format!("Basic {token}"));
         token.zeroize();
-        let header = header.parse()?;
+        let mut header: MetadataValue<Ascii> = header.parse()?;
+        // Keeps the value out of Debug output and out of the h2 HPACK dynamic table.
+        header.set_sensitive(true);
         Ok(header)
     }
 }
@@ -613,6 +618,7 @@ mod tests {
             let (username, password) = BasicAuthCredentials::parse_header(header.to_str().unwrap()).unwrap();
             assert_eq!(username, "admin".to_string());
             assert_eq!(password.reveal(), b"secret");
+            assert!(header.is_sensitive());
         }
 
         #[test]
