@@ -65,20 +65,33 @@ struct HidManager {
 }
 
 impl HidManager {
-    fn new() -> Result<Self, LedgerDeviceError> {
-        let hidapi = HidApi::new().map_err(|e| LedgerDeviceError::HidApi(e.to_string()))?;
-        Ok(Self { inner: Some(hidapi) })
+    fn new() -> Self {
+        Self {
+            inner: HidApi::new().ok(),
+        }
     }
 
-    fn refresh_if_needed(&mut self) -> Result<(), LedgerDeviceError> {
+    fn refresh_if_needed(&mut self) -> Result<&HidApi, LedgerDeviceError> {
+        self.refresh_with(HidApi::new)
+    }
+
+    fn refresh_with<F, E>(&mut self, init_fn: F) -> Result<&HidApi, LedgerDeviceError>
+    where
+        F: FnOnce() -> Result<HidApi, E>,
+        E: std::fmt::Display,
+    {
         // We need to clear out the inner HidApi instance before creating a new one
         // This is because only one instance may exist, even when it no longers holds a connection,
         // and we want this dropped before replacing
-        self.inner = None;
-
-        self.inner = Some(HidApi::new().map_err(|e| LedgerDeviceError::HidApiRefresh(e.to_string()))?);
-
-        Ok(())
+        let had_instance = self.inner.take().is_some();
+        let hidapi = init_fn().map_err(|e| {
+            if had_instance {
+                LedgerDeviceError::HidApiRefresh(e.to_string())
+            } else {
+                LedgerDeviceError::HidApi(e.to_string())
+            }
+        })?;
+        Ok(self.inner.insert(hidapi))
     }
 
     fn get_hidapi(&self) -> Option<&HidApi> {
@@ -86,22 +99,19 @@ impl HidManager {
     }
 }
 
-static HID_MANAGER: LazyLock<Mutex<HidManager>> =
-    LazyLock::new(|| Mutex::new(HidManager::new().expect("Failed to initialize HidManager")));
+static HID_MANAGER: LazyLock<Mutex<HidManager>> = LazyLock::new(|| Mutex::new(HidManager::new()));
 
 pub fn get_transport() -> Result<TransportNativeHID, LedgerDeviceError> {
-    let mut manager = HID_MANAGER
-        .lock()
-        .map_err(|_| LedgerDeviceError::TransportConnect("Mutex lock error".to_string()))?;
+    let mut manager = HID_MANAGER.lock().unwrap_or_else(|e| e.into_inner());
 
-    match TransportNativeHID::new(manager.get_hidapi().unwrap()) {
-        Ok(transport) => Ok(transport),
-        Err(_) => {
-            manager.refresh_if_needed()?;
-            TransportNativeHID::new(manager.get_hidapi().unwrap())
-                .map_err(|e| LedgerDeviceError::TransportConnect(e.to_string()))
-        },
+    if let Some(hidapi) = manager.get_hidapi() &&
+        let Ok(transport) = TransportNativeHID::new(hidapi)
+    {
+        return Ok(transport);
     }
+
+    let hidapi = manager.refresh_if_needed()?;
+    TransportNativeHID::new(hidapi).map_err(|e| LedgerDeviceError::TransportConnect(e.to_string()))
 }
 
 /// A connection to a Ledger device that can exchange APDUs with it.
@@ -334,5 +344,16 @@ mod test {
             .collect::<Vec<_>>();
         let ins = Instruction::GetScriptOffset.as_byte();
         assert_eq!(headers, vec![(CLA, ins, 0, 1), (CLA, ins, 1, 1), (CLA, ins, 2, 0)]);
+    }
+
+    #[test]
+    fn hid_manager_failed_refresh_does_not_leave_unwrapped_none() {
+        let mut manager = HidManager { inner: None };
+        let err = manager
+            .refresh_with(|| Err::<HidApi, _>("no hid subsystem"))
+            .err()
+            .expect("refresh should fail");
+        assert!(matches!(err, LedgerDeviceError::HidApi(msg) if msg == "no hid subsystem"));
+        assert!(manager.get_hidapi().is_none());
     }
 }
