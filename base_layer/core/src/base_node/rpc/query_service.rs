@@ -642,7 +642,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     }
 
     async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error> {
-        let hash: FixedHash = request.output_hash.try_into().map_err(Error::general)?;
+        let hash: FixedHash = request.output_hash.try_into()?;
         let outputs = self.db().fetch_outputs_with_spend_status_at_tip(vec![hash]).await?;
         let output = match outputs.first() {
             Some(Some((output, _spent))) => Some(output.clone()),
@@ -1383,5 +1383,23 @@ mod tests {
 
         assert_eq!(first_page_heights, (7..=30).collect::<Vec<u64>>());
         assert_eq!(visited_heights, (start_height..=tip_height).collect::<Vec<u64>>());
+    }
+
+    #[tokio::test]
+    async fn get_utxo_rejects_invalid_hash_length() {
+        let service = make_service().await;
+
+        for invalid_hash in [vec![], vec![0u8; 31], vec![0u8; 33]] {
+            let err = service
+                .get_utxo(models::GetUtxoRequest {
+                    output_hash: invalid_hash,
+                })
+                .await
+                .unwrap_err();
+            match err {
+                Error::HashConversion(_) => {},
+                other => panic!("unexpected error: {other:?}"),
+            }
+        }
     }
 }
