@@ -59,14 +59,12 @@ impl Debug for UtxoScannerMode {
     }
 }
 
-pub const DEFAULT_SCANNING_INTERVAL_SECS: u64 = 60;
-
 #[derive(Debug, Clone)]
 pub struct UtxoScannerServiceBuilder<TWalletClientFactory> {
     retry_limit: usize,
     mode: Option<UtxoScannerMode>,
     client_factory: Option<TWalletClientFactory>,
-    scanning_interval: Option<u64>,
+    scanning_interval: u64,
 }
 
 impl<T> Default for UtxoScannerServiceBuilder<T> {
@@ -75,14 +73,8 @@ impl<T> Default for UtxoScannerServiceBuilder<T> {
             retry_limit: 0,
             mode: None,
             client_factory: None,
-            scanning_interval: None,
+            scanning_interval: 60, // Default scanning interval in seconds
         }
-    }
-}
-
-impl<T> UtxoScannerServiceBuilder<T> {
-    pub(crate) fn resolve_scanning_interval(&self, fallback_secs: u64) -> u64 {
-        self.scanning_interval.unwrap_or(fallback_secs).max(1)
     }
 }
 
@@ -105,7 +97,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
     }
 
     pub fn with_scanning_interval(&mut self, interval: u64) -> &mut Self {
-        self.scanning_interval = Some(interval);
+        self.scanning_interval = interval;
         self
     }
 
@@ -139,7 +131,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             self.mode.clone().unwrap_or_default(),
             resources,
             shutdown_signal,
-            self.resolve_scanning_interval(wallet.config.scanning_interval),
+            wallet.config.scanning_interval,
             event_sender,
             wallet.key_manager_service.clone(),
         ))
@@ -182,29 +174,9 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             self.mode.clone().unwrap_or_default(),
             resources,
             shutdown_signal,
-            self.resolve_scanning_interval(DEFAULT_SCANNING_INTERVAL_SECS),
+            self.scanning_interval,
             event_sender,
             key_manager,
         ))
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::{DEFAULT_SCANNING_INTERVAL_SECS, UtxoScannerServiceBuilder};
-    use crate::client::http_client_factory::DefaultHttpClientFactory;
-
-    #[test]
-    fn resolve_scanning_interval_prefers_explicit_override_and_clamps_zero() {
-        let mut builder = UtxoScannerServiceBuilder::<DefaultHttpClientFactory>::default();
-        assert_eq!(builder.resolve_scanning_interval(DEFAULT_SCANNING_INTERVAL_SECS), 60);
-        assert_eq!(builder.resolve_scanning_interval(15), 15);
-        assert_eq!(builder.resolve_scanning_interval(0), 1);
-
-        builder.with_scanning_interval(30);
-        assert_eq!(builder.resolve_scanning_interval(15), 30);
-
-        builder.with_scanning_interval(0);
-        assert_eq!(builder.resolve_scanning_interval(15), 1);
     }
 }

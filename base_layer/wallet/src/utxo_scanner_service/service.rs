@@ -93,7 +93,7 @@ where
         }
     }
 
-    fn create_task(
+    pub(crate) fn create_task(
         &self,
         shutdown_signal: ShutdownSignal,
     ) -> UtxoScannerTask<TBackend, TKeyManagerInterface, TWalletClientFactory> {
@@ -101,7 +101,7 @@ where
             resources: self.resources.clone(),
             event_sender: self.event_sender.clone(),
             retry_limit: self.retry_limit,
-            num_retries: 1,
+            num_retries: 0,
             mode: self.mode.clone(),
             shutdown_signal,
             birthday_offset: self.resources.birthday_offset,
