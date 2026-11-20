@@ -182,7 +182,7 @@ fn log_close_outcome(result: Result<Result<(), std::io::Error>, time::error::Ela
 
 /// Decode a frame received from the peer, first checking that it carries at most `max_items` embedded message
 /// instances (see `tari_comms::decode_budget`). A frame is up to [`MAX_FRAME_SIZE`]; without the check, one frame of
-/// empty transaction inputs decodes into ~1.5M inputs (~365 MB). Every repeated element, including each `bytes` item
+/// empty transaction inputs decodes into ~3.1M inputs (~730 MB). Every repeated element, including each `bytes` item
 /// of the inventory, is charged, so the budget also bounds an inventory of empty items. An over-budget frame is
 /// reported as [`MempoolProtocolError::DecodeFailed`], exactly like any other undecodable frame.
 fn decode_frame<T>(frame: BytesMut, max_items: usize, peer: &NodeId) -> Result<T, MempoolProtocolError>
@@ -644,7 +644,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         // and, in the initiator, skip `num_synched`, leaving the node spawning initiators forever.
         // It also must not fall through to the caller's flush/close retry, which would drive
         // `poll_flush` and `poll_close` on a sink whose close has already been polled.
-        log_close_outcome(time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await);
+        // Everything is already flushed, so the close carries no payload: a short bound keeps a
+        // stalled close from using up the `PROTOCOL_TIMEOUT` a long exchange has left.
+        log_close_outcome(time::timeout(MESSAGE_TIMEOUT, self.framed.close()).await);
 
         Ok(())
     }

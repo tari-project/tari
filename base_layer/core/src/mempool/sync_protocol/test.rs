@@ -77,6 +77,7 @@ use crate::{
             MempoolPeerProtocol,
             MempoolProtocolError,
             MempoolSyncProtocol,
+            STREAM_ITEM_TIMEOUT,
             decode_frame,
         },
         test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
@@ -561,6 +562,7 @@ async fn successful_sync_still_succeeds_when_the_trailing_close_stalls() {
 
     // Everything is exchanged normally; only the final close never completes.
     let framed = framing::canonical(StallingClose { inner: sock_out }, MAX_FRAME_SIZE);
+    let started = tokio::time::Instant::now();
     let result = tokio::time::timeout(
         Duration::from_secs(3600),
         MempoolPeerProtocol::new(
@@ -574,6 +576,8 @@ async fn successful_sync_still_succeeds_when_the_trailing_close_stalls() {
     )
     .await
     .expect("initiator never returned — the trailing close is unbounded again");
+    // The stalled close must not use up the per-frame deadline's worth of `PROTOCOL_TIMEOUT`
+    assert!(started.elapsed() < STREAM_ITEM_TIMEOUT, "{:?}", started.elapsed());
 
     assert!(
         result.is_ok(),
