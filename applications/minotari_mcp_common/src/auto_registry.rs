@@ -695,7 +695,7 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
 
-    use crate::{McpError, grpc_executor::NodeGrpcClient, parameter_converter::ConversionRegistry};
+    use crate::{McpError, grpc_executor::NodeGrpcClient};
 
     /// Node client that records calls and answers like a node would
     #[derive(Default)]
@@ -739,11 +739,7 @@ mod tests {
     ) -> (Arc<RecordingNodeClient>, HashMap<String, Arc<dyn McpTool>>) {
         let client = Arc::new(RecordingNodeClient::default());
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let executor = Arc::new(GrpcExecutor::new_node(
-            client.clone(),
-            error_mapper.clone(),
-            Arc::new(ConversionRegistry::new()),
-        ));
+        let executor = Arc::new(GrpcExecutor::new_node(client.clone(), error_mapper.clone()));
         let service_discovery = Arc::new(ServiceDiscovery::new());
         let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
         let registry = AutoDiscoveryRegistry::new_with_executor(
@@ -764,7 +760,7 @@ mod tests {
     async fn discovery_lists_only_executable_methods() {
         let (_, tools) = discovered_node_tools(true).await;
         assert!(!tools.contains_key("Identify"));
-        assert!(!tools.contains_key("GetNewBlock"));
+        assert!(tools.contains_key("GetNewBlock"));
         assert!(tools.contains_key("GetBlocks"));
         assert!(tools.contains_key("SubmitTransaction"));
 

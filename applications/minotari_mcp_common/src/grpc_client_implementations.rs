@@ -26,9 +26,9 @@
 //! traits that wrap the actual Tari gRPC clients and provide JSON-based interfaces.
 
 use async_trait::async_trait;
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use minotari_wallet_grpc_client::WalletGrpcClient as TariWalletGrpcClient;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tonic::{Status, transport::Channel};
 
 use crate::{
@@ -58,6 +58,7 @@ pub(crate) const NODE_METHODS: &[&str] = &[
     "GetPeers",
     "ListConnectedPeers",
     "GetNewBlockTemplate",
+    "GetNewBlock",
     "SubmitBlock",
     "SubmitTransaction",
     "GetMempoolStats",
@@ -77,11 +78,18 @@ pub(crate) const NODE_METHODS: &[&str] = &[
 /// Wallet methods `WalletGrpcClientImpl::execute_method` calls the wallet for
 pub(crate) const WALLET_METHODS: &[&str] = &[
     "GetBalance",
+    "GetUnspentAmounts",
     "GetAddress",
+    "GetCompleteAddress",
+    "GetPaymentIdAddress",
     "GetTransactionInfo",
+    "GetCompletedTransactions",
     "Transfer",
     "CoinSplit",
     "CancelTransaction",
+    "SendShaAtomicSwapTransaction",
+    "ClaimShaAtomicSwapTransaction",
+    "ClaimHtlcRefundTransaction",
 ];
 
 /// Real node gRPC client implementation
@@ -93,22 +101,6 @@ impl NodeGrpcClientImpl {
     pub fn new(client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { client }
     }
-
-    async fn get_tip_info(&self) -> McpResult<Value> {
-        let tip_info = self.client.clone().get_tip_info(Empty {}).await?.into_inner();
-
-        Ok(json!({
-            "height": tip_info.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0),
-            "best_block_hash": tip_info.metadata.as_ref()
-                .map(|m| hex::encode(&m.best_block_hash))
-                .unwrap_or_default(),
-            "accumulated_difficulty": tip_info.metadata.as_ref()
-                .map(|m| hex::encode(&m.accumulated_difficulty))
-                .unwrap_or_default(),
-            "pruned_height": tip_info.metadata.as_ref().map(|m| m.pruned_height).unwrap_or(0),
-            "timestamp": tip_info.metadata.as_ref().map(|m| m.timestamp).unwrap_or(0)
-        }))
-    }
 }
 
 #[async_trait]
@@ -117,11 +109,12 @@ impl NodeGrpcClient for NodeGrpcClientImpl {
         let client = self.client.clone();
         let params = &parameters;
         match method_name {
-            "GetTipInfo" => self.get_tip_info().await,
+            "GetTipInfo" => node_rpc::get_tip_info(client).await,
             "GetNetworkStatus" => node_rpc::get_network_status(client).await,
             "GetPeers" => node_rpc::get_peers(client, params).await,
             "ListConnectedPeers" => node_rpc::list_connected_peers(client).await,
             "GetNewBlockTemplate" => node_rpc::get_new_block_template(client, params).await,
+            "GetNewBlock" => node_rpc::get_new_block(client, params).await,
             "SubmitBlock" => node_rpc::submit_block(client, params).await,
             "SubmitTransaction" => node_rpc::submit_transaction(client, params).await,
             "GetMempoolStats" => node_rpc::get_mempool_stats(client).await,
@@ -159,11 +152,18 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
         let params = &parameters;
         match method_name {
             "GetBalance" => wallet_rpc::get_balance(client, params).await,
+            "GetUnspentAmounts" => wallet_rpc::get_unspent_amounts(client).await,
             "GetAddress" => wallet_rpc::get_address(client).await,
+            "GetCompleteAddress" => wallet_rpc::get_complete_address(client).await,
+            "GetPaymentIdAddress" => wallet_rpc::get_payment_id_address(client, params).await,
             "GetTransactionInfo" => wallet_rpc::get_transaction_info(client, params).await,
+            "GetCompletedTransactions" => wallet_rpc::get_completed_transactions(client, params).await,
             "Transfer" => wallet_rpc::transfer(client, params).await,
             "CoinSplit" => wallet_rpc::coin_split(client, params).await,
             "CancelTransaction" => wallet_rpc::cancel_transaction(client, params).await,
+            "SendShaAtomicSwapTransaction" => wallet_rpc::send_sha_atomic_swap(client, params).await,
+            "ClaimShaAtomicSwapTransaction" => wallet_rpc::claim_sha_atomic_swap(client, params).await,
+            "ClaimHtlcRefundTransaction" => wallet_rpc::claim_htlc_refund(client, params).await,
             _ => Err(McpError::not_implemented(method_name)),
         }
     }
@@ -171,6 +171,8 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
     use crate::grpc_discovery::base_node_methods;
 

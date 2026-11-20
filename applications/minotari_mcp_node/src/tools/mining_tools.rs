@@ -33,7 +33,7 @@ use minotari_app_grpc::tari_rpc::{
     PowAlgo,
     pow_algo::PowAlgos,
 };
-use minotari_mcp_common::{McpError, McpResult, McpTool, node_rpc};
+use minotari_mcp_common::{MAX_ENCODED_BLOCK_HEX_LEN, McpError, McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -90,14 +90,12 @@ impl McpTool for GetNewBlockTemplateTool {
 /// Tool for constructing a new block from a template
 #[derive(Clone)]
 pub struct GetNewBlockTool {
-    _grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNewBlockTool {
     pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
-        Self {
-            _grpc_client: grpc_client,
-        }
+        Self { grpc_client }
     }
 }
 
@@ -119,26 +117,20 @@ impl McpTool for GetNewBlockTool {
         serde_json::json!({
             "type": "object",
             "properties": {
-                "template": {
-                    "type": "object",
-                    "description": "Block template from get_new_block_template"
+                "new_block_template_hex": {
+                    "type": "string",
+                    "description": "Hex of the protobuf-encoded tari.rpc.NewBlockTemplate to complete",
+                    "pattern": "^([0-9a-fA-F]{2})+$",
+                    "maxLength": MAX_ENCODED_BLOCK_HEX_LEN
                 }
             },
-            "required": ["template"]
+            "required": ["new_block_template_hex"],
+            "additionalProperties": false
         })
     }
 
-    async fn execute(&self, _params: Value) -> McpResult<Value> {
-        // This is a simplified implementation - in reality, we'd need to properly
-        // construct the NewBlockTemplate from the parameters
-        return Err(McpError::invalid_request(
-            "This tool requires a complete block template structure. Use get_new_block_template first.".to_string(),
-        ));
-
-        // TODO: Implement proper template parsing when needed
-        // let template = parse_block_template(&params)?;
-        // let request = Request::new(template);
-        // let response = self.grpc_client.clone().get_new_block(request).await?;
+    async fn execute(&self, params: Value) -> McpResult<Value> {
+        node_rpc::get_new_block(self.grpc_client.clone(), &params).await
     }
 }
 

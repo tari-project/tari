@@ -62,10 +62,12 @@ impl McpResource for ChainMetadataResource {
     async fn read(&self) -> McpResult<Value> {
         let mut client = self.grpc_client.as_ref().clone();
 
-        let response = client
-            .get_tip_info(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get chain metadata: {e}")))?;
+        let response = client.get_tip_info(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to get chain metadata: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let tip_info = response.into_inner();
 

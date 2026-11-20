@@ -28,7 +28,7 @@
 use std::sync::Arc;
 
 use minotari_app_grpc::tari_rpc::{Empty, GetBalanceRequest};
-use minotari_mcp_common::{McpError, McpResult, McpTool, security::PermissionLevel, wallet_rpc};
+use minotari_mcp_common::{McpResult, McpTool, security::PermissionLevel, wallet_rpc};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -112,27 +112,7 @@ impl McpTool for GetUnspentAmountsTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_unspent_amounts(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "unspent_amount": response.amount,
-            "formatted": {
-                "tari": (response.amount.first().copied().unwrap_or(0) as f64 / 1_000_000.0).round() / 1.0, // Convert from µT to T
-                "microtari": response.amount,
-            },
-            "info": {
-                "description": "Total value of all unspent transaction outputs",
-                "unit": "microTari (µT)",
-                "note": "This represents UTXOs that can potentially be spent"
-            }
-        }))
+        wallet_rpc::get_unspent_amounts((*self.grpc_client).clone()).await
     }
 }
 
@@ -181,20 +161,12 @@ impl McpTool for BalanceAnalysisTool {
         // Get balance information
         let balance_request = Request::new(GetBalanceRequest { payment_id: None });
         let mut client = (*self.grpc_client).clone();
-        let balance_response = client
-            .get_balance(balance_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
-            .into_inner();
+        let balance_response = client.get_balance(balance_request).await?.into_inner();
 
         // Get unspent amounts
         let unspent_request = Request::new(Empty {});
         let mut client2 = (*self.grpc_client).clone();
-        let unspent_response = client2
-            .get_unspent_amounts(unspent_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {e}")))?
-            .into_inner();
+        let unspent_response = client2.get_unspent_amounts(unspent_request).await?.into_inner();
 
         let requested_amount = params.get("requested_amount").and_then(|v| v.as_u64()).unwrap_or(0);
 
@@ -404,11 +376,7 @@ impl McpTool for BalanceMonitorTool {
         // Get current balance
         let balance_request = Request::new(GetBalanceRequest { payment_id: None });
         let mut client = (*self.grpc_client).clone();
-        let balance_response = client
-            .get_balance(balance_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
-            .into_inner();
+        let balance_response = client.get_balance(balance_request).await?.into_inner();
 
         let total_balance = balance_response
             .available_balance

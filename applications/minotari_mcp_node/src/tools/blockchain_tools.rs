@@ -25,7 +25,7 @@
 //! This module provides comprehensive access to blockchain data including headers,
 //! blocks, network status, and synchronization information.
 
-use minotari_app_grpc::tari_rpc::{Empty, GetNetworkStateRequest};
+use minotari_app_grpc::tari_rpc::GetNetworkStateRequest;
 use minotari_mcp_common::{McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
@@ -209,35 +209,7 @@ impl McpTool for GetTipInfoTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let response = self.grpc_client.clone().get_tip_info(request).await?.into_inner();
-
-        let metadata = response.metadata.as_ref();
-
-        Ok(json!({
-            "tip_height": metadata.map(|m| m.best_block_height).unwrap_or(0),
-            "tip_hash": metadata
-                .map(|m| hex::encode(&m.best_block_hash))
-                .unwrap_or_default(),
-            "accumulated_difficulty": metadata
-                .map(|m| hex::encode(&m.accumulated_difficulty))
-                .unwrap_or_default(),
-            "pruned_height": metadata.map(|m| m.pruned_height).unwrap_or(0),
-            "timestamp": metadata.map(|m| m.timestamp).unwrap_or(0),
-            "initial_sync_achieved": response.initial_sync_achieved,
-            "base_node_state": match response.base_node_state {
-                0 => "START_UP",
-                1 => "HEADER_SYNC",
-                2 => "HORIZON_SYNC",
-                3 => "CONNECTING",
-                4 => "BLOCK_SYNC",
-                5 => "LISTENING",
-                6 => "SYNC_FAILED",
-                _ => "UNKNOWN",
-            },
-            "failed_checkpoints": response.failed_checkpoints,
-        }))
+        node_rpc::get_tip_info(self.grpc_client.clone()).await
     }
 }
 
@@ -312,7 +284,7 @@ impl McpTool for GetNetworkDifficultyTool {
             "properties": {
                 "from_tip": {
                     "type": "number",
-                    "description": "Number of blocks from tip",
+                    "description": "Number of blocks from tip (at most 511, as the tip is included)",
                     "minimum": 0
                 },
                 "start_height": {
@@ -326,7 +298,8 @@ impl McpTool for GetNetworkDifficultyTool {
                     "minimum": 0
                 }
             },
-            "required": []
+            "required": [],
+            "description": "Either start_height..=end_height, or from_tip; at most 512 heights"
         })
     }
 

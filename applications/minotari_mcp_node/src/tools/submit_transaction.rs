@@ -23,7 +23,14 @@
 //! Submit transaction MCP tool
 
 use async_trait::async_trait;
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param, node_rpc};
+use minotari_mcp_common::{
+    MAX_ENCODED_BLOCK_HEX_LEN,
+    McpError,
+    McpResult,
+    McpTool,
+    get_required_string_param,
+    node_rpc,
+};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
 use tonic::transport::Channel;
@@ -65,14 +72,22 @@ impl McpTool for SubmitTransactionTool {
                     "type": "string",
                     "description": "Hex of the protobuf-encoded tari.rpc.Transaction to submit (fully formed and signed).",
                     "pattern": "^[0-9a-fA-F]+$",
-                    "minLength": 100
+                    "minLength": 100,
+                    "maxLength": MAX_ENCODED_BLOCK_HEX_LEN
                 }
             },
-            "required": ["transaction_hex"]
+            "required": ["transaction_hex"],
+            "additionalProperties": false
         })
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
+        if params
+            .as_object()
+            .is_some_and(|o| o.keys().any(|k| k != "transaction_hex"))
+        {
+            return Err(McpError::invalid_request("Only transaction_hex is accepted"));
+        }
         let tx_hex = get_required_string_param(params, "transaction_hex")?;
 
         if tx_hex.is_empty() {

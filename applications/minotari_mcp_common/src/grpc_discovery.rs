@@ -774,7 +774,7 @@ fn get_header_by_hash_input_schema() -> Value {
         "properties": {
             "hash": {
                 "type": "string",
-                "format": "byte",
+                "pattern": "^([0-9a-fA-F]{2})+$",
                 "description": "The hash of the block header"
             }
         },
@@ -813,7 +813,7 @@ fn historical_block_schema() -> Value {
                 "type": "array",
                 "items": {
                     "type": "string",
-                    "format": "byte"
+                    "format": "hex"
                 },
                 "description": "Spent commitments"
             }
@@ -865,7 +865,7 @@ fn sync_info_response_schema() -> Value {
                 "type": "array",
                 "items": {
                     "type": "string",
-                    "format": "byte"
+                    "format": "hex"
                 },
                 "description": "Peer node IDs"
             }
@@ -978,15 +978,14 @@ fn new_block_template_schema() -> Value {
     serde_json::json!({
         "type": "object",
         "properties": {
-            "header": {
-                "type": "object",
-                "description": "Block header template"
-            },
-            "body": {
-                "type": "object",
-                "description": "Block body template"
+            "new_block_template_hex": {
+                "type": "string",
+                "pattern": "^([0-9a-fA-F]{2})+$",
+                "maxLength": crate::input_sanitizer::MAX_ENCODED_BLOCK_HEX_LEN,
+                "description": "Hex of the protobuf-encoded tari.rpc.NewBlockTemplate to complete"
             }
         },
+        "required": ["new_block_template_hex"],
         "additionalProperties": false
     })
 }
@@ -997,22 +996,32 @@ fn get_new_block_result_schema() -> Value {
         "properties": {
             "block_hash": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "Header hash of the completed block"
             },
             "block": {
                 "type": "object",
-                "description": "The completed block"
+                "description": "Summary of the completed block"
+            },
+            "block_hex": {
+                "type": "string",
+                "format": "hex",
+                "description": "Hex of the protobuf-encoded completed block, as accepted by SubmitBlock"
             },
             "merge_mining_hash": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "Merge mining hash"
             },
             "tari_unique_id": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "Tari unique ID"
+            },
+            "vm_key": {
+                "type": "string",
+                "format": "hex",
+                "description": "RandomX VM key"
             },
             "miner_data": {
                 "type": "object",
@@ -1082,6 +1091,7 @@ fn block_schema() -> Value {
             "block_hex": {
                 "type": "string",
                 "pattern": "^([0-9a-fA-F]{2})+$",
+                "maxLength": crate::input_sanitizer::MAX_ENCODED_BLOCK_HEX_LEN,
                 "description": "Hex of the protobuf-encoded tari.rpc.Block to submit"
             }
         },
@@ -1096,7 +1106,7 @@ fn submit_block_response_schema() -> Value {
         "properties": {
             "block_hash": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "Hash of the submitted block"
             }
         },
@@ -1111,6 +1121,7 @@ fn submit_transaction_request_schema() -> Value {
             "transaction_hex": {
                 "type": "string",
                 "pattern": "^([0-9a-fA-F]{2})+$",
+                "maxLength": crate::input_sanitizer::MAX_ENCODED_BLOCK_HEX_LEN,
                 "description": "Hex of the protobuf-encoded tari.rpc.Transaction to submit"
             }
         },
@@ -1139,7 +1150,21 @@ fn search_kernels_request_schema() -> Value {
             "signatures": {
                 "type": "array",
                 "items": {
-                    "type": "object"
+                    "type": "object",
+                    "properties": {
+                        "public_nonce": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{2})+$",
+                            "description": "Hex of the kernel excess signature public nonce"
+                        },
+                        "signature": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{2})+$",
+                            "description": "Hex of the kernel excess signature scalar"
+                        }
+                    },
+                    "required": ["public_nonce", "signature"],
+                    "additionalProperties": false
                 },
                 "maxItems": 512,
                 "description": "Kernel signatures to search for (at most 512 per request)"
@@ -1158,7 +1183,7 @@ fn search_utxos_request_schema() -> Value {
                 "type": "array",
                 "items": {
                     "type": "string",
-                    "format": "byte"
+                    "pattern": "^([0-9a-fA-F]{2})+$"
                 },
                 "maxItems": 512,
                 "description": "UTXO commitments to search for (at most 512 per request)"
@@ -1177,7 +1202,7 @@ fn fetch_matching_utxos_request_schema() -> Value {
                 "type": "array",
                 "items": {
                     "type": "string",
-                    "format": "byte"
+                    "pattern": "^([0-9a-fA-F]{2})+$"
                 },
                 "maxItems": 512,
                 "description": "UTXO hashes to fetch (at most 512 per request)"
@@ -1204,6 +1229,7 @@ fn fetch_matching_utxos_response_schema() -> Value {
 fn height_request_schema() -> Value {
     serde_json::json!({
         "type": "object",
+        "description": "Either start_height..=end_height, or the from_tip + 1 heights ending at the tip; at most 512 heights",
         "properties": {
             "from_tip": {
                 "type": "integer",
@@ -1393,12 +1419,12 @@ fn get_address_response_schema() -> Value {
         "properties": {
             "interactive_address": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "Interactive address"
             },
             "one_sided_address": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "One-sided address"
             }
         },
@@ -1412,12 +1438,12 @@ fn get_complete_address_response_schema() -> Value {
         "properties": {
             "interactive_address": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "Interactive address (bytes)"
             },
             "one_sided_address": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "One-sided address (bytes)"
             },
             "interactive_address_base58": {
@@ -1447,8 +1473,7 @@ fn get_payment_id_address_request_schema() -> Value {
         "properties": {
             "payment_id": {
                 "type": "string",
-                "format": "byte",
-                "description": "Payment ID"
+                "description": "Payment ID as text, or as hex with a 0x prefix"
             }
         },
         "required": ["payment_id"],
@@ -1496,7 +1521,7 @@ fn get_completed_transactions_request_schema() -> Value {
         "type": "object",
         "properties": {
             "payment_id": {
-                "type": "object",
+                "type": "string",
                 "description": "Optional payment ID filter"
             },
             "block_hash": {
@@ -1507,6 +1532,12 @@ fn get_completed_transactions_request_schema() -> Value {
                 "type": "integer",
                 "format": "uint64",
                 "description": "Optional block height filter"
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of transactions to return (default 100)",
+                "minimum": 1,
+                "maximum": 512
             }
         },
         "additionalProperties": false
@@ -1761,8 +1792,7 @@ fn transfer_request_schema() -> Value {
                         },
                         "payment_id": {
                             "type": "string",
-                            "format": "byte",
-                            "description": "Payment ID"
+                            "description": "Payment ID text"
                         }
                     },
                     "required": ["address", "amount", "fee_per_gram"]
@@ -1838,7 +1868,6 @@ fn coin_split_request_schema() -> Value {
             },
             "payment_id": {
                 "type": "string",
-                "format": "byte",
                 "description": "Optional payment ID"
             }
         },
@@ -1987,11 +2016,6 @@ fn send_sha_atomic_swap_request_schema() -> Value {
                         "type": "integer",
                         "format": "uint64",
                         "description": "Fee per gram"
-                    },
-                    "payment_id": {
-                        "type": "string",
-                        "format": "byte",
-                        "description": "Payment ID"
                     }
                 },
                 "required": ["address", "amount", "fee_per_gram"]
@@ -2013,12 +2037,12 @@ fn send_sha_atomic_swap_response_schema() -> Value {
             },
             "pre_image": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "SHA pre-image of the atomic swap"
             },
             "output_hash": {
                 "type": "string",
-                "format": "byte",
+                "format": "hex",
                 "description": "Hash of the output"
             },
             "is_success": {
@@ -2038,7 +2062,7 @@ fn claim_sha_atomic_swap_request_schema() -> Value {
     serde_json::json!({
         "type": "object",
         "properties": {
-            "output": {
+            "output_hash": {
                 "type": "string",
                 "pattern": "^[0-9a-fA-F]{64}$",
                 "description": "Hex-encoded output hash (SHA-256 digest)"
@@ -2055,7 +2079,7 @@ fn claim_sha_atomic_swap_request_schema() -> Value {
                 "minimum": 1
             }
         },
-        "required": ["output", "pre_image", "fee_per_gram"],
+        "required": ["output_hash", "pre_image", "fee_per_gram"],
         "additionalProperties": false
     })
 }

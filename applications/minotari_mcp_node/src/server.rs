@@ -32,7 +32,6 @@ use minotari_mcp_common::{
     CliIntegrationUtils,
     ConnectionManager,
     ConnectionPoolConfig,
-    ConversionRegistryFactory,
     GrpcErrorMapper,
     GrpcExecutor,
     HealthConfig,
@@ -120,13 +119,11 @@ impl NodeMcpServer {
         let connection_manager = Self::create_connection_manager(&config).await?;
 
         // Create health-aware gRPC executor
-        let conversion_registry = ConversionRegistryFactory::create_node_registry();
         let error_mapper = Arc::new(GrpcErrorMapper::new());
         let node_client_impl = Arc::new(NodeGrpcClientImpl::new((*grpc_client).clone()));
         let grpc_executor = Arc::new(GrpcExecutor::new_node_with_health(
             node_client_impl,
             error_mapper.clone(),
-            conversion_registry,
             connection_manager.clone(),
         ));
 

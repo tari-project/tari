@@ -38,7 +38,6 @@ use crate::{
     grpc_discovery::GrpcMethodInfo,
     grpc_error_mapper::GrpcErrorMapper,
     health_checker::HealthResult,
-    parameter_converter::ConversionRegistry,
 };
 
 /// Unified gRPC method executor for node and wallet clients
@@ -52,8 +51,6 @@ pub struct GrpcExecutor {
     pub error_mapper: Arc<GrpcErrorMapper>,
     /// Server type this executor is configured for
     pub server_type: ServerType,
-    /// Parameter conversion registry for JSON to protobuf conversion
-    pub conversion_registry: Arc<ConversionRegistry>,
     /// Connection manager for health monitoring and circuit breakers (optional)
     pub connection_manager: Option<Arc<ConnectionManager>>,
 }
@@ -74,17 +71,12 @@ pub trait WalletGrpcClient: Send + Sync {
 
 impl GrpcExecutor {
     /// Create a new gRPC executor for node operations
-    pub fn new_node(
-        client: Arc<dyn NodeGrpcClient>,
-        error_mapper: Arc<GrpcErrorMapper>,
-        conversion_registry: Arc<ConversionRegistry>,
-    ) -> Self {
+    pub fn new_node(client: Arc<dyn NodeGrpcClient>, error_mapper: Arc<GrpcErrorMapper>) -> Self {
         Self {
             node_client: Some(client),
             wallet_client: None,
             error_mapper,
             server_type: ServerType::Node,
-            conversion_registry,
             connection_manager: None,
         }
     }
@@ -93,7 +85,6 @@ impl GrpcExecutor {
     pub fn new_node_with_health(
         client: Arc<dyn NodeGrpcClient>,
         error_mapper: Arc<GrpcErrorMapper>,
-        conversion_registry: Arc<ConversionRegistry>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Self {
         Self {
@@ -101,23 +92,17 @@ impl GrpcExecutor {
             wallet_client: None,
             error_mapper,
             server_type: ServerType::Node,
-            conversion_registry,
             connection_manager: Some(connection_manager),
         }
     }
 
     /// Create a new gRPC executor for wallet operations  
-    pub fn new_wallet(
-        client: Arc<dyn WalletGrpcClient>,
-        error_mapper: Arc<GrpcErrorMapper>,
-        conversion_registry: Arc<ConversionRegistry>,
-    ) -> Self {
+    pub fn new_wallet(client: Arc<dyn WalletGrpcClient>, error_mapper: Arc<GrpcErrorMapper>) -> Self {
         Self {
             node_client: None,
             wallet_client: Some(client),
             error_mapper,
             server_type: ServerType::Wallet,
-            conversion_registry,
             connection_manager: None,
         }
     }
@@ -126,7 +111,6 @@ impl GrpcExecutor {
     pub fn new_wallet_with_health(
         client: Arc<dyn WalletGrpcClient>,
         error_mapper: Arc<GrpcErrorMapper>,
-        conversion_registry: Arc<ConversionRegistry>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Self {
         Self {
@@ -134,7 +118,6 @@ impl GrpcExecutor {
             wallet_client: Some(client),
             error_mapper,
             server_type: ServerType::Wallet,
-            conversion_registry,
             connection_manager: Some(connection_manager),
         }
     }
@@ -323,11 +306,7 @@ mod tests {
     }
 
     fn node_executor() -> GrpcExecutor {
-        GrpcExecutor::new_node(
-            Arc::new(MockNodeClient),
-            Arc::new(GrpcErrorMapper::new()),
-            Arc::new(ConversionRegistry::new()),
-        )
+        GrpcExecutor::new_node(Arc::new(MockNodeClient), Arc::new(GrpcErrorMapper::new()))
     }
 
     fn method(name: &str) -> GrpcMethodInfo {

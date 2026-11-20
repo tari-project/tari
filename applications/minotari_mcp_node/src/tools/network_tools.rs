@@ -145,7 +145,7 @@ impl McpTool for GetAllPeersTool {
                     "type": "number",
                     "description": "Maximum number of peers to return (default 50)",
                     "minimum": 1,
-                    "maximum": 1000
+                    "maximum": 512
                 }
             },
             "required": []

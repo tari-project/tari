@@ -35,6 +35,15 @@ use crate::{
     error::{McpError, McpResult},
 };
 
+/// Longest accepted hex string for an encoded block, block template or transaction: 4 MiB of protobuf. A block at
+/// the mainnet maximum weight of 127,795 grams is about 2-2.5 MiB (16-20 bytes per gram), so this is roughly 2x that,
+/// and it still fits the node's 8 MiB gRPC message limit.
+pub const MAX_ENCODED_BLOCK_HEX_LEN: usize = 8 * 1024 * 1024;
+
+/// Fields that carry a hex-encoded block, block template or transaction and so get [MAX_ENCODED_BLOCK_HEX_LEN]
+/// instead of the general string limit
+const ENCODED_BLOCK_HEX_FIELDS: [&str; 3] = ["block_hex", "transaction_hex", "new_block_template_hex"];
+
 /// Input sanitizer for MCP operations
 pub struct InputSanitizer {
     max_string_length: usize,
@@ -124,12 +133,15 @@ impl InputSanitizer {
 
     /// Sanitize a string value
     fn sanitize_string(&self, s: &str) -> McpResult<Value> {
+        self.sanitize_string_with_limit(s, self.max_string_length)
+    }
+
+    fn sanitize_string_with_limit(&self, s: &str, max_len: usize) -> McpResult<Value> {
         // Check length limit
-        if s.len() > self.max_string_length {
+        if s.len() > max_len {
             return Err(McpError::invalid_request(format!(
-                "String too long ({} chars, max {})",
-                s.len(),
-                self.max_string_length
+                "String too long ({} chars, max {max_len})",
+                s.len()
             )));
         }
 
@@ -204,7 +216,12 @@ impl InputSanitizer {
             }
 
             // Sanitize the value
-            let sanitized_value = self.sanitize_value(value, depth.saturating_add(1))?;
+            let sanitized_value = match value {
+                Value::String(s) if ENCODED_BLOCK_HEX_FIELDS.contains(&trimmed_key) => {
+                    self.sanitize_string_with_limit(s, MAX_ENCODED_BLOCK_HEX_LEN)?
+                },
+                _ => self.sanitize_value(value, depth.saturating_add(1))?,
+            };
             sanitized_obj.insert(trimmed_key.to_string(), sanitized_value);
         }
 
@@ -350,6 +367,18 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn encoded_block_hex_fields_get_their_own_limit() {
+        let large = "ab".repeat(64 * 1024);
+        for key in ENCODED_BLOCK_HEX_FIELDS {
+            assert!(sanitize_tool_input(&json!({ key: large })).is_ok());
+            let over = "a".repeat(MAX_ENCODED_BLOCK_HEX_LEN + 1);
+            assert!(sanitize_tool_input(&json!({ key: over })).is_err());
+        }
+        // Every other field keeps the general limit
+        assert!(sanitize_tool_input(&json!({ "memo": large })).is_err());
+    }
 
     #[test]
     fn test_html_entity_sanitization() {

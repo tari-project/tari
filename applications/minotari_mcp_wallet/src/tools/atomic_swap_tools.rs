@@ -27,23 +27,10 @@
 
 use std::sync::Arc;
 
-use minotari_app_grpc::tari_rpc::{
-    ClaimHtlcRefundRequest,
-    ClaimShaAtomicSwapRequest,
-    PaymentRecipient,
-    SendShaAtomicSwapRequest,
-};
-use minotari_mcp_common::{
-    McpError,
-    McpResult,
-    McpTool,
-    PermissionLevel,
-    get_required_string_param,
-    get_required_u64_param,
-};
+use minotari_mcp_common::{McpResult, McpTool, PermissionLevel, wallet_rpc};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::transport::Channel;
 
 /// Tool for sending SHA atomic swap transactions
 #[derive(Clone)]
@@ -100,85 +87,7 @@ impl McpTool for SendShaAtomicSwapTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let recipient_data = params
-            .get("recipient")
-            .ok_or_else(|| McpError::invalid_request("recipient object is required"))?;
-
-        let address = recipient_data
-            .get("address")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| McpError::invalid_request("recipient.address is required"))?;
-
-        let amount = recipient_data
-            .get("amount")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::invalid_request("recipient.amount is required"))?;
-
-        let fee_per_gram = recipient_data
-            .get("fee_per_gram")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::invalid_request("recipient.fee_per_gram is required"))?;
-
-        if amount == 0 {
-            return Err(McpError::invalid_request("amount must be greater than 0"));
-        }
-
-        if fee_per_gram == 0 {
-            return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
-        }
-
-        let recipient = PaymentRecipient {
-            address: address.to_string(),
-            amount,
-            fee_per_gram,
-            payment_type: 2, // ONE_SIDED_TO_STEALTH_ADDRESS
-            raw_payment_id: vec![],
-            user_payment_id: None,
-        };
-
-        let request = Request::new(SendShaAtomicSwapRequest {
-            recipient: Some(recipient),
-        });
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .send_sha_atomic_swap_transaction(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to send SHA atomic swap: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "transaction_id": response.transaction_id,
-            "pre_image": hex::encode(&response.pre_image),
-            "output_hash": hex::encode(&response.output_hash),
-            "is_success": response.is_success,
-            "failure_message": response.failure_message,
-            "swap_details": {
-                "recipient_address": address,
-                "amount": amount,
-                "fee_per_gram": fee_per_gram,
-                "amount_tari": (amount as f64 / 1_000_000.0),
-            },
-            "security_info": {
-                "pre_image_purpose": "Keep this pre-image secret until you want to claim the swap",
-                "output_hash_usage": "The recipient needs this hash to identify the swap output",
-                "claiming_process": "To claim the swap, the recipient must provide the pre-image that matches this hash",
-            },
-            "next_steps": if response.is_success {
-                vec![
-                    "Share the output_hash with the recipient".to_string(),
-                    "Keep the pre_image secret until ready to reveal".to_string(),
-                    "Monitor the transaction for confirmation".to_string(),
-                    "The recipient can claim using the pre_image once revealed".to_string()
-                ]
-            } else {
-                vec![
-                    format!("Fix the issue: {}", response.failure_message),
-                    "Check wallet balance and network connectivity".to_string(),
-                    "Retry the atomic swap operation".to_string()
-                ]
-            }
-        }))
+        wallet_rpc::send_sha_atomic_swap((*self.grpc_client).clone(), &params).await
     }
 }
 
@@ -230,89 +139,7 @@ impl McpTool for ClaimShaAtomicSwapTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let output_hash = get_required_string_param(&params, "output_hash")?;
-        let pre_image = get_required_string_param(&params, "pre_image")?;
-        let fee_per_gram = get_required_u64_param(&params, "fee_per_gram")?;
-
-        // Validate hex inputs
-        if !output_hash.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(McpError::invalid_request("output_hash must be a valid hex string"));
-        }
-
-        if !pre_image.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(McpError::invalid_request("pre_image must be a valid hex string"));
-        }
-
-        if output_hash.len() != 64 {
-            return Err(McpError::invalid_request(
-                "output_hash must be 64 hex characters (32 bytes)",
-            ));
-        }
-
-        if fee_per_gram == 0 {
-            return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
-        }
-
-        let request = Request::new(ClaimShaAtomicSwapRequest {
-            output: output_hash.clone(),
-            pre_image: pre_image.clone(),
-            fee_per_gram,
-        });
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .claim_sha_atomic_swap_transaction(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim SHA atomic swap: {e}")))?
-            .into_inner();
-
-        let result = response
-            .results
-            .as_ref()
-            .ok_or_else(|| McpError::tool_execution_failed("No results in claim response"))?;
-
-        Ok(json!({
-            "claim_result": {
-                "address": result.address,
-                "transaction_id": result.transaction_id,
-                "is_success": result.is_success,
-                "failure_message": result.failure_message,
-            },
-            "claim_details": {
-                "output_hash": output_hash,
-                "pre_image_provided": pre_image,
-                "fee_per_gram": fee_per_gram,
-            },
-            "status": if result.is_success {
-                "CLAIMED_SUCCESSFULLY"
-            } else {
-                "CLAIM_FAILED"
-            },
-            "message": if result.is_success {
-                "Atomic swap has been successfully claimed".to_string()
-            } else {
-                format!("Claim failed: {}", result.failure_message)
-            },
-            "security_notes": {
-                "pre_image_revealed": "The pre-image is now publicly visible on the blockchain",
-                "transaction_finality": "This claim transaction must be confirmed to complete the swap",
-                "fund_availability": "Claimed funds will be available once the transaction confirms",
-            },
-            "next_steps": if result.is_success {
-                vec![
-                    "Wait for transaction confirmation",
-                    "Funds will appear in wallet balance",
-                    "Atomic swap is now complete"
-                ]
-            } else {
-                vec![
-                    "Verify the pre-image matches the expected hash",
-                    "Check that the output hasn't already been claimed",
-                    "Ensure sufficient funds for transaction fee",
-                    "Retry with correct parameters"
-                ]
-            }
-        }))
+        wallet_rpc::claim_sha_atomic_swap((*self.grpc_client).clone(), &params).await
     }
 }
 
@@ -360,82 +187,7 @@ impl McpTool for ClaimHtlcRefundTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let output_hash = get_required_string_param(&params, "output_hash")?;
-        let fee_per_gram = get_required_u64_param(&params, "fee_per_gram")?;
-
-        // Validate hex input
-        if !output_hash.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(McpError::invalid_request("output_hash must be a valid hex string"));
-        }
-
-        if output_hash.len() != 64 {
-            return Err(McpError::invalid_request(
-                "output_hash must be 64 hex characters (32 bytes)",
-            ));
-        }
-
-        if fee_per_gram == 0 {
-            return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
-        }
-
-        let request = Request::new(ClaimHtlcRefundRequest {
-            output_hash: output_hash.clone(),
-            fee_per_gram,
-        });
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .claim_htlc_refund_transaction(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim HTLC refund: {e}")))?
-            .into_inner();
-
-        let result = response
-            .results
-            .as_ref()
-            .ok_or_else(|| McpError::tool_execution_failed("No results in refund response"))?;
-
-        Ok(json!({
-            "refund_result": {
-                "address": result.address,
-                "transaction_id": result.transaction_id,
-                "is_success": result.is_success,
-                "failure_message": result.failure_message,
-            },
-            "refund_details": {
-                "output_hash": output_hash,
-                "fee_per_gram": fee_per_gram,
-            },
-            "status": if result.is_success {
-                "REFUND_CLAIMED"
-            } else {
-                "REFUND_FAILED"
-            },
-            "message": if result.is_success {
-                "HTLC refund has been successfully claimed".to_string()
-            } else {
-                format!("Refund claim failed: {}", result.failure_message)
-            },
-            "htlc_info": {
-                "purpose": "HTLC refunds allow recovery of funds when atomic swaps timeout",
-                "timelock": "Refunds are only possible after the timelock period expires",
-                "finality": "This refund transaction must be confirmed to recover the funds",
-            },
-            "next_steps": if result.is_success {
-                vec![
-                    "Wait for refund transaction confirmation",
-                    "Funds will be returned to wallet balance",
-                    "The atomic swap opportunity has expired"
-                ]
-            } else {
-                vec![
-                    "Check that the timelock period has expired",
-                    "Verify the output hash is correct",
-                    "Ensure the HTLC hasn't been claimed by the recipient",
-                    "Check wallet balance for transaction fees"
-                ]
-            }
-        }))
+        wallet_rpc::claim_htlc_refund((*self.grpc_client).clone(), &params).await
     }
 }
 

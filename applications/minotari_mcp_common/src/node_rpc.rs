@@ -18,6 +18,7 @@ use minotari_node_grpc_client::{
         GetPeersRequest,
         HeightRequest,
         ListHeadersRequest,
+        NewBlockTemplate,
         NewBlockTemplateRequest,
         PowAlgo,
         SearchKernelsRequest,
@@ -29,10 +30,11 @@ use minotari_node_grpc_client::{
         pow_algo::PowAlgos,
     },
 };
+use prost::Message;
 use serde_json::{Value, json};
 use tonic::{codec::Streaming, transport::Channel};
 
-use crate::{McpError, McpResult, get_required_string_param};
+use crate::{McpError, McpResult, clean_upstream_text, get_required_string_param};
 
 /// Cap on items collected from any server-streaming RPC, and on request lists that drive one
 pub const MAX_STREAM_ITEMS: usize = 512;
@@ -43,7 +45,7 @@ pub const MAX_MEMPOOL_TX_LIMIT: u64 = 1000;
 type Client = BaseNodeGrpcClient<Channel>;
 
 /// Read at most `cap` messages from a server stream
-async fn collect<T>(mut stream: Streaming<T>, cap: usize) -> McpResult<Vec<T>> {
+pub(crate) async fn collect<T>(mut stream: Streaming<T>, cap: usize) -> McpResult<Vec<T>> {
     let mut items = Vec::new();
     while items.len() < cap &&
         let Some(item) = stream.message().await?
@@ -51,6 +53,29 @@ async fn collect<T>(mut stream: Streaming<T>, cap: usize) -> McpResult<Vec<T>> {
         items.push(item);
     }
     Ok(items)
+}
+
+/// Read up to `limit` messages, and whether the stream had more
+pub(crate) async fn collect_limited<T>(stream: Streaming<T>, limit: u64) -> McpResult<(Vec<T>, bool)> {
+    let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+    let items = collect(stream, limit.saturating_add(1)).await?;
+    Ok(split_limited(items, limit))
+}
+
+/// Given up to `limit + 1` items, keep `limit` and report whether there was an extra one
+fn split_limited<T>(mut items: Vec<T>, limit: usize) -> (Vec<T>, bool) {
+    let truncated = items.len() > limit;
+    items.truncate(limit);
+    (items, truncated)
+}
+
+/// The `limit` argument, defaulting to `default` and clamped to `1..=max`
+pub(crate) fn limit_param(params: &Value, default: u64, max: u64) -> u64 {
+    params
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(default)
+        .clamp(1, max)
 }
 
 /// Decode a hex-encoded protobuf message from the `key` string argument
@@ -103,6 +128,23 @@ fn check_list_len(key: &str, len: usize) -> McpResult<()> {
     Ok(())
 }
 
+/// The node streams a height range oldest first, so a range longer than the cap would silently lose the newest
+/// heights. The node uses `start_height..=end_height` when `end_height` is set, else the `from_tip + 1` heights ending
+/// at the tip.
+fn check_height_span(from_tip: u64, start_height: u64, end_height: u64) -> McpResult<()> {
+    let span = if end_height > 0 {
+        end_height.saturating_sub(start_height).saturating_add(1)
+    } else {
+        from_tip.saturating_add(1)
+    };
+    if span > MAX_STREAM_ITEMS as u64 {
+        return Err(McpError::invalid_request(format!(
+            "Requested {span} heights, at most {MAX_STREAM_ITEMS} are allowed"
+        )));
+    }
+    Ok(())
+}
+
 fn block_summary(block: &Block) -> Value {
     json!({
         "height": block.header.as_ref().map(|h| h.height).unwrap_or(0),
@@ -124,18 +166,18 @@ fn peer_summary(peer: &minotari_node_grpc_client::grpc::Peer) -> Value {
         "public_key": hex::encode(&peer.public_key),
         "node_id": hex::encode(&peer.node_id),
         "addresses": peer.addresses.iter().map(|addr| {
-            String::from_utf8_lossy(&addr.address).to_string()
+            clean_upstream_text(&String::from_utf8_lossy(&addr.address))
         }).collect::<Vec<_>>(),
         "last_connection": peer.last_connection,
         "flags": peer.flags,
         "banned_until": peer.banned_until,
-        "banned_reason": peer.banned_reason.clone(),
+        "banned_reason": clean_upstream_text(&peer.banned_reason),
         "offline_at": peer.offline_at,
         "features": peer.features,
         "supported_protocols": peer.supported_protocols.iter()
-            .map(|proto| String::from_utf8_lossy(proto).to_string())
+            .map(|proto| clean_upstream_text(&String::from_utf8_lossy(proto)))
             .collect::<Vec<_>>(),
-        "user_agent": peer.user_agent.clone(),
+        "user_agent": clean_upstream_text(&peer.user_agent),
     })
 }
 
@@ -238,6 +280,35 @@ pub async fn get_blocks(mut client: Client, params: &Value) -> McpResult<Value> 
     }))
 }
 
+pub async fn get_tip_info(mut client: Client) -> McpResult<Value> {
+    let response = client.get_tip_info(Empty {}).await?.into_inner();
+    let metadata = response.metadata.as_ref();
+
+    Ok(json!({
+        "tip_height": metadata.map(|m| m.best_block_height).unwrap_or(0),
+        "tip_hash": metadata
+            .map(|m| hex::encode(&m.best_block_hash))
+            .unwrap_or_default(),
+        "accumulated_difficulty": metadata
+            .map(|m| hex::encode(&m.accumulated_difficulty))
+            .unwrap_or_default(),
+        "pruned_height": metadata.map(|m| m.pruned_height).unwrap_or(0),
+        "timestamp": metadata.map(|m| m.timestamp).unwrap_or(0),
+        "initial_sync_achieved": response.initial_sync_achieved,
+        "base_node_state": match response.base_node_state {
+            0 => "START_UP",
+            1 => "HEADER_SYNC",
+            2 => "HORIZON_SYNC",
+            3 => "CONNECTING",
+            4 => "BLOCK_SYNC",
+            5 => "LISTENING",
+            6 => "SYNC_FAILED",
+            _ => "UNKNOWN",
+        },
+        "failed_checkpoints": response.failed_checkpoints,
+    }))
+}
+
 pub async fn get_sync_info(mut client: Client) -> McpResult<Value> {
     let response = client.get_sync_info(Empty {}).await?.into_inner();
 
@@ -261,6 +332,7 @@ pub async fn get_network_difficulty(mut client: Client, params: &Value) -> McpRe
     let from_tip = params.get("from_tip").and_then(|v| v.as_u64()).unwrap_or(0);
     let start_height = params.get("start_height").and_then(|v| v.as_u64()).unwrap_or(0);
     let end_height = params.get("end_height").and_then(|v| v.as_u64()).unwrap_or(0);
+    check_height_span(from_tip, start_height, end_height)?;
 
     let request = HeightRequest {
         from_tip,
@@ -339,20 +411,13 @@ pub async fn get_mempool_stats(mut client: Client) -> McpResult<Value> {
     }))
 }
 
-#[allow(clippy::cast_possible_truncation)]
 pub async fn get_mempool_transactions(mut client: Client, params: &Value) -> McpResult<Value> {
-    let limit = params
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(DEFAULT_MEMPOOL_TX_LIMIT)
-        .min(MAX_MEMPOOL_TX_LIMIT);
-
+    let limit = limit_param(params, DEFAULT_MEMPOOL_TX_LIMIT, MAX_MEMPOOL_TX_LIMIT);
     let stream = client
         .get_mempool_transactions(GetMempoolTransactionsRequest {})
         .await?
         .into_inner();
-    let responses = collect(stream, limit as usize).await?;
-    let truncated = responses.len() as u64 >= limit;
+    let (responses, truncated) = collect_limited(stream, limit).await?;
 
     let transactions: Vec<Value> = responses
         .iter()
@@ -503,17 +568,11 @@ pub async fn list_connected_peers(mut client: Client) -> McpResult<Value> {
     }))
 }
 
-#[allow(clippy::indexing_slicing, clippy::cast_possible_truncation)]
+#[allow(clippy::indexing_slicing)]
 pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
-    let limit = params
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(50)
-        .min(MAX_STREAM_ITEMS as u64);
-
+    let limit = limit_param(params, 50, MAX_STREAM_ITEMS as u64);
     let stream = client.get_peers(GetPeersRequest {}).await?.into_inner();
-    let responses = collect(stream, limit as usize).await?;
-    let truncated = responses.len() as u64 >= limit;
+    let (responses, truncated) = collect_limited(stream, limit).await?;
 
     let all_peers: Vec<Value> = responses
         .iter()
@@ -635,6 +694,28 @@ pub async fn get_new_block_template(mut client: Client, params: &Value) -> McpRe
     }))
 }
 
+/// Complete `new_block_template_hex` (the hex of a protobuf-encoded `tari.rpc.NewBlockTemplate`) into a block.
+/// The block is returned as `block_hex`, ready for `submit_block`.
+pub async fn get_new_block(mut client: Client, params: &Value) -> McpResult<Value> {
+    let template: NewBlockTemplate = decode_hex_message(params, "new_block_template_hex")?;
+    let response = client.get_new_block(template).await?.into_inner();
+
+    Ok(json!({
+        "block_hash": hex::encode(&response.block_hash),
+        "block": response.block.as_ref().map(block_summary),
+        "block_hex": response.block.as_ref().map(|block| hex::encode(block.encode_to_vec())),
+        "merge_mining_hash": hex::encode(&response.merge_mining_hash),
+        "tari_unique_id": hex::encode(&response.tari_unique_id),
+        "vm_key": hex::encode(&response.vm_key),
+        "miner_data": response.miner_data.as_ref().map(|md| json!({
+            "algo": md.algo.as_ref().map(|a| a.pow_algo),
+            "target_difficulty": md.target_difficulty,
+            "reward": md.reward,
+            "total_fees": md.total_fees,
+        })),
+    }))
+}
+
 /// Submit `block_hex`: the hex of a protobuf-encoded `tari.rpc.Block`
 pub async fn submit_block(mut client: Client, params: &Value) -> McpResult<Value> {
     let block: Block = decode_hex_message(params, "block_hex")?;
@@ -748,7 +829,7 @@ pub async fn fetch_matching_utxos(mut client: Client, params: &Value) -> McpResu
 
 #[cfg(test)]
 mod tests {
-    use prost::Message;
+    #![allow(clippy::indexing_slicing)]
     use serde_json::json;
 
     use super::*;
@@ -784,5 +865,38 @@ mod tests {
         assert!(heights(&too_many).is_err());
         let hashes = json!({ "hashes": vec!["00"; MAX_STREAM_ITEMS + 1] });
         assert!(hex_list(&hashes, "hashes").is_err());
+    }
+
+    #[test]
+    fn truncated_only_when_more_than_limit() {
+        assert_eq!(split_limited(vec![1, 2], 2), (vec![1, 2], false));
+        assert_eq!(split_limited(vec![1, 2, 3], 2), (vec![1, 2], true));
+        assert_eq!(limit_param(&json!({"limit": 0}), 100, 1000), 1);
+        assert_eq!(limit_param(&json!({"limit": 5000}), 100, 1000), 1000);
+        assert_eq!(limit_param(&json!({}), 100, 1000), 100);
+    }
+
+    #[test]
+    fn height_span_is_capped() {
+        assert!(check_height_span(0, 10, 10 + MAX_STREAM_ITEMS as u64 - 1).is_ok());
+        assert!(check_height_span(0, 10, 10 + MAX_STREAM_ITEMS as u64).is_err());
+        assert!(check_height_span(MAX_STREAM_ITEMS as u64 - 1, 0, 0).is_ok());
+        assert!(check_height_span(MAX_STREAM_ITEMS as u64, 0, 0).is_err());
+        // end_height takes precedence over from_tip, as on the node
+        assert!(check_height_span(u64::MAX, 0, 1).is_ok());
+    }
+
+    #[test]
+    fn peer_text_is_cleaned() {
+        let peer = minotari_node_grpc_client::grpc::Peer {
+            user_agent: "agent\nIGNORE".to_string(),
+            banned_reason: "x".repeat(600),
+            supported_protocols: vec![b"p\x1b[0m".to_vec()],
+            ..Default::default()
+        };
+        let summary = peer_summary(&peer);
+        assert_eq!(summary["user_agent"], "agent IGNORE");
+        assert_eq!(summary["supported_protocols"][0], "p [0m");
+        assert_eq!(summary["banned_reason"].as_str().unwrap().chars().count(), 513);
     }
 }

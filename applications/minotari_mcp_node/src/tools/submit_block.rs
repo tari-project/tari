@@ -23,7 +23,14 @@
 //! Submit block MCP tool
 
 use async_trait::async_trait;
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param, node_rpc};
+use minotari_mcp_common::{
+    MAX_ENCODED_BLOCK_HEX_LEN,
+    McpError,
+    McpResult,
+    McpTool,
+    get_required_string_param,
+    node_rpc,
+};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
 use tonic::transport::Channel;
@@ -59,14 +66,19 @@ impl McpTool for SubmitBlockTool {
             "properties": {
                 "block_hex": {
                     "type": "string",
-                    "description": "Hex of the protobuf-encoded tari.rpc.Block to submit"
+                    "description": "Hex of the protobuf-encoded tari.rpc.Block to submit",
+                    "maxLength": MAX_ENCODED_BLOCK_HEX_LEN
                 }
             },
-            "required": ["block_hex"]
+            "required": ["block_hex"],
+            "additionalProperties": false
         })
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
+        if params.as_object().is_some_and(|o| o.keys().any(|k| k != "block_hex")) {
+            return Err(McpError::invalid_request("Only block_hex is accepted"));
+        }
         let block_hex = get_required_string_param(params, "block_hex")?;
 
         if block_hex.is_empty() {

@@ -35,9 +35,9 @@ use crate::McpError;
 /// Longest upstream message, in characters, passed on to a tool result
 const MAX_UPSTREAM_MESSAGE_CHARS: usize = 512;
 
-/// Make text from a gRPC peer safe to show an agent: truncated, control characters and runs of whitespace
-/// collapsed to one space, and quoted so it reads as data rather than instructions.
-pub fn sanitize_upstream_message(message: &str) -> String {
+/// Make text from a gRPC peer safe to show an agent: truncated, with control characters and runs of whitespace
+/// collapsed to one space. Use this for field values in a successful response.
+pub fn clean_upstream_text(message: &str) -> String {
     let truncated: String = message.chars().take(MAX_UPSTREAM_MESSAGE_CHARS).collect();
     let mut text = truncated
         .split(|c: char| c.is_control() || c.is_whitespace())
@@ -47,8 +47,13 @@ pub fn sanitize_upstream_message(message: &str) -> String {
     if message.chars().nth(MAX_UPSTREAM_MESSAGE_CHARS).is_some() {
         text.push('…');
     }
+    text
+}
+
+/// [clean_upstream_text], quoted as `upstream: "..."` so an error message reads as data rather than instructions
+pub fn sanitize_upstream_message(message: &str) -> String {
     // Debug formatting escapes embedded quotes, so the text cannot close the quotation early
-    format!("upstream: {text:?}")
+    format!("upstream: {:?}", clean_upstream_text(message))
 }
 
 /// Enhanced error information with context and recommendations
@@ -622,6 +627,49 @@ mod tests {
         assert!(out.starts_with("upstream: \""));
         assert_eq!(out, r#"upstream: "bad input [31m now \"quoted\"""#);
         assert!(!out.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn mcp_tools_do_not_format_raw_grpc_status() {
+        // A gRPC call's error is a Status, whose Display carries the peer's raw message, details and metadata
+        let raw_status =
+            regex::Regex::new(r#"\.await\s*\.map_err\(\|e\|\s*\{?\s*McpError::\w+\(format!\(\s*"[^"]*\{e(:\?)?\}""#)
+                .unwrap();
+        assert!(
+            raw_status.is_match(".await\n    .map_err(|e| McpError::tool_execution_failed(format!(\"Failed: {e}\")))?")
+        );
+        // Tool files that are not compiled into either server
+        let uncompiled = [
+            "burn_transaction.rs",
+            "cancel_transaction.rs",
+            "coin_split.rs",
+            "import_utxos.rs",
+            "transfer.rs",
+        ];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut checked = 0;
+        for dir in [
+            "minotari_mcp_node/src/tools",
+            "minotari_mcp_node/src/resources",
+            "minotari_mcp_wallet/src/tools",
+            "minotari_mcp_wallet/src/resources",
+        ] {
+            for entry in std::fs::read_dir(root.join(dir)).unwrap() {
+                let path = entry.unwrap().path();
+                let name = path.file_name().unwrap().to_string_lossy().to_string();
+                if dir.ends_with("tools") && uncompiled.contains(&name.as_str()) {
+                    continue;
+                }
+                let source = std::fs::read_to_string(&path).unwrap();
+                assert!(
+                    !raw_status.is_match(&source),
+                    "{} formats a raw gRPC status",
+                    path.display()
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 20);
     }
 
     #[test]

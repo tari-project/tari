@@ -27,8 +27,8 @@
 
 use std::sync::Arc;
 
-use minotari_app_grpc::tari_rpc::{BlockHashHex, BlockHeight, GetCompletedTransactionsRequest, UserPaymentId};
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_optional_string_param, wallet_rpc};
+use minotari_app_grpc::tari_rpc::GetCompletedTransactionsRequest;
+use minotari_mcp_common::{McpResult, McpTool, wallet_rpc};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -126,166 +126,14 @@ impl McpTool for GetCompletedTransactionsTool {
                     "type": "number",
                     "description": "Maximum number of transactions to return (default: 100)",
                     "minimum": 1,
-                    "maximum": 1000
+                    "maximum": 512
                 }
             }
         })
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = get_optional_string_param(&params, "payment_id").map(|payment_id_str| UserPaymentId {
-            utf8_string: payment_id_str,
-            u256: vec![],
-            user_bytes: vec![],
-        });
-
-        let block_hash = get_optional_string_param(&params, "block_hash").map(|hash| BlockHashHex { hash });
-        let block_height = params
-            .get("block_height")
-            .and_then(|v| v.as_u64())
-            .map(|h| BlockHeight { block_height: h });
-
-        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(100);
-
-        // Capture the filter states before moving the values
-        let has_payment_id = payment_id.is_some();
-        let has_block_hash = block_hash.is_some();
-        let has_block_height = block_height.is_some();
-
-        let request = Request::new(GetCompletedTransactionsRequest {
-            payment_id,
-            block_hash,
-            block_height,
-        });
-
-        let mut client = (*self.grpc_client).clone();
-        let mut response_stream = client
-            .get_completed_transactions(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get completed transactions: {e}")))?
-            .into_inner();
-
-        let mut transactions = Vec::new();
-        let mut count = 0;
-
-        while let Some(tx_response) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction stream: {e}")))?
-        {
-            if count >= limit {
-                break;
-            }
-            #[allow(clippy::cast_possible_wrap)]
-            if let Some(transaction) = tx_response.transaction {
-                transactions.push(json!({
-                    "tx_id": transaction.tx_id,
-                    "source_address": hex::encode(&transaction.source_address),
-                    "dest_address": hex::encode(&transaction.dest_address),
-                    "status": match transaction.status {
-                        0 => "COMPLETED",
-                        1 => "BROADCAST",
-                        2 => "MINED_UNCONFIRMED",
-                        3 => "IMPORTED",
-                        4 => "PENDING",
-                        5 => "COINBASE",
-                        6 => "MINED_CONFIRMED",
-                        7 => "REJECTED",
-                        8 => "CANCELLED",
-                        9 => "NOT_FOUND",
-                        15 => "MINED_CONFIRMED_LOCKED",
-                        16 => "ONE_SIDED_CONFIRMED_LOCKED",
-                        17 => "COINBASE_CONFIRMED_LOCKED",
-                        _ => "UNKNOWN",
-                    },
-                    "direction": match transaction.direction {
-                        0 => "UNKNOWN",
-                        1 => "INBOUND",
-                        2 => "OUTBOUND",
-                        _ => "UNKNOWN",
-                    },
-                    "amount": transaction.amount,
-                    "fee": transaction.fee,
-                    "timestamp": transaction.timestamp,
-                    "payment_id": hex::encode(&transaction.user_payment_id),
-                    "mined_in_block_height": transaction.mined_in_block_height,
-                    "formatted": {
-                        "amount_tari": (transaction.amount as f64 / 1_000_000.0),
-                        "fee_tari": (transaction.fee as f64 / 1_000_000.0),
-                        "date": if transaction.timestamp > 0 {
-                            chrono::DateTime::from_timestamp(transaction.timestamp as i64, 0)
-                                .map(|dt| dt.format("%Y-%m-%d").to_string())
-                                .unwrap_or_else(|| "Invalid date".to_string())
-                        } else {
-                            "No date".to_string()
-                        },
-                        "time": if transaction.timestamp > 0 {
-                            chrono::DateTime::from_timestamp(transaction.timestamp as i64, 0)
-                                .map(|dt| dt.format("%H:%M:%S").to_string())
-                                .unwrap_or_else(|| "Invalid time".to_string())
-                        } else {
-                            "No time".to_string()
-                        },
-                    },
-                }));
-                count = count.saturating_add(1);
-            }
-        }
-
-        // Analyze transaction patterns
-        let inbound_count = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("INBOUND"))
-            .count();
-        let outbound_count = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("OUTBOUND"))
-            .count();
-
-        let total_inbound: u64 = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("INBOUND"))
-            .filter_map(|tx| tx["amount"].as_u64())
-            .sum();
-        let total_outbound: u64 = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("OUTBOUND"))
-            .filter_map(|tx| tx["amount"].as_u64())
-            .sum();
-        let total_fees: u64 = transactions.iter().filter_map(|tx| tx["fee"].as_u64()).sum();
-        #[allow(clippy::cast_possible_wrap)]
-        let net_balance_change = (total_inbound as i64)
-            .saturating_sub(total_outbound as i64)
-            .saturating_sub(total_fees as i64);
-        #[allow(clippy::cast_possible_wrap)]
-        Ok(json!({
-            "transactions": transactions,
-            "summary": {
-                "total_transactions": transactions.len(),
-                "inbound_transactions": inbound_count,
-                "outbound_transactions": outbound_count,
-                "total_inbound_amount": total_inbound,
-                "total_outbound_amount": total_outbound,
-                "total_fees_paid": total_fees,
-                "net_balance_change": net_balance_change,
-            },
-            "formatted_summary": {
-                "total_inbound_tari": (total_inbound as f64 / 1_000_000.0),
-                "total_outbound_tari": (total_outbound as f64 / 1_000_000.0),
-                "total_fees_tari": (total_fees as f64 / 1_000_000.0),
-                "net_change_tari": (net_balance_change as f64 / 1_000_000.0),
-            },
-            "metadata": {
-                "limit_applied": limit,
-                "results_truncated": count >= limit,
-                "filters": {
-                    "payment_id": has_payment_id,
-                    "block_hash": has_block_hash,
-                    "block_height": has_block_height,
-                }
-            }
-        }))
+        wallet_rpc::get_completed_transactions((*self.grpc_client).clone(), &params).await
     }
 }
 
@@ -529,11 +377,7 @@ impl McpTool for TransactionAnalysisTool {
         });
 
         let mut client = (*self.grpc_client).clone();
-        let mut response_stream = client
-            .get_completed_transactions(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transactions: {e}")))?
-            .into_inner();
+        let mut response_stream = client.get_completed_transactions(request).await?.into_inner();
 
         let mut transactions = Vec::new();
         let mut count = 0;
@@ -543,11 +387,7 @@ impl McpTool for TransactionAnalysisTool {
             .as_secs()
             .saturating_sub(days_back.saturating_mul(24 * 60 * 60));
 
-        while let Some(tx_response) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {e}")))?
-        {
+        while let Some(tx_response) = response_stream.message().await? {
             if count >= limit {
                 break;
             }
