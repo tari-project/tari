@@ -25,7 +25,14 @@ use std::convert::{TryFrom, TryInto};
 use borsh::BorshSerialize;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
-    types::{BlockHash, BulletRangeProof, CompressedCommitment, CompressedPublicKey, RangeProof},
+    types::{
+        BlockHash,
+        BulletRangeProof,
+        CompressedCommitment,
+        CompressedPublicKey,
+        MAX_RANGE_PROOF_BYTES,
+        RangeProof,
+    },
 };
 use tari_script::TariScript;
 use tari_transaction_components::{
@@ -52,6 +59,12 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
                 .map_err(|err| format!("Invalid sender_offset_public_key {err:?}"))?;
 
         let range_proof = if let Some(proof) = output.range_proof {
+            if proof.proof_bytes.len() != MAX_RANGE_PROOF_BYTES {
+                return Err(format!(
+                    "Range proof has invalid length {}: expected {MAX_RANGE_PROOF_BYTES} bytes",
+                    proof.proof_bytes.len()
+                ));
+            }
             Some(BulletRangeProof::from_canonical_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
         } else {
             None
@@ -136,7 +149,7 @@ mod test {
     use std::convert::TryFrom;
 
     use borsh::BorshSerialize;
-    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_common_types::types::{CompressedPublicKey, MAX_RANGE_PROOF_BYTES, PrivateKey};
     use tari_transaction_components::transaction_components::{EncryptedData, TransactionOutput, covenants::Covenant};
     use tari_utilities::ByteArray;
 
@@ -214,5 +227,52 @@ mod test {
 
         proto.covenant.push(0);
         assert!(TransactionOutput::try_from(proto).is_err());
+    }
+
+    #[test]
+    fn enforces_exact_range_proof_length_at_grpc_boundary() {
+        let sender_offset_public_key =
+            CompressedPublicKey::from_secret_key(&PrivateKey::from_canonical_bytes(&[1u8; 32]).unwrap());
+        let ephemeral_pubkey =
+            CompressedPublicKey::from_secret_key(&PrivateKey::from_canonical_bytes(&[2u8; 32]).unwrap());
+        let u_a = PrivateKey::from_canonical_bytes(&[3u8; 32]).unwrap();
+        let u_x = PrivateKey::from_canonical_bytes(&[4u8; 32]).unwrap();
+        let u_y = PrivateKey::from_canonical_bytes(&[5u8; 32]).unwrap();
+
+        let base = grpc::TransactionOutput {
+            features: Some(grpc::OutputFeatures::default()),
+            commitment: vec![0u8; 32],
+            range_proof: None,
+            script: vec![],
+            sender_offset_public_key: sender_offset_public_key.as_bytes().to_vec(),
+            metadata_signature: Some(grpc::ComAndPubSignature {
+                ephemeral_commitment: vec![0u8; 32],
+                ephemeral_pubkey: ephemeral_pubkey.as_bytes().to_vec(),
+                u_a: u_a.as_bytes().to_vec(),
+                u_x: u_x.as_bytes().to_vec(),
+                u_y: u_y.as_bytes().to_vec(),
+            }),
+            covenant: borsh::to_vec(&Covenant::default()).unwrap(),
+            version: 0,
+            encrypted_data: EncryptedData::default().to_byte_vec(),
+            minimum_value_promise: 0,
+            ..Default::default()
+        };
+
+        assert!(TransactionOutput::try_from(base.clone()).is_ok());
+
+        for (len, accept) in [
+            (0, false),
+            (1, false),
+            (MAX_RANGE_PROOF_BYTES - 1, false),
+            (MAX_RANGE_PROOF_BYTES, true),
+            (MAX_RANGE_PROOF_BYTES + 1, false),
+        ] {
+            let mut proto = base.clone();
+            proto.range_proof = Some(grpc::RangeProof {
+                proof_bytes: vec![0xAB; len],
+            });
+            assert_eq!(TransactionOutput::try_from(proto).is_ok(), accept, "len={len}");
+        }
     }
 }

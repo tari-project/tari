@@ -77,10 +77,43 @@ pub type HashOutput = FixedHash;
 
 pub const RANGE_PROOF_BIT_LENGTH: usize = 64; // 2^64
 pub const RANGE_PROOF_AGGREGATION_FACTOR: usize = 1;
+
+const fn bullet_range_proof_size(bit_length: usize, aggregation_factor: usize) -> usize {
+    let Some(mut n) = bit_length.checked_mul(aggregation_factor) else {
+        panic!("range proof bit length overflow");
+    };
+    assert!(
+        n > 0 && n.is_power_of_two(),
+        "range proof bit length * aggregation factor must be a power of two"
+    );
+    let mut log_bits: usize = 0;
+    while n > 1 {
+        n >>= 1;
+        let Some(next) = log_bits.checked_add(1) else {
+            panic!("range proof log2 overflow");
+        };
+        log_bits = next;
+    }
+    let Some(rounds) = log_bits.checked_mul(2) else {
+        panic!("range proof rounds overflow");
+    };
+    let Some(elements) = rounds.checked_add(6) else {
+        panic!("range proof element count overflow");
+    };
+    let Some(element_bytes) = elements.checked_mul(32) else {
+        panic!("range proof byte size overflow");
+    };
+    let Some(total_bytes) = element_bytes.checked_add(1) else {
+        panic!("range proof total byte size overflow");
+    };
+    total_bytes
+}
+
 /// The serialized size of a BulletProofPlus range proof for `RANGE_PROOF_BIT_LENGTH` bits, aggregation factor
 /// `RANGE_PROOF_AGGREGATION_FACTOR` and default Pedersen commitments:
 /// 1 + 32 * (1 + 5 + 2 * log2(64 * 1)). No valid proof is longer, so decoders reject anything that is.
-pub const MAX_RANGE_PROOF_BYTES: usize = 577;
+pub const MAX_RANGE_PROOF_BYTES: usize =
+    bullet_range_proof_size(RANGE_PROOF_BIT_LENGTH, RANGE_PROOF_AGGREGATION_FACTOR);
 
 /// Specify the range proof type
 pub type RangeProofService = BulletproofsPlusService;
