@@ -78,7 +78,11 @@ use tari_transaction_components::{
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
     key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
-    multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
+    multisig::{
+        script::{validate_multisig_parameters, validate_multisig_spend_signature_count},
+        session::MultisigSession,
+        types::GetMultisigUtxoDataOutput,
+    },
     offline_signing::{
         models::{PaymentRecipient, SignedOneSidedTransactionResult},
         offline_signer::{
@@ -526,6 +530,7 @@ where
                     if request.recipient_address.public_view_key().is_none() {
                         return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());
                     }
+                    validate_multisig_parameters(request.party_number, &request.public_keys)?;
 
                     let temp_tx_id = TxId::new_random();
                     let script = push_pubkey_script(&Default::default());
@@ -632,18 +637,8 @@ where
 
                     let signatures = request.signatures;
 
-                    // Enforce correct signature count and ordering for the multisig script
-                    let (_ephemeral_pubkeys, threshold) =
-                        get_multi_sig_script_components(selected_utxo.wallet_output.script())
-                            .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
-
-                    if signatures.len() < threshold as usize {
-                        return Err(TransactionServiceError::Other(format!(
-                            "Insufficient signatures: need at least {}, got {}",
-                            threshold,
-                            signatures.len()
-                        )));
-                    }
+                    // Same rule as `MultisigSession::spend_multisig_utxo`: exactly `m` signatures.
+                    validate_multisig_spend_signature_count(selected_utxo.wallet_output.script(), signatures.len())?;
 
                     let mut input_stack = ExecutionStack::default();
                     for sig in signatures.clone() {
@@ -1516,6 +1511,9 @@ where
 
             TransactionServiceRequest::CreateMultisigUtxo { request } => {
                 async {
+                    // Checked before any input is locked: an error after `prepare_transaction_to_send` would leave
+                    // the selected inputs locked until restart.
+                    validate_multisig_parameters(request.party_number, &request.public_keys)?;
                     let fee_per_gram = MicroMinotari::from(1);
                     let selected_criteria = UtxoSelectionCriteria {
                         excluding_multisig: true,

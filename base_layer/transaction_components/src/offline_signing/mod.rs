@@ -3372,4 +3372,110 @@ mod test {
             sign_one_sided(&spend, payload, policy).map(|_| ())
         });
     }
+
+    fn offline_err<T>(res: Result<T, impl std::fmt::Display>) -> String {
+        match res {
+            Ok(_) => panic!("expected an error"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn offline_deposit_multisig_enforces_threshold_and_participant_bounds() {
+        use crate::multisig::script::MAX_MULTISIG_LIMIT;
+
+        let rules = create_consensus_manager();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = one_sided_address(&bob_key_manager);
+        let pending = |party_number: u8, key_count: usize| {
+            multisig_pending_output(
+                rules.consensus_constants(0),
+                &bob_address,
+                MicroMinotari(5000),
+                &OutputFeatures::default(),
+                &MemoField::new_empty(),
+                party_number,
+                key_count,
+            )
+        };
+
+        assert!(pending(2, 2).is_ok(), "a valid 2-of-2 must be accepted");
+        assert!(offline_err(pending(0, 2)).contains("Invalid multisig threshold party_number=0"));
+        assert!(offline_err(pending(3, 2)).contains("Invalid multisig threshold party_number=3"));
+        assert!(offline_err(pending(2, usize::from(MAX_MULTISIG_LIMIT) + 1)).contains("expected 1..=32, got 33"));
+    }
+
+    /// A payload forged or re-signed by a compromised view-wallet host must be refused by the cold signer without
+    /// panicking, whatever multisig parameters it carries.
+    #[test]
+    fn cold_signer_refuses_re_signed_payloads_with_invalid_multisig_parameters() {
+        use crate::multisig::script::MAX_MULTISIG_LIMIT;
+
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = one_sided_address(&bob_key_manager);
+        let alice_address = one_sided_address(&alice_key_manager);
+        let valid_keys = vec![
+            alice_key_manager.get_spend_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+        ];
+        let oversized_keys = (0..=MAX_MULTISIG_LIMIT)
+            .map(|_| alice_key_manager.get_random_key(None, None).unwrap().pub_key)
+            .collect::<Vec<_>>();
+
+        let sign_tampered = |party_number: u8, public_keys: Vec<CompressedPublicKey>| {
+            let mut prepared = prepare_deposit_multisig_transaction(
+                &alice_key_manager,
+                TxId::new_random(),
+                funded_builder(&alice_key_manager),
+                MicroMinotari(5000),
+                MemoField::new_empty(),
+                OutputFeatures::default(),
+                2,
+                valid_keys.clone(),
+                alice_address.clone(),
+                bob_address.clone(),
+                None,
+            )
+            .unwrap();
+            prepared.info.party_number = party_number;
+            prepared.info.public_keys = public_keys;
+            let canonical = crate::offline_signing::models::borsh_canonical_multisig(
+                &prepared.version,
+                prepared.tx_id,
+                &prepared.info,
+                prepared.payload_key_id.as_ref(),
+                prepared.expires_at,
+            )
+            .unwrap();
+            prepared.payload_signature = crate::offline_signing::offline_signer::sign_payload(
+                &alice_key_manager,
+                &TariKeyId::ViewKey,
+                &canonical,
+            )
+            .unwrap();
+            sign_locked_deposit_multisig_transaction(
+                &alice_key_manager,
+                rules.consensus_constants(0).clone(),
+                Network::LocalNet,
+                confirmed(PayloadSummary::from_multisig(prepared)),
+                &PayloadKeyPolicy::default(),
+            )
+        };
+
+        assert!(
+            sign_tampered(2, valid_keys.clone()).is_ok(),
+            "an untampered 2-of-2 must sign"
+        );
+        assert!(
+            offline_err(sign_tampered(0, valid_keys.clone())).contains("Invalid multisig threshold party_number=0")
+        );
+        assert!(
+            offline_err(sign_tampered(3, valid_keys.clone())).contains("Invalid multisig threshold party_number=3")
+        );
+        assert!(offline_err(sign_tampered(2, oversized_keys)).contains("expected 1..=32, got 33"));
+        let repeated = valid_keys.first().cloned().unwrap();
+        assert!(offline_err(sign_tampered(2, vec![repeated.clone(), repeated])).contains("Duplicate public keys"));
+    }
 }
