@@ -1673,6 +1673,7 @@ async fn test_htlc_send_and_claim() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_htlc_send_and_refund() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -1797,6 +1798,59 @@ async fn test_htlc_send_and_refund() {
             .iter()
             .any(|o| o.hash == uo2.output_hash())
     );
+
+    // When the base node reports a chain tip ahead of the wallet's `last_scanned_height` (e.g. a freshly restored or
+    // catching-up wallet with `last_scanned_height = 0`), the HTLC refund timelock must be anchored to the chain tip
+    // (`5000 + 720`) rather than `0 + 720` so the refund branch is not already unlocked before the swap is mined.
+    let chain_metadata =
+        ChainMetadata::new(5000, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap();
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(chain_metadata),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
+    let uo3 = make_input(
+        &mut rand::rng(),
+        25000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo3.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo3.output_hash(), true)])
+        .unwrap();
+    let bob_address_2 = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+    let (_tx_id2, _pre_image2, output2) = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address_2,
+            10000.into(),
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect("Alice sending HTLC transaction with online tip");
+    let hash2 = output2.hash();
+    alice_db.mark_outputs_as_unspent(vec![(hash2, true)]).unwrap();
+    let (_refund_tx_id2, _fee2, _refund_amount2, refund_tx2) = alice_oms
+        .create_htlc_refund_transaction(hash2, 20.into())
+        .await
+        .unwrap();
+    validator
+        .validate(&refund_tx2, None, None, 5719)
+        .expect_err("the refund must not validate before chain_tip + 720");
+    validator
+        .validate(&refund_tx2, None, None, 5720)
+        .expect("the refund must validate at chain_tip + 720");
 }
 
 #[tokio::test]

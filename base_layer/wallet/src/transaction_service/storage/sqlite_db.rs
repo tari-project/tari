@@ -2722,6 +2722,7 @@ impl CompletedTransactionSql {
                     },
                     LegacyTransactionStatus::Imported => Some(LegacyTransactionStatus::Imported as i32),
                     LegacyTransactionStatus::Broadcast => Some(LegacyTransactionStatus::Broadcast as i32),
+                    LegacyTransactionStatus::Rejected => Some(LegacyTransactionStatus::Rejected as i32),
                     _ => Some(LegacyTransactionStatus::Completed as i32),
                 },
                 mined_in_block: Some(None),
@@ -2733,8 +2734,12 @@ impl CompletedTransactionSql {
                     }
                 },
                 confirmations: Some(None),
-                // Turns out it should not be cancelled
-                cancelled: Some(None),
+                cancelled: match current_status {
+                    LegacyTransactionStatus::Rejected => {
+                        Some(existing_tx.cancelled.or(Some(TxCancellationReason::Unknown as i32)))
+                    },
+                    _ => Some(None),
+                },
                 ..Default::default()
             })
             .execute(conn)
@@ -4683,6 +4688,78 @@ mod test {
             err,
             TransactionStorageError::ValueNotFound(DbKey::CancelledPendingInboundTransaction(id)) if id == tx_id
         ));
+    }
+
+    #[test]
+    fn revalidation_checks_cancelled_txs_for_mining_without_queuing_unmined_for_broadcast() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        let sign_tx = |tx: &mut CompletedTransaction| {
+            let nonce = PrivateKey::random(&mut rand::rng());
+            tx.transaction_signature = CompressedSignature::new(
+                CompressedPublicKey::from_secret_key(&nonce),
+                PrivateKey::random(&mut rand::rng()),
+            );
+        };
+
+        let mut mined_cancelled_tx = completed_tx_with_hashes(70, vec![], vec![]);
+        mined_cancelled_tx.status = LegacyTransactionStatus::Rejected;
+        mined_cancelled_tx.cancelled = Some(TxCancellationReason::UserCancelled);
+        sign_tx(&mut mined_cancelled_tx);
+        commit_completed(&connection, &cipher, mined_cancelled_tx);
+
+        let mut unmined_cancelled_tx = completed_tx_with_hashes(71, vec![], vec![]);
+        unmined_cancelled_tx.status = LegacyTransactionStatus::Rejected;
+        unmined_cancelled_tx.cancelled = Some(TxCancellationReason::UserCancelled);
+        sign_tx(&mut unmined_cancelled_tx);
+        commit_completed(&connection, &cipher, unmined_cancelled_tx);
+
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+
+        db.mark_all_non_coinbases_transactions_as_unvalidated().unwrap();
+        db.mark_all_rejected_transactions_as_unvalidated().unwrap();
+
+        // Marked for revalidation: checked against the base node, but still `Rejected` so never in the broadcast queue.
+        assert!(db.get_transactions_to_be_broadcast().unwrap().is_empty());
+        let unconfirmed = db.fetch_unconfirmed_transactions_info().unwrap();
+        assert_eq!(unconfirmed.iter().map(|i| i.tx_id.as_u64()).collect::<Vec<_>>(), vec![
+            70, 71
+        ]);
+
+        // 1. If the cancelled payment actually mined on chain, revalidation transitions it to `MinedConfirmed`.
+        db.update_mined_height(
+            70u64.into(),
+            100,
+            FixedHash::zero(),
+            1_700_000_000,
+            true,
+            LegacyTransactionStatus::Rejected,
+            110,
+        )
+        .unwrap();
+        let Some(DbValue::CompletedTransaction(mined_after)) =
+            db.fetch(&DbKey::CompletedTransaction(70u64.into())).unwrap()
+        else {
+            panic!("expected mined transaction");
+        };
+        assert_eq!(mined_after.status, LegacyTransactionStatus::MinedConfirmed);
+        assert_eq!(mined_after.cancelled, None);
+
+        // 2. When the base node reports the revalidated rejected transaction as still unmined,
+        // `set_transaction_as_unmined` keeps it `Rejected` and cancelled so `get_transactions_to_be_broadcast` does
+        // not re-broadcast it.
+        db.set_transaction_as_unmined(71u64.into()).unwrap();
+        let Some(DbValue::CompletedTransaction(rejected_after_unmined)) =
+            db.fetch(&DbKey::CompletedTransaction(71u64.into())).unwrap()
+        else {
+            panic!("expected rejected transaction");
+        };
+        assert_eq!(rejected_after_unmined.status, LegacyTransactionStatus::Rejected);
+        assert_eq!(rejected_after_unmined.cancelled, Some(TxCancellationReason::Unknown));
+        assert!(db.get_transactions_to_be_broadcast().unwrap().is_empty());
+        assert!(db.fetch_unconfirmed_transactions_info().unwrap().is_empty());
     }
 
     #[ignore]
