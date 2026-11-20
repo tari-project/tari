@@ -398,6 +398,17 @@ pub async fn coin_split(
 
 // casting here is okay. If the txns per second for this primary debug tool is a bit off its okay.
 #[allow(clippy::cast_possible_truncation)]
+fn make_it_rain_tx_count(transactions_per_second: f64, duration: Duration) -> (f64, usize) {
+    if !transactions_per_second.is_finite() {
+        return (0.0, 0);
+    }
+    let transactions_per_second = transactions_per_second.abs().clamp(0.01, 250.0);
+    let num_txs = (transactions_per_second * duration.as_secs_f64()) as usize;
+    (transactions_per_second, num_txs)
+}
+
+// casting here is okay. If the txns per second for this primary debug tool is a bit off its okay.
+#[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::too_many_lines)]
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
@@ -417,7 +428,20 @@ pub async fn make_it_rain(
     // - If a slower rate is requested as what is achievable, transactions will be delayed to match the rate.
     // - If a faster rate is requested as what is achievable, the maximum rate will be that of the integrated system.
     // - The default value of 25/s may not be achievable.
-    let transactions_per_second = transactions_per_second.abs().clamp(0.01, 250.0);
+    let (transactions_per_second, num_txs) = make_it_rain_tx_count(transactions_per_second, duration);
+    if num_txs == 0 {
+        warn!(
+            target: LOG_TARGET,
+            "make-it-rain calculated 0 {transaction_type} transactions (tps={transactions_per_second}, \
+             duration={duration:?}); skipping"
+        );
+        println!(
+            "\n`make-it-rain` calculated 0 {transaction_type} transactions ({duration:?} at \
+             {transactions_per_second} tx/s); nothing to send\n"
+        );
+        return Ok(());
+    }
+
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time
@@ -439,7 +463,6 @@ pub async fn make_it_rain(
         );
         sleep(Duration::from_millis(delay_ms)).await;
 
-        let num_txs = (transactions_per_second * duration.as_secs() as f64) as usize;
         let started_at = Utc::now();
 
         struct TransactionSendStats {
@@ -4492,5 +4515,25 @@ mod test {
 
         assert!(fail(path.clone()).is_err());
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn make_it_rain_tx_count_handles_zero_and_fractional_inputs() {
+        let cases: [(f64, Duration, f64, usize); 8] = [
+            (25.0, Duration::ZERO, 25.0, 0),
+            (0.01, Duration::from_secs(60), 0.01, 0),
+            (0.0, Duration::from_secs(60), 0.01, 0),
+            (f64::NAN, Duration::from_secs(60), 0.0, 0),
+            (f64::INFINITY, Duration::from_secs(60), 0.0, 0),
+            (25.0, Duration::from_secs(10), 25.0, 250),
+            (10.0, Duration::from_millis(500), 10.0, 5),
+            (-500.0, Duration::from_secs(2), 250.0, 500),
+        ];
+
+        for (tps_in, duration, expected_tps, expected_count) in cases {
+            let (tps, count) = make_it_rain_tx_count(tps_in, duration);
+            assert_eq!(tps.to_bits(), expected_tps.to_bits());
+            assert_eq!(count, expected_count);
+        }
     }
 }
