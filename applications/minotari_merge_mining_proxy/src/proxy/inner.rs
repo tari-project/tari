@@ -428,12 +428,29 @@ impl InnerService {
             self.wallet_payment_address.clone(),
         )?;
 
-        let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
+        let seed_hash_str = monerod_resp["result"]["seed_hash"].as_str().ok_or_else(|| {
+            MmProxyError::InvalidMonerodResponse(
+                "Expected `get_block_template` `result.seed_hash` to be a string".to_string(),
+            )
+        })?;
+        let seed_hash = FixedByteArray::from_hex(seed_hash_str)
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {err}")))?;
         let blocktemplate_blob = monerod_resp["result"]["blocktemplate_blob"]
-            .to_string()
-            .replace('\"', "");
-        let difficulty = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
+            .as_str()
+            .ok_or_else(|| {
+                MmProxyError::InvalidMonerodResponse(
+                    "Expected `get_block_template` `result.blocktemplate_blob` to be a string".to_string(),
+                )
+            })?
+            .to_string();
+        let difficulty = monerod_resp["result"]["difficulty"]
+            .as_u64()
+            .filter(|&d| d > 0)
+            .ok_or_else(|| {
+                MmProxyError::InvalidMonerodResponse(
+                    "Expected `get_block_template` `result.difficulty` to be a positive integer".to_string(),
+                )
+            })?;
         let monero_mining_data = MoneroMiningData {
             seed_hash,
             blocktemplate_blob,
@@ -496,8 +513,8 @@ impl InnerService {
         monero_resp: Response<json::Value>,
     ) -> Result<Response<ProxyBody>, MmProxyError> {
         let (parts, monero_resp) = monero_resp.into_parts();
-        // If monero succeeded, we're done here
-        if !monero_resp["result"].is_null() {
+        // If monero succeeded in finding a non-empty block header, we're done here
+        if monero_found_block_header(&monero_resp) {
             return proxy::into_response(parts, &monero_resp);
         }
 
@@ -515,17 +532,6 @@ impl InnerService {
                 );
             },
         };
-
-        // If monero succeeded in finding the header, we're done here
-        if !monero_resp["result"].is_null() ||
-            monero_resp["result"]["block_header"]["hash"]
-                .as_str()
-                .map(|hash| !hash.is_empty())
-                .unwrap_or(false)
-        {
-            debug!(target: LOG_TARGET, "monerod found block `{}`.", hash.to_hex());
-            return proxy::into_response(parts, &monero_resp);
-        }
 
         let hash_hex = hash.to_hex();
         debug!(
@@ -608,7 +614,7 @@ impl InnerService {
             && let Some(server) = current.clone()
             // If the error was reported on a previously assigned server, we do not clear the lock. This happens on
             // requests that timed out after a new server has been assigned.
-            && !server.contains(host)
+            && !server_matches_host(&server, host)
         {
             trace!(
                 target: LOG_TARGET, "A new monerod server has already been assigned. Current: '{}', host with \
@@ -706,6 +712,12 @@ impl InnerService {
             break;
         }
 
+        if self.config.monerod_url.is_empty() {
+            return Err(MmProxyError::ServersUnavailable(
+                "No monerod servers configured".to_string(),
+            ));
+        }
+
         // Set the "busy qualifying" state
         self.set_current_monerod_server_lock_busy();
 
@@ -729,7 +741,7 @@ impl InnerService {
             .checked_rem(self.config.monerod_url.len())
             .unwrap_or(0);
         let (left, right) = self.config.monerod_url.split_at_checked(pos).ok_or_else(|| {
-            self.clear_current_monerod_server_lock(Some(self.config.monerod_url[0].as_str()), None);
+            self.clear_current_monerod_server_lock(self.config.monerod_url.first().map(|s| s.as_str()), None);
             MmProxyError::ConversionError("last_used_url".to_string())
         })?;
         let left = left.to_vec();
@@ -1062,5 +1074,20 @@ impl InnerService {
                 Err(e)
             },
         }
+    }
+}
+
+pub(crate) fn monero_found_block_header(monero_resp: &json::Value) -> bool {
+    monero_resp["result"]["block_header"]["hash"]
+        .as_str()
+        .is_some_and(|hash| !hash.is_empty())
+}
+
+pub(crate) fn server_matches_host(server_url: &str, host: &str) -> bool {
+    match Url::parse(server_url) {
+        Ok(url) => url
+            .host_str()
+            .is_some_and(|server_host| server_host.eq_ignore_ascii_case(host)),
+        Err(_) => server_url.contains(host),
     }
 }

@@ -71,32 +71,34 @@ pub async fn convert_reqwest_response_to_hyper_json_response(
 
 /// Add mmproxy extensions object to JSON RPC success response
 pub fn add_aux_data(mut response: json::Value, mut ext: json::Value) -> json::Value {
-    if response["result"].is_null() {
+    let Some(result_obj) = response.get_mut("result").and_then(|r| r.as_object_mut()) else {
         return response;
-    }
-    match response["result"][MMPROXY_AUX_KEY_NAME].as_object_mut() {
+    };
+    let Some(ext_mut) = ext.as_object_mut() else {
+        return response;
+    };
+    match result_obj.get_mut(MMPROXY_AUX_KEY_NAME).and_then(|v| v.as_object_mut()) {
         Some(obj_mut) => {
-            let ext_mut = ext
-                .as_object_mut()
-                .expect("invalid parameter: expected `ext: json::Value` to be an object but it was not");
             obj_mut.append(ext_mut);
         },
         None => {
-            response["result"][MMPROXY_AUX_KEY_NAME] = ext;
+            result_obj.insert(MMPROXY_AUX_KEY_NAME.to_string(), ext);
         },
     }
     response
 }
 
-/// Append chain data to the result object. If the result object is null, a JSON object is created.
-///
-/// ## Panics
-///
-/// If response["result"] is not a JSON object type or null.
+/// Append chain data to the result object. If the result object is not a JSON object, a JSON object is created.
 pub fn append_aux_chain_data(mut response: json::Value, chain_data: json::Value) -> json::Value {
+    if !response.is_object() {
+        response = json!({});
+    }
     let result = &mut response["result"];
-    if result.is_null() {
+    if !result.is_object() {
         *result = json!({});
+    }
+    if !result[MMPROXY_AUX_KEY_NAME].is_object() {
+        result[MMPROXY_AUX_KEY_NAME] = json!({});
     }
     let chains = match result[MMPROXY_AUX_KEY_NAME]["chains"].as_array_mut() {
         Some(arr_mut) => arr_mut,
