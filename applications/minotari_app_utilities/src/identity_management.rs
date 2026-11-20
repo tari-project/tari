@@ -139,11 +139,14 @@ where
             error!(target: LOG_TARGET, "{msg}");
             Err(ExitError::new(ExitCode::ConfigError, msg))
         },
-        Err(e @ IdentityError::Malformed { .. })
-            if identity_file
-                .as_ref()
-                .metadata()
-                .is_ok_and(|m| m.permissions().readonly()) =>
+        // Invalid UTF-8 surfaces from `read_to_string` as `InvalidData` rather than `Malformed`.
+        Err(e @ (IdentityError::Malformed { .. } | IdentityError::Io(_)))
+            if (matches!(&e, IdentityError::Malformed { .. }) ||
+                matches!(&e, IdentityError::Io(err) if err.kind() == io::ErrorKind::InvalidData)) &&
+                identity_file
+                    .as_ref()
+                    .metadata()
+                    .is_ok_and(|m| m.permissions().readonly()) =>
         {
             let msg = format!(
                 "Node identity file '{}' is read-only and could not be loaded ({e}); it will not be replaced.",
@@ -1463,32 +1466,33 @@ mod test {
 
     #[test]
     fn read_only_corrupt_identity_is_not_replaced() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("identity.json");
-        let corrupt = b"// corrupt identity\n{broken";
-        fs::write(&path, corrupt).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
-        let before = mtime_and_inode(&path);
+        for corrupt in [b"// corrupt identity\n{broken".as_slice(), b"\xff\xfe{".as_slice()] {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("identity.json");
+            fs::write(&path, corrupt).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+            let before = mtime_and_inode(&path);
 
-        let err = setup_node_identity(
-            &path,
-            Vec::new(),
-            true,
-            PeerFeatures::COMMUNICATION_NODE,
-            TransportType::Tcp,
-            true,
-        )
-        .unwrap_err();
+            let err = setup_node_identity(
+                &path,
+                Vec::new(),
+                true,
+                PeerFeatures::COMMUNICATION_NODE,
+                TransportType::Tcp,
+                true,
+            )
+            .unwrap_err();
 
-        assert!(matches!(err.exit_code, ExitCode::ConfigError));
-        assert!(err.details.unwrap().contains("read-only"));
-        assert_eq!(fs::read(&path).unwrap(), corrupt);
-        assert_eq!(mtime_and_inode(&path), before);
-        assert_eq!(
-            fs::read_dir(tmp.path()).unwrap().count(),
-            1,
-            "no backup or temp file may be created"
-        );
+            assert!(matches!(err.exit_code, ExitCode::ConfigError));
+            assert!(err.details.unwrap().contains("read-only"));
+            assert_eq!(fs::read(&path).unwrap(), corrupt);
+            assert_eq!(mtime_and_inode(&path), before);
+            assert_eq!(
+                fs::read_dir(tmp.path()).unwrap().count(),
+                1,
+                "no backup or temp file may be created"
+            );
+        }
     }
 
     #[test]
