@@ -948,7 +948,7 @@ fn new_block_template_request_schema() -> Value {
         "properties": {
             "algo": {
                 "type": "integer",
-                "description": "PoW algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)"
+                "description": "PoW algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT, 3=CUCKAROO)"
             },
             "max_weight": {
                 "type": "integer",
@@ -1815,7 +1815,8 @@ fn transfer_request_schema() -> Value {
                             "description": "Payment ID text"
                         }
                     },
-                    "required": ["address", "amount", "fee_per_gram"]
+                    "required": ["address", "amount", "fee_per_gram"],
+                    "additionalProperties": false
                 },
                 "minItems": 1
             }
@@ -1880,15 +1881,6 @@ fn coin_split_request_schema() -> Value {
                 "format": "uint64",
                 "description": "Transaction fee rate per gram",
                 "minimum": 1
-            },
-            "lock_height": {
-                "type": "integer",
-                "format": "uint64",
-                "description": "Earliest block height for validity"
-            },
-            "payment_id": {
-                "type": "string",
-                "description": "Optional payment ID"
             }
         },
         "required": ["amount_per_split", "split_count", "fee_per_gram"],

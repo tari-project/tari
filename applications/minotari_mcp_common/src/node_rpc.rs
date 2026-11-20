@@ -44,21 +44,29 @@ pub const MAX_MEMPOOL_TX_LIMIT: u64 = 1000;
 
 type Client = BaseNodeGrpcClient<Channel>;
 
-/// Read at most `cap` messages from a server stream
-pub(crate) async fn collect<T>(mut stream: Streaming<T>, cap: usize) -> McpResult<Vec<T>> {
+/// Read at most `cap` messages from a server stream, mapping each as it arrives so only `f`'s output is kept
+pub(crate) async fn collect_map<T, U>(
+    mut stream: Streaming<T>,
+    cap: usize,
+    mut f: impl FnMut(&T) -> U,
+) -> McpResult<Vec<U>> {
     let mut items = Vec::new();
     while items.len() < cap &&
         let Some(item) = stream.message().await?
     {
-        items.push(item);
+        items.push(f(&item));
     }
     Ok(items)
 }
 
-/// Read up to `limit` messages, and whether the stream had more
-pub async fn collect_limited<T>(stream: Streaming<T>, limit: u64) -> McpResult<(Vec<T>, bool)> {
+/// [collect_map] for up to `limit` messages, and whether the stream had more
+pub async fn collect_limited<T, U>(
+    stream: Streaming<T>,
+    limit: u64,
+    f: impl FnMut(&T) -> U,
+) -> McpResult<(Vec<U>, bool)> {
     let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-    let items = collect(stream, limit.saturating_add(1)).await?;
+    let items = collect_map(stream, limit.saturating_add(1), f).await?;
     Ok(split_limited(items, limit))
 }
 
@@ -203,28 +211,25 @@ pub async fn list_headers(mut client: Client, params: &Value) -> McpResult<Value
     };
     let stream = client.list_headers(request).await?.into_inner();
 
-    let headers: Vec<Value> = collect(stream, MAX_STREAM_ITEMS)
-        .await?
-        .iter()
-        .map(|header_response| {
-            json!({
-                "height": header_response.header.as_ref().map(|h| h.height).unwrap_or(0),
-                "hash": header_response.header.as_ref()
-                    .map(|h| hex::encode(&h.hash))
-                    .unwrap_or_default(),
-                "confirmations": header_response.confirmations,
-                "reward": header_response.reward,
-                "difficulty": header_response.difficulty,
-                "num_transactions": header_response.num_transactions,
-                "timestamp": header_response.header.as_ref()
-                    .map(|h| h.timestamp)
-                    .unwrap_or(0),
-                "version": header_response.header.as_ref()
-                    .map(|h| h.version)
-                    .unwrap_or(0),
-            })
+    let headers: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |header_response| {
+        json!({
+            "height": header_response.header.as_ref().map(|h| h.height).unwrap_or(0),
+            "hash": header_response.header.as_ref()
+                .map(|h| hex::encode(&h.hash))
+                .unwrap_or_default(),
+            "confirmations": header_response.confirmations,
+            "reward": header_response.reward,
+            "difficulty": header_response.difficulty,
+            "num_transactions": header_response.num_transactions,
+            "timestamp": header_response.header.as_ref()
+                .map(|h| h.timestamp)
+                .unwrap_or(0),
+            "version": header_response.header.as_ref()
+                .map(|h| h.version)
+                .unwrap_or(0),
         })
-        .collect();
+    })
+    .await?;
 
     Ok(json!({
         "headers": headers,
@@ -272,11 +277,13 @@ pub async fn get_blocks(mut client: Client, params: &Value) -> McpResult<Value> 
         .await?
         .into_inner();
 
-    let blocks: Vec<Value> = collect(stream, MAX_STREAM_ITEMS)
-        .await?
-        .iter()
-        .filter_map(|historical_block| historical_block.block.as_ref().map(block_summary))
-        .collect();
+    let blocks: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |historical_block| {
+        historical_block.block.as_ref().map(block_summary)
+    })
+    .await?
+    .into_iter()
+    .flatten()
+    .collect();
 
     Ok(json!({
         "blocks": blocks,
@@ -346,23 +353,20 @@ pub async fn get_network_difficulty(mut client: Client, params: &Value) -> McpRe
     };
     let stream = client.get_network_difficulty(request).await?.into_inner();
 
-    let difficulties: Vec<Value> = collect(stream, MAX_STREAM_ITEMS)
-        .await?
-        .iter()
-        .map(|difficulty_response| {
-            json!({
-                "height": difficulty_response.height,
-                "difficulty": difficulty_response.difficulty,
-                "adjusted_difficulty": difficulty_response.adjusted_difficulty,
-                "estimated_hash_rate": difficulty_response.estimated_hash_rate,
-                "timestamp": difficulty_response.timestamp,
-                "pow_algo": difficulty_response.pow_algo,
-                "sha3x_estimated_hash_rate": difficulty_response.sha3x_estimated_hash_rate,
-                "monero_randomx_estimated_hash_rate": difficulty_response.monero_randomx_estimated_hash_rate,
-                "tari_randomx_estimated_hash_rate": difficulty_response.tari_randomx_estimated_hash_rate,
-            })
+    let difficulties: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |difficulty_response| {
+        json!({
+            "height": difficulty_response.height,
+            "difficulty": difficulty_response.difficulty,
+            "adjusted_difficulty": difficulty_response.adjusted_difficulty,
+            "estimated_hash_rate": difficulty_response.estimated_hash_rate,
+            "timestamp": difficulty_response.timestamp,
+            "pow_algo": difficulty_response.pow_algo,
+            "sha3x_estimated_hash_rate": difficulty_response.sha3x_estimated_hash_rate,
+            "monero_randomx_estimated_hash_rate": difficulty_response.monero_randomx_estimated_hash_rate,
+            "tari_randomx_estimated_hash_rate": difficulty_response.tari_randomx_estimated_hash_rate,
         })
-        .collect();
+    })
+    .await?;
 
     Ok(json!({
         "difficulties": difficulties,
@@ -384,19 +388,16 @@ pub async fn get_tokens_in_circulation(mut client: Client, params: &Value) -> Mc
         .await?
         .into_inner();
 
-    let circulation_data: Vec<Value> = collect(stream, MAX_STREAM_ITEMS)
-        .await?
-        .iter()
-        .map(|value_response| {
-            json!({
-                "height": value_response.height,
-                "mined_rewards": value_response.mined_rewards,
-                "spendable_rewards": value_response.spendable_rewards,
-                "spendable_pre_mine": value_response.spendable_pre_mine,
-                "total_spendable": value_response.total_spendable,
-            })
+    let circulation_data: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |value_response| {
+        json!({
+            "height": value_response.height,
+            "mined_rewards": value_response.mined_rewards,
+            "spendable_rewards": value_response.spendable_rewards,
+            "spendable_pre_mine": value_response.spendable_pre_mine,
+            "total_spendable": value_response.total_spendable,
         })
-        .collect();
+    })
+    .await?;
 
     Ok(json!({
         "circulation_data": circulation_data,
@@ -422,12 +423,8 @@ pub async fn get_mempool_transactions(mut client: Client, params: &Value) -> Mcp
         .get_mempool_transactions(GetMempoolTransactionsRequest {})
         .await?
         .into_inner();
-    let (responses, truncated) = collect_limited(stream, limit).await?;
-
-    let transactions: Vec<Value> = responses
-        .iter()
-        .filter_map(|tx_response| tx_response.transaction.as_ref())
-        .map(|transaction| {
+    let (transactions, truncated) = collect_limited(stream, limit, |tx_response| {
+        tx_response.transaction.as_ref().map(|transaction| {
             json!({
                 "offset": hex::encode(&transaction.offset),
                 "body": {
@@ -453,7 +450,9 @@ pub async fn get_mempool_transactions(mut client: Client, params: &Value) -> Mcp
                     .unwrap_or(0),
             })
         })
-        .collect();
+    })
+    .await?;
+    let transactions: Vec<Value> = transactions.into_iter().flatten().collect();
 
     Ok(json!({
         "transactions": transactions,
@@ -577,12 +576,8 @@ pub async fn list_connected_peers(mut client: Client) -> McpResult<Value> {
 pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
     let limit = limit_param(params, 50, MAX_STREAM_ITEMS as u64);
     let stream = client.get_peers(GetPeersRequest {}).await?.into_inner();
-    let (responses, truncated) = collect_limited(stream, limit).await?;
-
-    let all_peers: Vec<Value> = responses
-        .iter()
-        .filter_map(|peer_response| peer_response.peer.as_ref())
-        .map(|peer| {
+    let (all_peers, truncated) = collect_limited(stream, limit, |peer_response| {
+        peer_response.peer.as_ref().map(|peer| {
             let mut info = peer_summary(peer);
             info["status"] = json!({
                 "is_connected": peer.offline_at == 0,
@@ -596,7 +591,9 @@ pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
             });
             info
         })
-        .collect();
+    })
+    .await?;
+    let all_peers: Vec<Value> = all_peers.into_iter().flatten().collect();
 
     let connected_count = all_peers
         .iter()
@@ -635,7 +632,7 @@ pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
 }
 
 /// Mining algorithm numbering shared by every tool, matching `tari.rpc.PowAlgo.PowAlgos`
-pub const POW_ALGO_HELP: &str = "0=RANDOMXM, 1=SHA3X, 2=RANDOMXT";
+pub const POW_ALGO_HELP: &str = "0=RANDOMXM, 1=SHA3X, 2=RANDOMXT, 3=CUCKAROO";
 
 /// The `key` argument as a mining algorithm, numbered as in [POW_ALGO_HELP]
 pub fn pow_algo_param(params: &Value, key: &str) -> McpResult<(u64, PowAlgo)> {
@@ -652,6 +649,7 @@ pub fn pow_algo(algo: u64) -> McpResult<PowAlgo> {
         0 => PowAlgos::Randomxm,
         1 => PowAlgos::Sha3x,
         2 => PowAlgos::Randomxt,
+        3 => PowAlgos::Cuckaroo,
         _ => {
             return Err(McpError::invalid_request(format!(
                 "Invalid algo {algo}: must be one of {POW_ALGO_HELP}"
@@ -701,6 +699,7 @@ pub async fn get_new_block_template(mut client: Client, params: &Value) -> McpRe
                 Some(0) => "RANDOMX_M",
                 Some(1) => "SHA3X",
                 Some(2) => "RANDOMX_T",
+                Some(3) => "CUCKAROO",
                 _ => "UNKNOWN",
             },
             "target_difficulty": md.target_difficulty,
@@ -811,11 +810,13 @@ pub async fn search_utxos(mut client: Client, params: &Value) -> McpResult<Value
 }
 
 async fn historical_blocks(stream: Streaming<minotari_node_grpc_client::grpc::HistoricalBlock>) -> McpResult<Value> {
-    let blocks: Vec<Value> = collect(stream, MAX_STREAM_ITEMS)
-        .await?
-        .iter()
-        .filter_map(|historical_block| historical_block.block.as_ref().map(block_summary))
-        .collect();
+    let blocks: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |historical_block| {
+        historical_block.block.as_ref().map(block_summary)
+    })
+    .await?
+    .into_iter()
+    .flatten()
+    .collect();
     Ok(json!({
         "blocks": blocks,
         "count": blocks.len(),
@@ -829,17 +830,18 @@ pub async fn fetch_matching_utxos(mut client: Client, params: &Value) -> McpResu
         .await?
         .into_inner();
 
-    let outputs: Vec<Value> = collect(stream, MAX_STREAM_ITEMS)
-        .await?
-        .iter()
-        .filter_map(|response| response.output.as_ref())
-        .map(|output| {
+    let outputs: Vec<Value> = collect_map(stream, MAX_STREAM_ITEMS, |response| {
+        response.output.as_ref().map(|output| {
             json!({
                 "hash": hex::encode(&output.hash),
                 "commitment": hex::encode(&output.commitment),
             })
         })
-        .collect();
+    })
+    .await?
+    .into_iter()
+    .flatten()
+    .collect();
 
     Ok(json!({
         "outputs": outputs,
@@ -899,7 +901,8 @@ mod tests {
         assert_eq!(pow_algo(0).unwrap().pow_algo, PowAlgos::Randomxm as i32);
         assert_eq!(pow_algo(1).unwrap().pow_algo, PowAlgos::Sha3x as i32);
         assert_eq!(pow_algo(2).unwrap().pow_algo, PowAlgos::Randomxt as i32);
-        assert!(pow_algo(3).is_err());
+        assert_eq!(pow_algo(3).unwrap().pow_algo, PowAlgos::Cuckaroo as i32);
+        assert!(pow_algo(4).is_err());
     }
 
     #[test]

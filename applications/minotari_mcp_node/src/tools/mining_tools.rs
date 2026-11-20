@@ -64,7 +64,7 @@ impl McpTool for GetNewBlockTemplateTool {
             "properties": {
                 "algo": {
                     "type": "number",
-                    "description": "Mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)"
+                    "description": "Mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT, 3=CUCKAROO)"
                 },
                 "max_weight": {
                     "type": "number",
@@ -160,7 +160,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             "properties": {
                 "algo": {
                     "type": "number",
-                    "description": "Mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)"
+                    "description": "Mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT, 3=CUCKAROO)"
                 },
                 "max_weight": {
                     "type": "number",
@@ -293,6 +293,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
                     Some(0) => "RANDOMX_M",
                     Some(1) => "SHA3X",
                     Some(2) => "RANDOMX_T",
+                    Some(3) => "CUCKAROO",
                     _ => "UNKNOWN",
                 },
                 "target_difficulty": md.target_difficulty,
@@ -387,9 +388,9 @@ impl McpTool for MiningAnalysisTool {
             "properties": {
                 "preferred_algo": {
                     "type": "number",
-                    "description": "Preferred mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)",
+                    "description": "Preferred mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT, 3=CUCKAROO)",
                     "minimum": 0,
-                    "maximum": 2
+                    "maximum": 3
                 },
                 "hash_rate": {
                     "type": "number",
@@ -410,7 +411,7 @@ impl McpTool for MiningAnalysisTool {
         // Get current mining data for all algorithms
         let mut algo_analysis = Vec::new();
 
-        for algo in 0..3 {
+        for algo in 0..4 {
             let pow_algo = node_rpc::pow_algo(algo)?;
 
             match self
@@ -431,6 +432,7 @@ impl McpTool for MiningAnalysisTool {
                             0 => "MONERO",
                             1 => "SHA3X",
                             2 => "TARI",
+                            3 => "CUCKAROO",
                             _ => "UNKNOWN",
                         };
 
@@ -506,6 +508,7 @@ impl McpTool for MiningAnalysisTool {
                     0 => "MONERO",
                     1 => "SHA3X",
                     2 => "TARI",
+                    3 => "CUCKAROO",
                     _ => "UNKNOWN",
                 }
             },

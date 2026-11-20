@@ -235,29 +235,30 @@ impl AnalyzeMempoolTool {
             .get_mempool_transactions(tx_request)
             .await?
             .into_inner();
-        let (responses, truncated) = node_rpc::collect_limited(tx_stream, node_rpc::MAX_MEMPOOL_TX_LIMIT).await?;
-
-        let mut samples = MempoolSamples {
-            truncated,
-            ..Default::default()
-        };
-        for tx_response in responses {
-            if let Some(transaction) = tx_response.transaction &&
-                let Some(body) = transaction.body
-            {
+        // Keep only each transaction's fee and weight, not the transaction itself
+        let (fee_and_weight, truncated) =
+            node_rpc::collect_limited(tx_stream, node_rpc::MAX_MEMPOOL_TX_LIMIT, |tx_response| {
+                let body = tx_response.transaction.as_ref()?.body.as_ref()?;
                 let tx_fee: u64 = body.kernels.iter().map(|k| k.fee).sum();
                 let tx_weight = body
                     .inputs
                     .len()
                     .saturating_add(body.outputs.len())
                     .saturating_add(body.kernels.len());
+                Some((tx_fee, tx_weight))
+            })
+            .await?;
 
-                samples.fee_distribution.push(tx_fee);
-                samples.weight_distribution.push(tx_weight);
-                samples.total_fees = samples.total_fees.saturating_add(tx_fee);
-                samples.total_weight = samples.total_weight.saturating_add(tx_weight);
-                samples.tx_count = samples.tx_count.saturating_add(1);
-            }
+        let mut samples = MempoolSamples {
+            truncated,
+            ..Default::default()
+        };
+        for (tx_fee, tx_weight) in fee_and_weight.into_iter().flatten() {
+            samples.fee_distribution.push(tx_fee);
+            samples.weight_distribution.push(tx_weight);
+            samples.total_fees = samples.total_fees.saturating_add(tx_fee);
+            samples.total_weight = samples.total_weight.saturating_add(tx_weight);
+            samples.tx_count = samples.tx_count.saturating_add(1);
         }
 
         Ok(samples)

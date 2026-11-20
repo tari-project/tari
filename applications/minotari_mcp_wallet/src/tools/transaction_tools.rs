@@ -193,18 +193,20 @@ impl McpTool for TransferTool {
                                 "maximum": 2,
                                 "default": 2
                             },
-                            "message": {
+                            "payment_id": {
                                 "type": "string",
-                                "description": "Optional message for this transfer"
+                                "description": "Payment ID text, sent as user_payment_id"
                             }
                         },
-                        "required": ["address", "amount", "fee_per_gram"]
+                        "required": ["address", "amount", "fee_per_gram"],
+                        "additionalProperties": false
                     },
                     "minItems": 1,
                     "description": "Array of transfer recipients"
                 }
             },
-            "required": ["recipients"]
+            "required": ["recipients"],
+            "additionalProperties": false
         })
     }
 
@@ -258,14 +260,10 @@ impl McpTool for CoinSplitTool {
                     "type": "number",
                     "description": "Fee per gram for the transaction",
                     "minimum": 1
-                },
-                "lock_height": {
-                    "type": "number",
-                    "description": "Optional lock height for outputs",
-                    "minimum": 0
                 }
             },
-            "required": ["amount_per_split", "split_count", "fee_per_gram"]
+            "required": ["amount_per_split", "split_count", "fee_per_gram"],
+            "additionalProperties": false
         })
     }
 
@@ -384,7 +382,8 @@ impl McpTool for TransactionAnalysisTool {
 
         let mut client = (*self.grpc_client).clone();
         let response_stream = client.get_completed_transactions(request).await?.into_inner();
-        let (responses, truncated) = node_rpc::collect_limited(response_stream, limit).await?;
+        let (responses, truncated) =
+            node_rpc::collect_limited(response_stream, limit, |tx_response| tx_response.transaction.clone()).await?;
 
         let cutoff_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -394,7 +393,7 @@ impl McpTool for TransactionAnalysisTool {
 
         let transactions: Vec<_> = responses
             .into_iter()
-            .filter_map(|tx_response| tx_response.transaction)
+            .flatten()
             .filter(|transaction| transaction.timestamp >= cutoff_timestamp)
             .collect();
 

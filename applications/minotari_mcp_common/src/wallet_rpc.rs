@@ -197,6 +197,11 @@ pub async fn get_transaction_info(mut client: Client, params: &Value) -> McpResu
 
 /// Parse a single `PaymentRecipient` out of the JSON supplied to the `transfer` tool.
 fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<PaymentRecipient> {
+    reject_unknown_keys(
+        recipient_data,
+        &["address", "amount", "fee_per_gram", "payment_type", "payment_id"],
+        &format!("transfer recipient {index}"),
+    )?;
     let address = recipient_data
         .get("address")
         .and_then(|v| v.as_str())
@@ -326,7 +331,27 @@ pub async fn transfer(mut client: Client, params: &Value) -> McpResult<Value> {
     }))
 }
 
-pub async fn coin_split(mut client: Client, params: &Value) -> McpResult<Value> {
+/// Reject any key of `value` outside `allowed`, so a misspelt or unsupported argument is not silently dropped
+fn reject_unknown_keys(value: &Value, allowed: &[&str], context: &str) -> McpResult<()> {
+    if let Some(key) = value
+        .as_object()
+        .and_then(|o| o.keys().find(|k| !allowed.contains(&k.as_str())))
+    {
+        return Err(McpError::invalid_request(format!(
+            "{key} is not supported by {context}"
+        )));
+    }
+    Ok(())
+}
+
+/// The CoinSplit request for `params`. The wallet's CoinSplit ignores lock_height and payment_id, so they are
+/// rejected rather than accepted and dropped.
+fn coin_split_request(params: &Value) -> McpResult<CoinSplitRequest> {
+    reject_unknown_keys(
+        params,
+        &["amount_per_split", "split_count", "fee_per_gram"],
+        "the wallet's CoinSplit",
+    )?;
     let amount_per_split = get_required_u64_param(params, "amount_per_split")?;
     let split_count = get_required_u64_param(params, "split_count")?;
     let fee_per_gram = get_required_u64_param(params, "fee_per_gram")?;
@@ -343,26 +368,22 @@ pub async fn coin_split(mut client: Client, params: &Value) -> McpResult<Value> 
         return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
     }
 
-    let lock_height = params.get("lock_height").and_then(|v| v.as_u64()).unwrap_or(0);
+    Ok(CoinSplitRequest {
+        amount_per_split,
+        split_count,
+        fee_per_gram,
+        lock_height: 0,
+        payment_id: vec![],
+    })
+}
 
-    let payment_id = if let Some(payment_id_str) = params.get("payment_id").and_then(|v| v.as_str()) {
-        payment_id_str.as_bytes().to_vec()
-    } else {
-        vec![]
-    };
-
+pub async fn coin_split(mut client: Client, params: &Value) -> McpResult<Value> {
+    let request = coin_split_request(params)?;
+    let (amount_per_split, split_count, fee_per_gram) =
+        (request.amount_per_split, request.split_count, request.fee_per_gram);
     let total_amount = amount_per_split.saturating_mul(split_count);
 
-    let response = client
-        .coin_split(CoinSplitRequest {
-            amount_per_split,
-            split_count,
-            fee_per_gram,
-            lock_height,
-            payment_id,
-        })
-        .await?
-        .into_inner();
+    let response = client.coin_split(request).await?.into_inner();
 
     Ok(json!({
         "transaction_id": response.tx_id,
@@ -371,7 +392,6 @@ pub async fn coin_split(mut client: Client, params: &Value) -> McpResult<Value> 
             "split_count": split_count,
             "total_amount": total_amount,
             "fee_per_gram": fee_per_gram,
-            "lock_height": lock_height,
         },
         "formatted": {
             "amount_per_split_tari": (amount_per_split as f64 / 1_000_000.0),
@@ -538,13 +558,9 @@ pub async fn get_completed_transactions(mut client: Client, params: &Value) -> M
         })
         .await?
         .into_inner();
-    let (responses, truncated) = collect_limited(stream, limit).await?;
-
     #[allow(clippy::cast_possible_wrap)]
-    let transactions: Vec<Value> = responses
-        .iter()
-        .filter_map(|tx_response| tx_response.transaction.as_ref())
-        .map(|transaction| {
+    let (transactions, truncated) = collect_limited(stream, limit, |tx_response| {
+        tx_response.transaction.as_ref().map(|transaction| {
             json!({
                 "tx_id": transaction.tx_id,
                 "source_address": hex::encode(&transaction.source_address),
@@ -581,7 +597,9 @@ pub async fn get_completed_transactions(mut client: Client, params: &Value) -> M
                 },
             })
         })
-        .collect();
+    })
+    .await?;
+    let transactions: Vec<Value> = transactions.into_iter().flatten().collect();
 
     let inbound_count = transactions
         .iter()
@@ -869,9 +887,32 @@ pub async fn claim_htlc_refund(mut client: Client, params: &Value) -> McpResult<
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn unsupported_arguments_are_rejected() {
+        let message = json!({"address": "addr", "amount": 5, "fee_per_gram": 1, "message": "memo"});
+        assert!(matches!(
+            parse_payment_recipient(0, &message),
+            Err(McpError::InvalidRequest(_))
+        ));
+
+        let split = json!({"amount_per_split": 10, "split_count": 2, "fee_per_gram": 1});
+        assert_eq!(coin_split_request(&split).unwrap().split_count, 2);
+        let mut with_lock = split.clone();
+        with_lock["lock_height"] = json!(100);
+        let err = coin_split_request(&with_lock).unwrap_err().to_string();
+        assert!(
+            err.contains("lock_height is not supported by the wallet's CoinSplit"),
+            "{err}"
+        );
+        let mut with_payment_id = split;
+        with_payment_id["payment_id"] = json!("x");
+        assert!(coin_split_request(&with_payment_id).is_err());
+    }
 
     #[test]
     fn transaction_status_names_follow_the_proto() {
