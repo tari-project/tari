@@ -112,6 +112,13 @@ impl AuthBackoffTracker {
             self.order.retain(|addr| *addr != ip);
             existing
         } else {
+            if self.states.len() >= MAX_TRACKED_PEERS {
+                self.states.retain(|_, st| {
+                    st.blocked_until.is_some_and(|until| now < until) ||
+                        now.saturating_duration_since(st.last_failure_at) <= FAILURE_WINDOW
+                });
+                self.order.retain(|addr| self.states.contains_key(addr));
+            }
             while self.states.len() >= MAX_TRACKED_PEERS {
                 let Some(oldest) = self.order.pop_front() else {
                     break;
@@ -296,6 +303,13 @@ impl Interceptor for ServerAuthenticationInterceptor {
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
+                if tracker.is_blocked(ip, now) {
+                    return Err(self.unauthenticated_at(
+                        peer_addr,
+                        "Too many failed authentication attempts; backing off",
+                        now,
+                    ));
+                }
                 tracker.record_failure(ip, now);
             }
             return Err(self.unauthenticated_at(
@@ -583,5 +597,40 @@ mod tests {
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
 
         CAPTURE_THREAD.with(|c| c.set(false));
+    }
+
+    #[test]
+    fn expired_entries_are_pruned_before_evicting_active_blocked_peers() {
+        let mut tracker = AuthBackoffTracker::default();
+        let t0 = Instant::now();
+        let blocked_ip = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
+
+        for _ in 0..MAX_FAILURES_BEFORE_BACKOFF {
+            tracker.record_failure(blocked_ip, t0);
+        }
+        assert!(tracker.is_blocked(blocked_ip, t0));
+
+        // Fill remaining capacity with peers whose failures occurred at t0
+        for i in 1..MAX_TRACKED_PEERS {
+            let ip = IpAddr::V4(Ipv4Addr::from(u32::try_from(i.saturating_add(10_000)).unwrap()));
+            tracker.record_failure(ip, t0);
+        }
+        assert_eq!(tracker.states.len(), MAX_TRACKED_PEERS);
+
+        // Advance past FAILURE_WINDOW while refreshing blocked_ip so it remains actively blocked
+        let t1 = t0
+            .checked_add(FAILURE_WINDOW)
+            .and_then(|t| t.checked_add(Duration::from_secs(1)))
+            .unwrap();
+        for _ in 0..MAX_FAILURES_BEFORE_BACKOFF {
+            tracker.record_failure(blocked_ip, t1);
+        }
+        assert!(tracker.is_blocked(blocked_ip, t1));
+
+        // Recording a new peer at t1 prunes the expired entries and preserves blocked_ip
+        let new_ip = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 250));
+        tracker.record_failure(new_ip, t1);
+        assert!(tracker.is_blocked(blocked_ip, t1));
+        assert_eq!(tracker.states.len(), 2);
     }
 }

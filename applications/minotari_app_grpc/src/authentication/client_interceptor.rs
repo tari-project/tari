@@ -41,6 +41,9 @@ impl ClientAuthenticationInterceptor {
         let authorization_header = match auth {
             GrpcAuthentication::None => None,
             GrpcAuthentication::Basic { username, password } => {
+                if username.contains(':') {
+                    return Err(BasicAuthError::InvalidUsername);
+                }
                 Some(BasicAuthCredentials::generate_header(username, password.reveal())?)
             },
         };
@@ -162,5 +165,14 @@ mod test {
 
         // Process the request through the server interceptor; this mismatch is not allowed
         assert!(server_interceptor.call(client_request).is_err());
+    }
+
+    #[test]
+    fn test_client_rejects_username_with_colon() {
+        let client_auth = GrpcAuthentication::Basic {
+            username: "foo:bar".to_string(),
+            password: SafePassword::from("baz"),
+        };
+        assert!(ClientAuthenticationInterceptor::create(&client_auth).is_err());
     }
 }

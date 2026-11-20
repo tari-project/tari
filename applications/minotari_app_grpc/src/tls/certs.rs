@@ -31,7 +31,12 @@ use rcgen::{CertificateParams, DnType, IsCa::Ca, Issuer, KeyPair};
 use crate::tls::error::GrpcTlsError;
 
 pub fn generate_self_signed_certs() -> Result<(String, String, String), GrpcTlsError> {
-    let subject_alt_names = vec!["localhost".to_string(), "127.0.0.1".to_string(), "0.0.0.0".to_string()];
+    let subject_alt_names = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "0.0.0.0".to_string(),
+        "::1".to_string(),
+    ];
     let mut ca_params = CertificateParams::new(subject_alt_names.clone())?;
     ca_params.distinguished_name.push(DnType::CommonName, "127.0.0.1");
     ca_params.is_ca = Ca(rcgen::BasicConstraints::Unconstrained);
@@ -48,7 +53,32 @@ pub fn generate_self_signed_certs() -> Result<(String, String, String), GrpcTlsE
 }
 
 pub fn write_cert_to_disk(dir: PathBuf, filename: &str, data: &String) -> Result<(), GrpcTlsError> {
-    let path = dir.join(Path::new(filename));
+    let name_path = Path::new(filename);
+    let mut components = name_path.components();
+    if !matches!(components.next(), Some(std::path::Component::Normal(_))) || components.next().is_some() {
+        return Err(GrpcTlsError::IoError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid certificate filename: {filename}"),
+        )));
+    }
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(name_path);
+    #[cfg(unix)]
+    let mut file = {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mode = if filename.ends_with(".key") { 0o600 } else { 0o644 };
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(mode)
+            .open(&path)?;
+        if filename.ends_with(".key") {
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        file
+    };
+    #[cfg(not(unix))]
     let mut file = File::create(&path)?;
     file.write_all(data.as_ref())?;
 
@@ -187,5 +217,21 @@ mod tests {
 
         let _unused = shutdown_tx.send(());
         let _unused = server_task.await;
+    }
+
+    #[test]
+    fn write_cert_to_disk_rejects_traversal_and_creates_missing_dir() {
+        let base = std::env::temp_dir().join(format!("tari_tls_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let nested = base.join("nested_certs");
+        let data = "test-cert-data".to_string();
+
+        assert!(write_cert_to_disk(nested.clone(), "../escape.pem", &data).is_err());
+        assert!(write_cert_to_disk(nested.clone(), "sub/escape.pem", &data).is_err());
+        assert!(write_cert_to_disk(nested.clone(), "", &data).is_err());
+
+        write_cert_to_disk(nested.clone(), "server.key", &data).unwrap();
+        assert_eq!(std::fs::read_to_string(nested.join("server.key")).unwrap(), data);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

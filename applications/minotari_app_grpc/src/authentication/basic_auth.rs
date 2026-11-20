@@ -137,12 +137,22 @@ pub struct BasicAuthCredentials {
     password_random_bytes: Vec<u8>,
 }
 
+impl Drop for BasicAuthCredentials {
+    fn drop(&mut self) {
+        self.user_name_bytes_length.zeroize();
+        self.user_name_bytes.zeroize();
+        self.random_bytes.zeroize();
+        self.password_bytes_length.zeroize();
+        self.password_random_bytes.zeroize();
+    }
+}
+
 impl fmt::Debug for BasicAuthCredentials {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BasicAuthCredentials")
             .field("user_name_bytes_length", &self.user_name_bytes_length)
-            .field("user_name_bytes", &self.user_name_bytes)
-            .field("random_bytes", &self.random_bytes)
+            .field("user_name_bytes", &"<redacted>")
+            .field("random_bytes", &"<redacted>")
             .field("password_bytes_length", &"<redacted>")
             .field("password_bytes", &"<redacted>")
             .field("password_random_bytes", &"<redacted>")
@@ -194,8 +204,8 @@ impl BasicAuthCredentials {
 
         // Decode the credentials using base64
         use base64::{Engine, prelude::BASE64_STANDARD};
-        let decoded = BASE64_STANDARD.decode(encoded_credentials)?;
-        let as_utf8 = Zeroizing::new(String::from_utf8(decoded)?);
+        let decoded = Zeroizing::new(BASE64_STANDARD.decode(encoded_credentials)?);
+        let as_utf8 = Zeroizing::new(String::from_utf8(decoded.to_vec())?);
 
         // Parse the username and password, which must be separated by a colon
         if let Some((user_name, password)) = as_utf8.split_once(':') {
@@ -244,10 +254,13 @@ impl BasicAuthCredentials {
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         use base64::{Engine, prelude::BASE64_STANDARD};
+        if username.len() > MAX_USERNAME_LEN {
+            return Err(BasicAuthError::InvalidUsername);
+        }
         let password_str = Zeroizing::new(String::from_utf8(password.to_vec())?);
         let token_str = Zeroizing::new(format!("{username}:{}", password_str.as_str()));
         let mut token = BASE64_STANDARD.encode(token_str.deref());
-        let header = format!("Basic {token}");
+        let header = Zeroizing::new(format!("Basic {token}"));
         token.zeroize();
         let header = header.parse()?;
         Ok(header)
@@ -624,6 +637,9 @@ mod tests {
         #[test]
         fn it_rejects_username_with_colon() {
             let err = BasicAuthCredentials::new("admin:extra".to_string(), "secret".to_string().into()).unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsername));
+            let overlong = "a".repeat(MAX_USERNAME_LEN + 1);
+            let err = BasicAuthCredentials::generate_header(&overlong, b"secret").unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsername));
         }
 
