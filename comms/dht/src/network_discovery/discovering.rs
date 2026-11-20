@@ -188,12 +188,11 @@ impl Discovering {
                     conn.peer_node_id(),
                     e
                 );
-                let result = self
-                    .ban_on_offence(conn.peer_node_id().clone(), Err(e.into()), was_connected)
-                    .await;
+                let err: NetworkDiscoveryError = e.into();
+                self.ban_on_connect_rpc_offence(conn.peer_node_id().clone(), &err).await;
                 self.hang_up_if_ours(&mut conn, created_here, "Discovering RPC connect failed")
                     .await;
-                return result;
+                return Err(err);
             },
             Err(_) => {
                 // the peer most likely is not online or has an old address.
@@ -476,6 +475,14 @@ impl Discovering {
         Ok(())
     }
 
+    /// Bans `peer` on `connect_rpc` failure only for malformed/oversized handshake frames, never for ordinary
+    /// handshake rejections such as `NoServerSessionsAvailable`, unsupported versions, or timeouts.
+    pub(super) async fn ban_on_connect_rpc_offence(&self, peer: NodeId, err: &NetworkDiscoveryError) {
+        if is_bad_data_offence(err) {
+            ban_peer(&self.context, peer, OffenceSeverity::High, err).await;
+        }
+    }
+
     /// Bans `peer` if `result` is its fault. A peer we were already connected to (`was_connected`) may be one of a
     /// starved node's last connections, so it is only banned for bad peer data, not for RPC failures.
     pub(super) async fn ban_on_offence<T>(
@@ -527,11 +534,12 @@ impl Discovering {
     }
 }
 
+fn is_protocol_violation_status_code(code: RpcStatusCode) -> bool {
+    matches!(code, RpcStatusCode::ProtocolError)
+}
+
 fn is_protocol_violation_status(status: &RpcStatus) -> bool {
-    matches!(
-        status.as_status_code(),
-        RpcStatusCode::ProtocolError | RpcStatusCode::MalformedResponse | RpcStatusCode::InvalidRpcStatusCode
-    )
+    is_protocol_violation_status_code(status.as_status_code())
 }
 
 /// Returns true if the sync peer sent bad peer data or malformed/oversized RPC frames, as opposed to an RPC failure
@@ -657,6 +665,12 @@ mod test {
         assert!(matches!(status, NetworkDiscoveryError::RpcStatus(_)));
         assert!(matches!(offence_severity(&status), Some(OffenceSeverity::Low)));
         assert!(!is_bad_data_offence(&status));
+
+        // Only client-local `ProtocolError` is a high-severity protocol violation; `MalformedResponse` and unknown
+        // future status codes (`InvalidRpcStatusCode`) stay low-severity and non-banning on existing connections.
+        assert!(is_protocol_violation_status_code(RpcStatusCode::ProtocolError));
+        assert!(!is_protocol_violation_status_code(RpcStatusCode::MalformedResponse));
+        assert!(!is_protocol_violation_status_code(RpcStatusCode::InvalidRpcStatusCode));
 
         let timeout = NetworkDiscoveryError::Timeout {
             operation: "discovering_sync".to_string(),

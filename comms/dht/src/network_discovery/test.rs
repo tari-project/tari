@@ -1926,4 +1926,45 @@ mod rebootstrap {
         }
         assert_eq!(banned, vec![peer1, peer2, peer3]);
     }
+
+    #[tokio::test]
+    async fn dialled_peer_rejecting_connect_rpc_with_no_sessions_is_not_banned() {
+        use tari_comms::protocol::rpc::{HandshakeRejectReason, RpcHandshakeError};
+
+        let (context, mock, _events) = context(None);
+        let discovering = Discovering::new(
+            DiscoveryParams {
+                peers: vec![],
+                num_peers_to_request: 10,
+            },
+            context,
+        );
+
+        let busy_peer = NodeId::from_public_key(make_node_identity().public_key());
+        let no_sessions: NetworkDiscoveryError = RpcError::HandshakeError(RpcHandshakeError::Rejected(
+            HandshakeRejectReason::NoServerSessionsAvailable("busy"),
+        ))
+        .into();
+        discovering
+            .ban_on_connect_rpc_offence(busy_peer.clone(), &no_sessions)
+            .await;
+
+        let bad_peer = NodeId::from_public_key(make_node_identity().public_key());
+        let oversized_handshake: NetworkDiscoveryError =
+            RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { max: 1024 }).into();
+        discovering
+            .ban_on_connect_rpc_offence(bad_peer.clone(), &oversized_handshake)
+            .await;
+
+        let mut banned = Vec::new();
+        for _ in 0..50 {
+            banned.extend(mock.take_banned_peers().await.into_iter().map(|(id, ..)| id));
+            if !banned.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(banned, vec![bad_peer]);
+        assert!(!banned.contains(&busy_peer));
+    }
 }
