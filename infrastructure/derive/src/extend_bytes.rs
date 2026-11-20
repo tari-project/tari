@@ -21,59 +21,63 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use quote::{quote, quote_spanned};
-use syn::{spanned::Spanned, Data, DeriveInput, Fields, Index};
+use syn::{Data, DeriveInput, Fields, Index, spanned::Spanned};
 
 // this is the actual code for the derive macro, the function in lib points to this one
 pub fn create_derive_extend_bytes(input: DeriveInput) -> proc_macro2::TokenStream {
     let object_name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let item = input.data;
     let fields_text = handle_fields_for_extend_bytes(&item);
-    let gen = quote! {
-        impl  ExtendBytes for #object_name  {
+    quote! {
+        impl #impl_generics ExtendBytes for #object_name #ty_generics #where_clause {
             fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
                 #fields_text
             }
         }
-    };
-    gen
+    }
+}
+
+fn should_ignore_field(attrs: &[syn::Attribute]) -> bool {
+    for attr in attrs {
+        let Some(meta) = attr.interpret_meta() else {
+            continue;
+        };
+        match meta {
+            syn::Meta::NameValue(ref val) => {
+                if val.ident == "ExtendBytes" {
+                    if let syn::Lit::Str(lit) = &val.lit {
+                        if lit.value() == "Ignore" {
+                            return true;
+                        }
+                    }
+                }
+            },
+            syn::Meta::List(ref val) => {
+                if val.ident == "ExtendBytes" {
+                    for nestedmeta in val.nested.iter() {
+                        if let syn::NestedMeta::Meta(syn::Meta::Word(val)) = nestedmeta {
+                            if val == "Ignore" {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            },
+            _ => (),
+        }
+    }
+    false
 }
 
 // this function processes the individual fields of the hashable trait macro: derive_hashable
 fn handle_fields_for_extend_bytes(item: &Data) -> proc_macro2::TokenStream {
     match item {
-        Data::Struct(ref item) => {
+        Data::Struct(item) => {
             match item.fields {
                 Fields::Named(ref fields) => {
                     let recurse = fields.named.iter().map(|f| {
-                        let mut do_we_ignore_field = false;
-                        for attr in &f.attrs {
-                            match attr.interpret_meta().unwrap() {
-                                syn::Meta::NameValue(ref val) => {
-                                    if val.ident == "ExtendBytes" {
-                                        if let syn::Lit::Str(lit) = &val.lit {
-                                            if lit.value() == "Ignore" {
-                                                do_we_ignore_field = true;
-                                            }
-                                        }
-                                    }
-                                },
-                                syn::Meta::List(ref val) => {
-                                    // we have more than one property
-                                    if val.ident == "ExtendBytes" {
-                                        // we have a hash command here, lets search for the sub command
-                                        for nestedmeta in val.nested.iter() {
-                                            if let syn::NestedMeta::Meta(syn::Meta::Word(ref val)) = nestedmeta {
-                                                if val == "Ignore" {
-                                                    do_we_ignore_field = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                _ => (),
-                            };
-                        }
-                        if !do_we_ignore_field {
+                        if !should_ignore_field(&f.attrs) {
                             let name = &f.ident;
                             quote_spanned! {f.span()=>
                             (&self.#name).append_raw_bytes(buf);
@@ -88,9 +92,14 @@ fn handle_fields_for_extend_bytes(item: &Data) -> proc_macro2::TokenStream {
                 },
                 Fields::Unnamed(ref fields) => {
                     let recurse = fields.unnamed.iter().enumerate().map(|(i, f)| {
-                        let index = Index::from(i);
-                        quote_spanned! {f.span()=>
-                            (&self.#index).append_raw_bytes(buf);
+                        if !should_ignore_field(&f.attrs) {
+                            let index = Index::from(i);
+                            quote_spanned! {f.span()=>
+                                (&self.#index).append_raw_bytes(buf);
+                            }
+                        } else {
+                            quote_spanned! {f.span()=>
+                            }
                         }
                     });
                     quote! {
@@ -99,11 +108,29 @@ fn handle_fields_for_extend_bytes(item: &Data) -> proc_macro2::TokenStream {
                 },
                 Fields::Unit => {
                     // dont hash units
-                    quote!(0)
+                    quote!()
                 },
             }
         },
         // have not yet implemented enums and unions
         Data::Enum(_) | Data::Union(_) => unimplemented!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unit_and_tuple_structs_generate_valid_extend_bytes_impl() {
+        let unit_input: DeriveInput = syn::parse_str("struct UnitStruct;").unwrap();
+        let unit_tokens = create_derive_extend_bytes(unit_input).to_string();
+        assert!(unit_tokens.contains("impl ExtendBytes for UnitStruct"));
+        assert!(!unit_tokens.contains(" 0 "));
+
+        let tuple_input: DeriveInput = syn::parse_str("struct TupleStruct(u32, #[ExtendBytes(Ignore)] u64);").unwrap();
+        let tuple_tokens = create_derive_extend_bytes(tuple_input).to_string();
+        assert!(tuple_tokens.contains("self . 0"));
+        assert!(!tuple_tokens.contains("self . 1"));
     }
 }
