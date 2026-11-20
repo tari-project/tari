@@ -5172,9 +5172,10 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     rules: &BaseNodeConsensusManager,
 ) -> Result<bool, ChainStorageError> {
     let hash = candidate_block.hash();
+    let already_held = db.contains(&DbKey::OrphanBlock(hash))?;
 
-    // There cannot be any _new_ tips if we've seen this orphan block before
-    if db.contains(&DbKey::OrphanBlock(hash))? {
+    // There cannot be any _new_ tips if we've already linked this orphan block
+    if already_held && db.fetch_orphan_chain_block(hash)?.is_some() {
         return Ok(false);
     }
 
@@ -5204,10 +5205,12 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                     hash,
                     curr_parent.height(),
                 );
-                let mut txn = DbTransaction::new();
-                txn.insert_orphan(candidate_block);
-                db.write(txn)?;
-                return Ok(true);
+                if !already_held {
+                    let mut txn = DbTransaction::new();
+                    txn.insert_orphan(candidate_block);
+                    db.write(txn)?;
+                }
+                return Ok(!already_held);
             },
             Some(curr_parent) => {
                 debug!(
@@ -5220,7 +5223,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                 (curr_parent, false)
             },
             None => {
-                if db.contains(&DbKey::OrphanBlock(hash))? {
+                if already_held {
                     info!(
                         target: LOG_TARGET,
                         "Orphan #{} ({}) already found in orphan database", candidate_block.header.height, hash
@@ -5236,7 +5239,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                     txn.insert_orphan(candidate_block);
                     db.write(txn)?;
                 }
-                return Ok(true);
+                return Ok(!already_held);
             },
         },
     };
@@ -5314,9 +5317,11 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     if parent_is_tip {
         txn.remove_orphan_chain_tip(chain_block.header().prev_hash);
     }
-    txn.insert_orphan(chain_block.to_arc_block());
+    if !already_held {
+        txn.insert_orphan(chain_block.to_arc_block());
+    }
     txn.set_accumulated_data_for_orphan(chain_block.header().version, chain_block.accumulated_data().clone());
-    // The candidate was not held, so a tip entry for it can only be a stale one
+    // The candidate was not linked, so a tip entry for it can only be a stale one
     txn.remove_orphan_chain_tip_if_exists(hash);
     txn.insert_orphan_chain_tip(hash, chain_block.accumulated_data().total_accumulated_difficulty);
     db.write(txn)?;
@@ -5331,7 +5336,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         fork_height,
         false,
     )?;
-    Ok(true)
+    Ok(!already_held)
 }
 
 /// Links the orphans held on main chain blocks with a body at or above the pruned height, and makes their descendants

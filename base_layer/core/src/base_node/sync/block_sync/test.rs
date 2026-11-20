@@ -689,3 +689,142 @@ async fn swap_after_partial_block_sync_reorgs_onto_orphans_held_on_a_synced_bloc
 async fn swap_after_full_block_sync_reorgs_onto_orphans_held_on_a_synced_block() {
     swap_after_block_sync_reorgs_onto_orphans_held_on_a_synced_block(true).await;
 }
+
+#[allow(clippy::too_many_lines)]
+#[tokio::test]
+async fn held_unlinked_orphan_rechecks_linkage_when_received_again_after_block_sync_commits_parent() {
+    use tari_common::configuration::Network;
+    use tari_transaction_components::crypto_factories::CryptoFactories;
+
+    use crate::{
+        base_node::sync::HeaderSynchronizer,
+        chain_storage::{BlockAddResult, Validators},
+        consensus::BaseNodeConsensusManager,
+        proof_of_work::randomx_factory::RandomXFactory,
+        proto::base_node::FindChainSplitResponse,
+        test_helpers::blockchain::create_store_with_consensus_and_validators,
+        validation::{
+            DifficultyCalculator,
+            block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
+            header::HeaderFullValidator,
+        },
+    };
+
+    let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let check_total_burned = true;
+    let make_db = || {
+        let validators = Validators::new(
+            BlockBodyFullValidator::new(rules.clone(), check_total_burned),
+            HeaderFullValidator::new(
+                rules.clone(),
+                DifficultyCalculator::new(rules.clone(), RandomXFactory::default()),
+            ),
+            BlockBodyInternalConsistencyValidator::new(rules.clone(), check_total_burned, CryptoFactories::default()),
+        );
+        create_store_with_consensus_and_validators(rules.clone(), validators)
+    };
+    let db = make_db();
+    let peer_a = make_db();
+    let peer_b = make_db();
+
+    fn mine_next_on_tip(peer_db: &BlockchainDatabase<TempDatabase>, parent: &Arc<ChainBlock>) -> Arc<ChainBlock> {
+        let (_, chain) = create_chained_blocks(peer_db, block_specs!(["NEXT->GB"]), parent.clone());
+        let block = chain.get("NEXT").unwrap().clone();
+        assert!(matches!(
+            peer_db.add_block(block.to_arc_block()).unwrap().result,
+            BlockAddResult::Ok(_)
+        ));
+        block
+    }
+
+    let gb_a = Arc::new(peer_a.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
+    let h1 = mine_next_on_tip(&peer_a, &gb_a);
+    let h2 = mine_next_on_tip(&peer_a, &h1);
+
+    assert!(matches!(
+        peer_b.add_block(h1.to_arc_block()).unwrap().result,
+        BlockAddResult::Ok(_)
+    ));
+    let f2 = mine_next_on_tip(&peer_b, &h1);
+    let f3 = mine_next_on_tip(&peer_b, &f2);
+    assert!(
+        f3.accumulated_data().total_accumulated_difficulty > h2.accumulated_data().total_accumulated_difficulty,
+        "F3 must have strictly higher total accumulated PoW difficulty than H2"
+    );
+
+    // Step 1: While `db` is at Genesis (height 0), F2 and F3 (branching from H1 at height 1) arrive via add_block and
+    // are held unlinked because H1 is not yet in `db`.
+    assert!(matches!(
+        db.add_block(f2.to_arc_block()).unwrap().result,
+        BlockAddResult::OrphanBlock
+    ));
+    assert!(matches!(
+        db.add_block(f3.to_arc_block()).unwrap().result,
+        BlockAddResult::OrphanBlock
+    ));
+    assert_eq!(db.orphan_count().unwrap(), 2);
+
+    // Sync headers [H1, H2] via HeaderSynchronizer::synchronize()
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let split_reply = FindChainSplitResponse {
+        headers: vec![h1.header().clone().into(), h2.header().clone().into()],
+        fork_hash_index: 0,
+    };
+    let header_mock = MockSyncPeer::new(&db, Some(split_reply));
+    let h2_claim = ChainMetadata::new(
+        h2.height(),
+        *h2.hash(),
+        0,
+        0,
+        h2.accumulated_data().total_accumulated_difficulty,
+        h2.header().timestamp.as_u64(),
+    )
+    .unwrap();
+    let (header_peer, _header_server) = connect_mock_peer(&connectivity_mock, header_mock, h2_claim.clone()).await;
+    let mut header_peers = vec![header_peer];
+    let mut chain_changes = HashMap::new();
+    let local_metadata = db.get_chain_metadata().unwrap();
+    let mut header_synchronizer = HeaderSynchronizer::new(
+        BlockchainSyncConfig::default(),
+        db.clone().into(),
+        rules.clone(),
+        connectivity.clone(),
+        &mut header_peers,
+        RandomXFactory::default(),
+        local_metadata,
+        &mut chain_changes,
+    );
+    header_synchronizer.synchronize().await.unwrap();
+    assert_eq!(db.get_height().unwrap(), 0);
+    assert_eq!(db.fetch_last_chain_header().unwrap().height(), 2);
+
+    // Partial BlockSynchronizer::synchronize() commits H1's body and aborts before H2 (NoMoreSyncPeers),
+    // and the state machine clears the disable_add_block flag on BlockSyncFailed.
+    let mut partial = MockSyncPeer::new(&db, None);
+    partial.blocks_to_serve = vec![h1.block().clone()];
+    let (partial_peer, _partial_server) = connect_mock_peer(&connectivity_mock, partial, h2_claim).await;
+    let mut sync_peers = vec![partial_peer];
+    let mut attempts_without_block = HashMap::new();
+    let mut synchronizer = BlockSynchronizer::new(
+        BlockchainSyncConfig::default(),
+        db.clone().into(),
+        connectivity,
+        &mut sync_peers,
+        Arc::new(BlockBodyFullValidator::new(rules, check_total_burned)),
+        &mut attempts_without_block,
+    );
+    let err = synchronizer.synchronize().await.unwrap_err();
+    assert!(matches!(err, BlockSyncError::NoMoreSyncPeers(_)), "{err}");
+    assert_eq!(db.get_height().unwrap(), 1);
+    db.clear_disable_add_block_flag();
+
+    // When the held, unlinked orphan F2 is received again via add_block, `handle_possible_reorg` calls
+    // `insert_orphan_and_find_new_tips` (which links F2 -> F3 onto H1 and returns `Ok(false)` to set
+    // `CandidateBlock.body_received = false`) and then unconditionally runs `swap_to_highest_pow_chain`,
+    // reorging the chain onto H1 -> F2 -> F3.
+    let outcome = db.add_block(f2.to_arc_block()).unwrap();
+    assert!(matches!(outcome.result, BlockAddResult::ChainReorg { .. }));
+    assert_eq!(db.get_height().unwrap(), 3);
+    assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), *f3.hash());
+}
