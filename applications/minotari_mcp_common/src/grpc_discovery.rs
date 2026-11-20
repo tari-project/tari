@@ -851,24 +851,41 @@ fn tip_info_response_schema() -> Value {
 fn sync_info_response_schema() -> Value {
     serde_json::json!({
         "type": "object",
+        "description": "Block sync progress. The node reports heights only while block syncing; otherwise block_syncing is false, the heights, sync_progress and is_synced are null, and GetTipInfo's base_node_state and initial_sync_achieved give the sync state.",
         "properties": {
+            "block_syncing": {
+                "type": "boolean",
+                "description": "Whether the node is in block sync"
+            },
             "tip_height": {
-                "type": "integer",
-                "format": "uint64",
-                "description": "Tip height"
+                "type": ["integer", "null"],
+                "description": "Height being synced to"
             },
             "local_height": {
-                "type": "integer",
-                "format": "uint64",
+                "type": ["integer", "null"],
                 "description": "Local height"
             },
-            "peer_node_id": {
+            "sync_progress": {
+                "type": ["number", "null"],
+                "description": "Percent of the block sync done"
+            },
+            "blocks_behind": {
+                "type": ["integer", "null"],
+                "description": "Blocks still to sync"
+            },
+            "is_synced": {
+                "type": ["boolean", "null"],
+                "description": "Whether block sync has caught up; null outside block sync"
+            },
+            "peer_node_ids": {
                 "type": "array",
                 "items": {
-                    "type": "string",
-                    "format": "hex"
+                    "type": "string"
                 },
-                "description": "Peer node IDs"
+                "description": "Node ids of the peers being synced from"
+            },
+            "note": {
+                "type": "string"
             }
         },
         "additionalProperties": false
@@ -953,7 +970,7 @@ fn new_block_template_request_schema() -> Value {
             "max_weight": {
                 "type": "integer",
                 "format": "uint64",
-                "description": "Maximum block weight"
+                "description": "Maximum block weight in grams (0 or omitted = consensus maximum)"
             }
         },
         "required": ["algo"],

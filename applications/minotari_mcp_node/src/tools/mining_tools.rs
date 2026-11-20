@@ -68,8 +68,8 @@ impl McpTool for GetNewBlockTemplateTool {
                 },
                 "max_weight": {
                     "type": "number",
-                    "description": "Maximum block weight (optional, default 19500)",
-                    "minimum": 1
+                    "description": "Maximum block weight in grams (0 or omitted = consensus maximum)",
+                    "minimum": 0
                 }
             },
             "required": ["algo"]
@@ -164,8 +164,8 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
                 },
                 "max_weight": {
                     "type": "number",
-                    "description": "Maximum block weight (optional, default 19500)",
-                    "minimum": 1
+                    "description": "Maximum block weight in grams (0 or omitted = consensus maximum)",
+                    "minimum": 0
                 },
                 "coinbases": {
                     "type": "array",
@@ -205,7 +205,8 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let (_, pow_algo) = node_rpc::pow_algo_param(&params, "algo")?;
 
-        let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500);
+        // The node treats 0 as the consensus maximum block weight
+        let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(0);
 
         // Parse coinbase recipients
         let coinbases: Vec<NewBlockCoinbase> = params
@@ -419,7 +420,7 @@ impl McpTool for MiningAnalysisTool {
                 .clone()
                 .get_new_block_template(Request::new(NewBlockTemplateRequest {
                     algo: Some(pow_algo),
-                    max_weight: 19500,
+                    max_weight: 0, // the consensus maximum
                 }))
                 .await
             {

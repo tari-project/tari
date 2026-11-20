@@ -26,6 +26,7 @@ use minotari_node_grpc_client::{
         Signature,
         SubmitTransactionRequest,
         SubmitTransactionResult,
+        SyncInfoResponse,
         Transaction,
         pow_algo::PowAlgos,
     },
@@ -341,8 +342,35 @@ pub async fn get_tip_info(mut client: Client) -> McpResult<Value> {
 
 pub async fn get_sync_info(mut client: Client) -> McpResult<Value> {
     let response = client.get_sync_info(Empty {}).await?.into_inner();
+    Ok(sync_info_json(&response))
+}
 
-    Ok(json!({
+/// The node fills `SyncInfoResponse` only while block syncing and returns all zeros in every other state, so zeros
+/// say nothing about whether the node is synced
+fn sync_info_json(response: &SyncInfoResponse) -> Value {
+    // Peer node ids arrive as the UTF-8 text of the id, not raw bytes
+    let peer_node_ids: Vec<String> = response
+        .peer_node_id
+        .iter()
+        .map(|id| clean_upstream_text(&String::from_utf8_lossy(id)))
+        .collect();
+
+    if response.tip_height == 0 && response.local_height == 0 {
+        return json!({
+            "block_syncing": false,
+            "tip_height": null,
+            "local_height": null,
+            "sync_progress": null,
+            "blocks_behind": null,
+            "is_synced": null,
+            "peer_node_ids": peer_node_ids,
+            "note": "The node is not in block sync, so it reports no sync heights. Use GetTipInfo's base_node_state \
+                     and initial_sync_achieved for its sync state.",
+        });
+    }
+
+    json!({
+        "block_syncing": true,
         "tip_height": response.tip_height,
         "local_height": response.local_height,
         "sync_progress": if response.tip_height > 0 {
@@ -351,11 +379,9 @@ pub async fn get_sync_info(mut client: Client) -> McpResult<Value> {
             100.0
         },
         "blocks_behind": response.tip_height.saturating_sub(response.local_height),
-        "peer_node_ids": response.peer_node_id.iter()
-            .map(hex::encode)
-            .collect::<Vec<_>>(),
+        "peer_node_ids": peer_node_ids,
         "is_synced": response.tip_height == response.local_height,
-    }))
+    })
 }
 
 pub async fn get_network_difficulty(mut client: Client, params: &Value) -> McpResult<Value> {
@@ -679,7 +705,8 @@ pub fn pow_algo(algo: u64) -> McpResult<PowAlgo> {
 
 pub async fn get_new_block_template(mut client: Client, params: &Value) -> McpResult<Value> {
     let (algo, pow_algo) = pow_algo_param(params, "algo")?;
-    let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500); // Default max weight for blocks
+    // The node treats 0 as the consensus maximum block weight
+    let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(0);
 
     let request = NewBlockTemplateRequest {
         algo: Some(pow_algo),
@@ -945,6 +972,24 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(split_limited(kept, 2), (vec![5000, 5001], true));
+    }
+
+    #[test]
+    fn sync_info_outside_block_sync_claims_nothing() {
+        let idle = sync_info_json(&SyncInfoResponse::default());
+        assert_eq!(idle["block_syncing"], false);
+        assert!(idle["is_synced"].is_null());
+        assert!(idle["sync_progress"].is_null());
+
+        let syncing = sync_info_json(&SyncInfoResponse {
+            tip_height: 200,
+            local_height: 100,
+            peer_node_id: vec![b"abcd1234".to_vec()],
+        });
+        assert_eq!(syncing["block_syncing"], true);
+        assert_eq!(syncing["is_synced"], false);
+        assert_eq!(syncing["sync_progress"], 50.0);
+        assert_eq!(syncing["peer_node_ids"][0], "abcd1234");
     }
 
     #[test]
