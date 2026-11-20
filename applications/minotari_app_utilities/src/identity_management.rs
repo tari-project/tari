@@ -563,7 +563,15 @@ fn write_identity_file<P: AsRef<Path>>(path: P, header: &[u8], contents: &[u8]) 
     // Write next to the real file so a symlinked identity is updated rather than replaced by a regular file.
     let path = match fs::canonicalize(path.as_ref()) {
         Ok(real) => real,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => path.as_ref().to_path_buf(),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            // A dangling symlink (e.g. into a secrets dir that is populated on first start) must be followed too.
+            let mut path = path.as_ref().to_path_buf();
+            while fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+                let target = fs::read_link(&path)?;
+                path = path.parent().unwrap_or(Path::new("")).join(target);
+            }
+            path
+        },
         Err(err) => return Err(err),
     };
     let tmp = write_identity_temp_file(&path, header, contents)?;
@@ -588,7 +596,7 @@ fn write_identity_file<P: AsRef<Path>>(path: P, header: &[u8], contents: &[u8]) 
 fn write_identity_temp_file(path: &Path, header: &[u8], contents: &[u8]) -> io::Result<PathBuf> {
     use std::{
         io::Write,
-        os::unix::fs::{OpenOptionsExt, PermissionsExt},
+        os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     };
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
@@ -609,6 +617,14 @@ fn write_identity_temp_file(path: &Path, header: &[u8], contents: &[u8]) -> io::
     let result = (|| {
         // `mode()` is reduced by the umask, so set the exact permissions while the file is still empty.
         file.set_permissions(fs::Permissions::from_mode(mode))?;
+        // The rename installs a new inode, so keep the existing file's owner (e.g. when run via sudo) or the node
+        // may no longer be able to read its own identity.
+        if let Ok(existing) = fs::metadata(path) {
+            let created = file.metadata()?;
+            if (existing.uid(), existing.gid()) != (created.uid(), created.gid()) {
+                std::os::unix::fs::fchown(&file, Some(existing.uid()), Some(existing.gid()))?;
+            }
+        }
         file.write_all(header)?;
         file.write_all(contents)?;
         file.sync_all()
@@ -1327,6 +1343,62 @@ mod test {
             *loaded.identity_signature_read(),
             "the new signature must be written to the real file"
         );
+    }
+
+    #[test]
+    fn dangling_symlinked_identity_is_created_at_the_link_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("secrets")).unwrap();
+        let link = tmp.path().join("identity.json");
+        let real = tmp.path().join("secrets").join("identity.json");
+        std::os::unix::fs::symlink("secrets/identity.json", &link).unwrap();
+
+        let id = setup_node_identity(
+            &link,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+            true,
+        )
+        .unwrap();
+
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(has_permissions(&real, REQUIRED_IDENTITY_PERMS).unwrap());
+        assert!(!tmp_path(&link).exists() && !tmp_path(&real).exists());
+        assert_eq!(
+            load_node_identity(&real, TransportType::Tcp, false)
+                .unwrap()
+                .public_key(),
+            id.public_key()
+        );
+    }
+
+    #[test]
+    fn rewrite_keeps_the_existing_group() {
+        use std::os::unix::fs::MetadataExt;
+        unsafe extern "C" {
+            fn getgroups(size: i32, list: *mut u32) -> i32;
+        }
+        let (_dir, path, _id) = fresh_identity_file(false);
+        let before = fs::metadata(&path).unwrap();
+        let mut groups = [0u32; 64];
+        // SAFETY: `groups` has room for the 64 entries passed as `size`.
+        let n = unsafe { getgroups(64, groups.as_mut_ptr()) };
+        let other = groups
+            .iter()
+            .take(usize::try_from(n).unwrap_or(0))
+            .find(|g| **g != before.gid());
+        let Some(&other) = other else { return };
+        if std::os::unix::fs::chown(&path, None, Some(other)).is_err() {
+            return;
+        }
+
+        load_node_identity(&path, TransportType::Tcp, true).unwrap();
+
+        let after = fs::metadata(&path).unwrap();
+        assert_ne!(after.ino(), before.ino(), "the file must have been rewritten");
+        assert_eq!((after.uid(), after.gid()), (before.uid(), other));
     }
 
     #[test]
