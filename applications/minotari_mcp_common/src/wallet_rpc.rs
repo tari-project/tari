@@ -19,8 +19,10 @@ use minotari_wallet_grpc_client::{
         GetTransactionInfoRequest,
         PaymentRecipient,
         SendShaAtomicSwapRequest,
+        TransactionStatus,
         TransferRequest,
         UserPaymentId,
+        payment_recipient::PaymentType,
     },
 };
 use serde_json::{Value, json};
@@ -37,6 +39,13 @@ use crate::{
 };
 
 type Client = WalletGrpcClient<Channel>;
+
+/// A wallet transaction status as its proto name without the `TRANSACTION_STATUS_` prefix, e.g. `MINED_CONFIRMED`
+fn transaction_status_name(status: i32) -> &'static str {
+    TransactionStatus::try_from(status)
+        .map(|s| s.as_str_name().trim_start_matches("TRANSACTION_STATUS_"))
+        .unwrap_or("UNKNOWN")
+}
 
 pub async fn get_balance(mut client: Client, params: &Value) -> McpResult<Value> {
     let payment_id = get_optional_string_param(params, "payment_id").map(|payment_id_str| UserPaymentId {
@@ -129,22 +138,7 @@ pub async fn get_transaction_info(mut client: Client, params: &Value) -> McpResu
                 "tx_id": tx.tx_id,
                 "source_address": hex::encode(&tx.source_address),
                 "dest_address": hex::encode(&tx.dest_address),
-                "status": match tx.status {
-                    0 => "COMPLETED",
-                    1 => "BROADCAST",
-                    2 => "MINED_UNCONFIRMED",
-                    3 => "IMPORTED",
-                    4 => "PENDING",
-                    5 => "COINBASE",
-                    6 => "MINED_CONFIRMED",
-                    7 => "REJECTED",
-                    8 => "CANCELLED",
-                    9 => "NOT_FOUND",
-                    15 => "MINED_CONFIRMED_LOCKED",
-                    16 => "ONE_SIDED_CONFIRMED_LOCKED",
-                    17 => "COINBASE_CONFIRMED_LOCKED",
-                    _ => "UNKNOWN",
-                },
+                "status": transaction_status_name(tx.status),
                 "direction": match tx.direction {
                     0 => "UNKNOWN",
                     1 => "INBOUND",
@@ -224,14 +218,19 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
         .and_then(|v| v.as_u64())
         .ok_or_else(|| McpError::invalid_request(format!("fee_per_gram is required for recipient {index}")))?;
 
-    let payment_type = recipient_data.get("payment_type").and_then(|v| v.as_u64()).unwrap_or(0); // Default to standard payment
+    // The wallet's Transfer rejects STANDARD_MIMBLEWIMBLE, so default to one-sided stealth
+    let payment_type = recipient_data
+        .get("payment_type")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(PaymentType::OneSidedToStealthAddress as u64);
+    if payment_type == PaymentType::StandardMimblewimble as u64 {
+        return Err(McpError::invalid_request(format!(
+            "payment_type 0 (STANDARD_MIMBLEWIMBLE) is not supported for recipient {index}; use 2 \
+             (ONE_SIDED_TO_STEALTH_ADDRESS)"
+        )));
+    }
 
-    let raw_payment_id = recipient_data
-        .get("payment_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.as_bytes().to_vec())
-        .unwrap_or_default();
-
+    // Sent only as user_payment_id: the wallet reads a non-empty raw_payment_id as an encoded memo instead
     let user_payment_id = recipient_data
         .get("payment_id")
         .and_then(|v| v.as_str())
@@ -247,7 +246,7 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
         amount,
         fee_per_gram,
         payment_type: payment_type as i32,
-        raw_payment_id,
+        raw_payment_id: vec![],
         user_payment_id,
     })
 }
@@ -550,22 +549,7 @@ pub async fn get_completed_transactions(mut client: Client, params: &Value) -> M
                 "tx_id": transaction.tx_id,
                 "source_address": hex::encode(&transaction.source_address),
                 "dest_address": hex::encode(&transaction.dest_address),
-                "status": match transaction.status {
-                    0 => "COMPLETED",
-                    1 => "BROADCAST",
-                    2 => "MINED_UNCONFIRMED",
-                    3 => "IMPORTED",
-                    4 => "PENDING",
-                    5 => "COINBASE",
-                    6 => "MINED_CONFIRMED",
-                    7 => "REJECTED",
-                    8 => "CANCELLED",
-                    9 => "NOT_FOUND",
-                    15 => "MINED_CONFIRMED_LOCKED",
-                    16 => "ONE_SIDED_CONFIRMED_LOCKED",
-                    17 => "COINBASE_CONFIRMED_LOCKED",
-                    _ => "UNKNOWN",
-                },
+                "status": transaction_status_name(transaction.status),
                 "direction": match transaction.direction {
                     0 => "UNKNOWN",
                     1 => "INBOUND",
@@ -685,7 +669,7 @@ pub async fn send_sha_atomic_swap(mut client: Client, params: &Value) -> McpResu
         address: address.to_string(),
         amount,
         fee_per_gram,
-        payment_type: 2, // ONE_SIDED_TO_STEALTH_ADDRESS
+        payment_type: PaymentType::OneSidedToStealthAddress.into(),
         raw_payment_id: vec![],
         user_payment_id: None,
     };
@@ -881,4 +865,37 @@ pub async fn claim_htlc_refund(mut client: Client, params: &Value) -> McpResult<
             ]
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn transaction_status_names_follow_the_proto() {
+        assert_eq!(transaction_status_name(6), "MINED_CONFIRMED");
+        assert_eq!(transaction_status_name(8), "ONE_SIDED_UNCONFIRMED");
+        assert_eq!(transaction_status_name(9), "ONE_SIDED_CONFIRMED");
+        assert_eq!(transaction_status_name(-1), "UNKNOWN");
+    }
+
+    #[test]
+    fn recipient_defaults_to_one_sided_stealth_and_sends_payment_id_once() {
+        let recipient = parse_payment_recipient(
+            0,
+            &json!({"address": "addr", "amount": 5, "fee_per_gram": 1, "payment_id": "invoice-7"}),
+        )
+        .unwrap();
+        assert_eq!(recipient.payment_type, PaymentType::OneSidedToStealthAddress as i32);
+        assert!(recipient.raw_payment_id.is_empty());
+        assert_eq!(recipient.user_payment_id.unwrap().utf8_string, "invoice-7");
+
+        let standard = json!({"address": "addr", "amount": 5, "fee_per_gram": 1, "payment_type": 0});
+        assert!(matches!(
+            parse_payment_recipient(0, &standard),
+            Err(McpError::InvalidRequest(_))
+        ));
+    }
 }

@@ -793,7 +793,8 @@ fn get_blocks_input_schema() -> Value {
                     "type": "integer",
                     "format": "uint64"
                 },
-                "description": "Block heights to retrieve"
+                "maxItems": 512,
+                "description": "Block heights to retrieve (at most 512)"
             }
         },
         "required": ["heights"],
@@ -900,7 +901,14 @@ fn network_status_response_schema() -> Value {
 fn get_peers_request_schema() -> Value {
     serde_json::json!({
         "type": "object",
-        "properties": {},
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of peers to return (default 50)",
+                "minimum": 1,
+                "maximum": 512
+            }
+        },
         "additionalProperties": false
     })
 }
@@ -940,7 +948,7 @@ fn new_block_template_request_schema() -> Value {
         "properties": {
             "algo": {
                 "type": "integer",
-                "description": "PoW algorithm"
+                "description": "PoW algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)"
             },
             "max_weight": {
                 "type": "integer",
@@ -957,9 +965,14 @@ fn new_block_template_response_schema() -> Value {
     serde_json::json!({
         "type": "object",
         "properties": {
-            "new_block_template": {
+            "block_template": {
                 "type": "object",
-                "description": "New block template"
+                "description": "Summary of the new block template"
+            },
+            "new_block_template_hex": {
+                "type": "string",
+                "format": "hex",
+                "description": "Hex of the protobuf-encoded tari.rpc.NewBlockTemplate, as accepted by GetNewBlock"
             },
             "initial_sync_achieved": {
                 "type": "boolean",
@@ -968,6 +981,10 @@ fn new_block_template_response_schema() -> Value {
             "miner_data": {
                 "type": "object",
                 "description": "Miner data"
+            },
+            "parameters": {
+                "type": "object",
+                "description": "The algorithm and maximum weight requested"
             }
         },
         "additionalProperties": false
@@ -1788,7 +1805,10 @@ fn transfer_request_schema() -> Value {
                         },
                         "payment_type": {
                             "type": "integer",
-                            "description": "Payment type"
+                            "description": "Payment type: 2 = ONE_SIDED_TO_STEALTH_ADDRESS (default), 1 = ONE_SIDED; 0 is rejected",
+                            "minimum": 1,
+                            "maximum": 2,
+                            "default": 2
                         },
                         "payment_id": {
                             "type": "string",

@@ -28,7 +28,7 @@
 use std::sync::Arc;
 
 use minotari_app_grpc::tari_rpc::GetCompletedTransactionsRequest;
-use minotari_mcp_common::{McpResult, McpTool, wallet_rpc};
+use minotari_mcp_common::{McpResult, McpTool, node_rpc, wallet_rpc};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -188,8 +188,10 @@ impl McpTool for TransferTool {
                             },
                             "payment_type": {
                                 "type": "number",
-                                "description": "Payment type (default: 0 for standard)",
-                                "minimum": 0
+                                "description": "Payment type: 2 = ONE_SIDED_TO_STEALTH_ADDRESS (default), 1 = ONE_SIDED; 0 is rejected",
+                                "minimum": 1,
+                                "maximum": 2,
+                                "default": 2
                             },
                             "message": {
                                 "type": "string",
@@ -355,9 +357,9 @@ impl McpTool for TransactionAnalysisTool {
                 },
                 "limit": {
                     "type": "number",
-                    "description": "Maximum number of transactions to analyze (default: 1000)",
+                    "description": "Maximum number of transactions to read (default and maximum: 512)",
                     "minimum": 1,
-                    "maximum": 10000
+                    "maximum": 512
                 }
             }
         })
@@ -367,7 +369,11 @@ impl McpTool for TransactionAnalysisTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let days_back = params.get("days_back").and_then(|v| v.as_u64()).unwrap_or(30); // Default to 30 days
 
-        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(1000); // Analyze up to 1000 transactions
+        let limit = node_rpc::limit_param(
+            &params,
+            node_rpc::MAX_STREAM_ITEMS as u64,
+            node_rpc::MAX_STREAM_ITEMS as u64,
+        );
 
         // Get completed transactions
         let request = Request::new(GetCompletedTransactionsRequest {
@@ -377,28 +383,20 @@ impl McpTool for TransactionAnalysisTool {
         });
 
         let mut client = (*self.grpc_client).clone();
-        let mut response_stream = client.get_completed_transactions(request).await?.into_inner();
+        let response_stream = client.get_completed_transactions(request).await?.into_inner();
+        let (responses, truncated) = node_rpc::collect_limited(response_stream, limit).await?;
 
-        let mut transactions = Vec::new();
-        let mut count = 0;
         let cutoff_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs()
             .saturating_sub(days_back.saturating_mul(24 * 60 * 60));
 
-        while let Some(tx_response) = response_stream.message().await? {
-            if count >= limit {
-                break;
-            }
-
-            if let Some(transaction) = tx_response.transaction &&
-                transaction.timestamp >= cutoff_timestamp
-            {
-                transactions.push(transaction);
-                count = count.saturating_add(1);
-            }
-        }
+        let transactions: Vec<_> = responses
+            .into_iter()
+            .filter_map(|tx_response| tx_response.transaction)
+            .filter(|transaction| transaction.timestamp >= cutoff_timestamp)
+            .collect();
 
         if transactions.is_empty() {
             return Ok(json!({
@@ -406,7 +404,8 @@ impl McpTool for TransactionAnalysisTool {
                 "analysis_period": {
                     "days_analyzed": days_back,
                     "transactions_found": 0,
-                }
+                },
+                "truncated": truncated,
             }));
         }
 
@@ -456,6 +455,7 @@ impl McpTool for TransactionAnalysisTool {
         #[allow(clippy::cast_possible_truncation)]
         #[allow(clippy::cast_possible_wrap)]
         Ok(json!({
+            "truncated": truncated,
             "analysis_summary": {
                 "period_days": days_back,
                 "total_transactions": total_transactions,

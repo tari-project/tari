@@ -56,7 +56,7 @@ pub(crate) async fn collect<T>(mut stream: Streaming<T>, cap: usize) -> McpResul
 }
 
 /// Read up to `limit` messages, and whether the stream had more
-pub(crate) async fn collect_limited<T>(stream: Streaming<T>, limit: u64) -> McpResult<(Vec<T>, bool)> {
+pub async fn collect_limited<T>(stream: Streaming<T>, limit: u64) -> McpResult<(Vec<T>, bool)> {
     let limit = usize::try_from(limit).unwrap_or(usize::MAX);
     let items = collect(stream, limit.saturating_add(1)).await?;
     Ok(split_limited(items, limit))
@@ -70,12 +70,17 @@ fn split_limited<T>(mut items: Vec<T>, limit: usize) -> (Vec<T>, bool) {
 }
 
 /// The `limit` argument, defaulting to `default` and clamped to `1..=max`
-pub(crate) fn limit_param(params: &Value, default: u64, max: u64) -> u64 {
+pub fn limit_param(params: &Value, default: u64, max: u64) -> u64 {
     params
         .get("limit")
         .and_then(|v| v.as_u64())
         .unwrap_or(default)
         .clamp(1, max)
+}
+
+/// Hex of a protobuf-encoded message, the form [decode_hex_message] reads back
+pub fn encode_hex_message<M: Message>(message: &M) -> String {
+    hex::encode(message.encode_to_vec())
 }
 
 /// Decode a hex-encoded protobuf message from the `key` string argument
@@ -629,27 +634,41 @@ pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
     }))
 }
 
-pub async fn get_new_block_template(mut client: Client, params: &Value) -> McpResult<Value> {
+/// Mining algorithm numbering shared by every tool, matching `tari.rpc.PowAlgo.PowAlgos`
+pub const POW_ALGO_HELP: &str = "0=RANDOMXM, 1=SHA3X, 2=RANDOMXT";
+
+/// The `key` argument as a mining algorithm, numbered as in [POW_ALGO_HELP]
+pub fn pow_algo_param(params: &Value, key: &str) -> McpResult<(u64, PowAlgo)> {
     let algo = params
-        .get("algo")
+        .get(key)
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| McpError::invalid_request("algo is required (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)".to_string()))?;
+        .ok_or_else(|| McpError::invalid_request(format!("{key} is required ({POW_ALGO_HELP})")))?;
+    Ok((algo, pow_algo(algo)?))
+}
 
-    let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500); // Default max weight for blocks
-
-    let pow_algo_val = match algo {
-        0 => PowAlgos::Randomxm.into(),
-        1 => PowAlgos::Sha3x.into(),
-        2 => PowAlgos::Randomxt.into(),
+/// A mining algorithm numbered as in [POW_ALGO_HELP]
+pub fn pow_algo(algo: u64) -> McpResult<PowAlgo> {
+    let pow_algo = match algo {
+        0 => PowAlgos::Randomxm,
+        1 => PowAlgos::Sha3x,
+        2 => PowAlgos::Randomxt,
         _ => {
-            return Err(McpError::invalid_request(
-                "Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string(),
-            ));
+            return Err(McpError::invalid_request(format!(
+                "Invalid algo {algo}: must be one of {POW_ALGO_HELP}"
+            )));
         },
     };
+    Ok(PowAlgo {
+        pow_algo: pow_algo.into(),
+    })
+}
+
+pub async fn get_new_block_template(mut client: Client, params: &Value) -> McpResult<Value> {
+    let (algo, pow_algo) = pow_algo_param(params, "algo")?;
+    let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500); // Default max weight for blocks
 
     let request = NewBlockTemplateRequest {
-        algo: Some(PowAlgo { pow_algo: pow_algo_val }),
+        algo: Some(pow_algo),
         max_weight,
     };
     let response = client.get_new_block_template(request).await?.into_inner();
@@ -675,6 +694,7 @@ pub async fn get_new_block_template(mut client: Client, params: &Value) -> McpRe
                 "kernels": template.body.as_ref().map(|b| b.kernels.len()).unwrap_or(0),
             }
         },
+        "new_block_template_hex": encode_hex_message(template),
         "initial_sync_achieved": response.initial_sync_achieved,
         "miner_data": response.miner_data.as_ref().map(|md| json!({
             "algo": match md.algo.as_ref().map(|a| a.pow_algo) {
@@ -703,7 +723,7 @@ pub async fn get_new_block(mut client: Client, params: &Value) -> McpResult<Valu
     Ok(json!({
         "block_hash": hex::encode(&response.block_hash),
         "block": response.block.as_ref().map(block_summary),
-        "block_hex": response.block.as_ref().map(|block| hex::encode(block.encode_to_vec())),
+        "block_hex": response.block.as_ref().map(encode_hex_message),
         "merge_mining_hash": hex::encode(&response.merge_mining_hash),
         "tari_unique_id": hex::encode(&response.tari_unique_id),
         "vm_key": hex::encode(&response.vm_key),
@@ -855,6 +875,31 @@ mod tests {
             decode_hex_message::<Transaction>(&bad_proto, "transaction_hex"),
             Err(McpError::InvalidRequest(_))
         ));
+    }
+
+    #[test]
+    fn template_hex_feeds_get_new_block() {
+        let template = NewBlockTemplate {
+            header: Some(minotari_node_grpc_client::grpc::NewBlockHeaderTemplate {
+                version: 1,
+                height: 42,
+                prev_hash: vec![7; 32],
+                ..Default::default()
+            }),
+            body: None,
+            is_mempool_in_sync: true,
+        };
+        let params = json!({ "new_block_template_hex": encode_hex_message(&template) });
+        let decoded: NewBlockTemplate = decode_hex_message(&params, "new_block_template_hex").unwrap();
+        assert_eq!(decoded, template);
+    }
+
+    #[test]
+    fn pow_algo_numbering_matches_the_proto() {
+        assert_eq!(pow_algo(0).unwrap().pow_algo, PowAlgos::Randomxm as i32);
+        assert_eq!(pow_algo(1).unwrap().pow_algo, PowAlgos::Sha3x as i32);
+        assert_eq!(pow_algo(2).unwrap().pow_algo, PowAlgos::Randomxt as i32);
+        assert!(pow_algo(3).is_err());
     }
 
     #[test]

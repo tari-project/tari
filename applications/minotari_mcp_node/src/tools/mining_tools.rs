@@ -26,13 +26,7 @@
 //! block construction, and mining data retrieval. Updated to include the existing
 //! GetNewBlockTemplateTool and expand mining capabilities.
 
-use minotari_app_grpc::tari_rpc::{
-    GetNewBlockTemplateWithCoinbasesRequest,
-    NewBlockCoinbase,
-    NewBlockTemplateRequest,
-    PowAlgo,
-    pow_algo::PowAlgos,
-};
+use minotari_app_grpc::tari_rpc::{GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, NewBlockTemplateRequest};
 use minotari_mcp_common::{MAX_ENCODED_BLOCK_HEX_LEN, McpError, McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
@@ -166,7 +160,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             "properties": {
                 "algo": {
                     "type": "number",
-                    "description": "Mining algorithm (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)"
+                    "description": "Mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)"
                 },
                 "max_weight": {
                     "type": "number",
@@ -209,22 +203,9 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let algo = params.get("algo").and_then(|v| v.as_u64()).ok_or_else(|| {
-            McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string())
-        })?;
+        let (_, pow_algo) = node_rpc::pow_algo_param(&params, "algo")?;
 
         let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500);
-
-        let pow_algo_val = match algo {
-            0 => PowAlgos::Sha3x.into(),    // SHA3X
-            1 => PowAlgos::Randomxm.into(), // RANDOMXM
-            2 => PowAlgos::Randomxt.into(), // RANDOMXT
-            _ => {
-                return Err(McpError::invalid_request(
-                    "Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string(),
-                ));
-            },
-        };
 
         // Parse coinbase recipients
         let coinbases: Vec<NewBlockCoinbase> = params
@@ -276,7 +257,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
         }
 
         let request = Request::new(GetNewBlockTemplateWithCoinbasesRequest {
-            algo: Some(PowAlgo { pow_algo: pow_algo_val }),
+            algo: Some(pow_algo),
             max_weight,
             coinbases,
         });
@@ -406,7 +387,7 @@ impl McpTool for MiningAnalysisTool {
             "properties": {
                 "preferred_algo": {
                     "type": "number",
-                    "description": "Preferred mining algorithm (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)",
+                    "description": "Preferred mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)",
                     "minimum": 0,
                     "maximum": 2
                 },
@@ -422,7 +403,7 @@ impl McpTool for MiningAnalysisTool {
 
     #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let requested_algo = params.get("preferred_algo").and_then(|v| v.as_u64()).unwrap_or(0); // Default to SHA3X
+        let requested_algo = params.get("preferred_algo").and_then(|v| v.as_u64()).unwrap_or(1); // Default to SHA3X
 
         let hash_rate = params.get("hash_rate").and_then(|v| v.as_u64()).unwrap_or(1000000); // Default 1 MH/s
 
@@ -430,18 +411,13 @@ impl McpTool for MiningAnalysisTool {
         let mut algo_analysis = Vec::new();
 
         for algo in 0..3 {
-            let pow_algo_val = match algo {
-                0 => PowAlgos::Sha3x.into(),    // SHA3X
-                1 => PowAlgos::Randomxm.into(), // RANDOMXM
-                2 => PowAlgos::Randomxt.into(), // RANDOMXT
-                _ => continue,
-            };
+            let pow_algo = node_rpc::pow_algo(algo)?;
 
             match self
                 .grpc_client
                 .clone()
                 .get_new_block_template(Request::new(NewBlockTemplateRequest {
-                    algo: Some(PowAlgo { pow_algo: pow_algo_val }),
+                    algo: Some(pow_algo),
                     max_weight: 19500,
                 }))
                 .await
@@ -452,8 +428,8 @@ impl McpTool for MiningAnalysisTool {
                         (response.new_block_template.as_ref(), response.miner_data.as_ref())
                     {
                         let algo_name = match algo {
-                            0 => "SHA3X",
-                            1 => "MONERO",
+                            0 => "MONERO",
+                            1 => "SHA3X",
                             2 => "TARI",
                             _ => "UNKNOWN",
                         };
@@ -527,8 +503,8 @@ impl McpTool for MiningAnalysisTool {
             "current_preference": {
                 "algo_id": requested_algo,
                 "algo_name": match requested_algo {
-                    0 => "SHA3X",
-                    1 => "MONERO",
+                    0 => "MONERO",
+                    1 => "SHA3X",
                     2 => "TARI",
                     _ => "UNKNOWN",
                 }

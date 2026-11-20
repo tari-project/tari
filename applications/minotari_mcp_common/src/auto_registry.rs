@@ -769,6 +769,47 @@ mod tests {
         assert!(!tools.contains_key("SubmitBlock"));
     }
 
+    struct UnreachableWalletClient;
+
+    #[async_trait::async_trait]
+    impl crate::grpc_executor::WalletGrpcClient for UnreachableWalletClient {
+        async fn execute_method(
+            &self,
+            method_name: &str,
+            _parameters: serde_json::Value,
+        ) -> McpResult<serde_json::Value> {
+            Err(McpError::not_implemented(method_name))
+        }
+    }
+
+    #[tokio::test]
+    async fn wallet_discovery_lists_only_executable_methods() {
+        let error_mapper = Arc::new(GrpcErrorMapper::new());
+        let executor = Arc::new(GrpcExecutor::new_wallet(
+            Arc::new(UnreachableWalletClient),
+            error_mapper.clone(),
+        ));
+        let service_discovery = Arc::new(ServiceDiscovery::new());
+        let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
+        let registry = AutoDiscoveryRegistry::new_with_executor(
+            AutoDiscoveryConfig {
+                control_enabled: true,
+                server_type: ServerType::Wallet,
+                ..Default::default()
+            },
+            service_discovery,
+            schema_generator,
+            error_mapper,
+            executor,
+        );
+        registry.initialize().await.unwrap();
+        let tools = registry.get_healthy_tools().await;
+
+        assert!(tools.contains_key("Transfer"));
+        assert!(!tools.contains_key("CreateBurnTransaction"));
+        assert!(!tools.contains_key("ImportUtxos"));
+    }
+
     #[tokio::test]
     async fn discovered_submit_transaction_reaches_node_once() {
         let (client, tools) = discovered_node_tools(true).await;

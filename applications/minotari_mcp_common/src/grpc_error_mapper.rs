@@ -35,10 +35,14 @@ use crate::McpError;
 /// Longest upstream message, in characters, passed on to a tool result
 const MAX_UPSTREAM_MESSAGE_CHARS: usize = 512;
 
-/// Make text from a gRPC peer safe to show an agent: truncated, with control characters and runs of whitespace
-/// collapsed to one space. Use this for field values in a successful response.
+/// Make text from a gRPC peer safe to show an agent: truncated, invisible format characters dropped, and control
+/// characters and runs of whitespace collapsed to one space. Use this for field values in a successful response.
 pub fn clean_upstream_text(message: &str) -> String {
-    let truncated: String = message.chars().take(MAX_UPSTREAM_MESSAGE_CHARS).collect();
+    let truncated: String = message
+        .chars()
+        .take(MAX_UPSTREAM_MESSAGE_CHARS)
+        .filter(|c| !is_invisible_format_char(*c))
+        .collect();
     let mut text = truncated
         .split(|c: char| c.is_control() || c.is_whitespace())
         .filter(|word| !word.is_empty())
@@ -48,6 +52,19 @@ pub fn clean_upstream_text(message: &str) -> String {
         text.push('…');
     }
     text
+}
+
+/// Zero-width, bidi-override, invisible-operator, BOM and tag characters, which can hide text from a reader
+fn is_invisible_format_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{200B}'..='\u{200F}' |
+            '\u{202A}'..='\u{202E}' |
+            '\u{2060}'..='\u{2064}' |
+            '\u{2066}'..='\u{2069}' |
+            '\u{FEFF}' |
+            '\u{E0000}'..='\u{E007F}'
+    )
 }
 
 /// [clean_upstream_text], quoted as `upstream: "..."` so an error message reads as data rather than instructions
@@ -670,6 +687,16 @@ mod tests {
             }
         }
         assert!(checked > 20);
+    }
+
+    #[test]
+    fn invisible_format_characters_are_dropped() {
+        // "ok" followed by "hi" spelled in tag characters, which render as nothing
+        let tagged = "ok\u{E0068}\u{E0069}";
+        assert_eq!(clean_upstream_text(tagged), "ok");
+        let bidi = "user\u{202E}gnp.exe\u{202C} agent\u{200B}\u{FEFF}\u{2066}x\u{2069}\u{2061}";
+        assert_eq!(clean_upstream_text(bidi), "usergnp.exe agentx");
+        assert_eq!(sanitize_upstream_message(tagged), r#"upstream: "ok""#);
     }
 
     #[test]

@@ -39,6 +39,7 @@ struct MempoolSamples {
     total_fees: u64,
     total_weight: usize,
     tx_count: usize,
+    truncated: bool,
 }
 
 /// Index into a sorted distribution for the given percentile, clamped to the last element
@@ -228,15 +229,19 @@ impl AnalyzeMempoolTool {
     /// Stream every mempool transaction, accumulating its fee and weight
     async fn collect_samples(&self) -> McpResult<MempoolSamples> {
         let tx_request = Request::new(GetMempoolTransactionsRequest {});
-        let mut tx_stream = self
+        let tx_stream = self
             .grpc_client
             .clone()
             .get_mempool_transactions(tx_request)
             .await?
             .into_inner();
+        let (responses, truncated) = node_rpc::collect_limited(tx_stream, node_rpc::MAX_MEMPOOL_TX_LIMIT).await?;
 
-        let mut samples = MempoolSamples::default();
-        while let Some(tx_response) = tx_stream.message().await? {
+        let mut samples = MempoolSamples {
+            truncated,
+            ..Default::default()
+        };
+        for tx_response in responses {
             if let Some(transaction) = tx_response.transaction &&
                 let Some(body) = transaction.body
             {
@@ -298,6 +303,7 @@ impl McpTool for AnalyzeMempoolTool {
             total_fees,
             total_weight,
             tx_count,
+            truncated,
         } = self.collect_samples().await?;
 
         // Calculate statistics
@@ -332,6 +338,7 @@ impl McpTool for AnalyzeMempoolTool {
             },
             "transaction_analysis": {
                 "total_transactions_analyzed": tx_count,
+                "truncated": truncated,
                 "total_fees": total_fees,
                 "total_weight": total_weight,
                 "average_fee": avg_fee,

@@ -174,7 +174,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::grpc_discovery::base_node_methods;
+    use crate::grpc_discovery::{base_node_methods, wallet_methods};
 
     #[tokio::test]
     async fn node_dispatch_matches_supported_list() {
@@ -192,6 +192,38 @@ mod tests {
                 "{}",
                 method.name
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn wallet_dispatch_matches_supported_list() {
+        // The wallet client has no lazy constructor, so serve a gRPC endpoint with no services: every call that
+        // reaches it fails with Unimplemented, which is not McpError::NotImplemented
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(
+            tonic::transport::Server::builder()
+                .add_routes(tonic::service::Routes::default())
+                .serve_with_incoming(tonic::transport::server::TcpIncoming::from(listener)),
+        );
+        let client = WalletGrpcClientImpl::new(TariWalletGrpcClient::connect(&format!("http://{addr}")).await.unwrap());
+
+        for method in wallet_methods() {
+            let result = client.execute_method(&method.name, json!({})).await;
+            let not_implemented = matches!(result, Err(McpError::NotImplemented(_)));
+            assert!(result.is_err(), "{} returned Ok without a wallet", method.name);
+            assert_eq!(
+                not_implemented,
+                !WALLET_METHODS.contains(&method.name.as_str()),
+                "{}",
+                method.name
+            );
+        }
+        for unimplemented in ["CreateBurnTransaction", "ImportUtxos"] {
+            assert!(matches!(
+                client.execute_method(unimplemented, json!({})).await,
+                Err(McpError::NotImplemented(_))
+            ));
         }
     }
 
