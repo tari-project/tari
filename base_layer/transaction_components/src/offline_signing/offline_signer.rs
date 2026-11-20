@@ -26,9 +26,14 @@ use digest::consts::U64;
 use log::{info, warn};
 use semver::Version;
 use tari_common::configuration::Network;
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::TxId,
+    types::{CompressedPublicKey, FixedHash},
+};
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::OfflineSigningPayloadHashDomain;
+use tari_script::{ExecutionStack, Opcode};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -51,11 +56,16 @@ use crate::{
             SignedOneSidedDepositMultisigTransactionResult,
             SignedOneSidedTransactionResult,
             SignedOneSidedWithdrawMultisigTransactionResult,
+            SignedResultKind,
+            SignedTransaction,
+            SignedTransactionResult,
             SigningReceipt,
             borsh_canonical_multisig,
             borsh_canonical_one_sided,
+            borsh_canonical_signed,
             get_latest_version,
             has_payload_auth_fields,
+            has_result_signature,
         },
         one_sided_signer::{
             build_and_sign_transaction,
@@ -118,7 +128,8 @@ fn payload_challenge(nonce_pub: &CompressedPublicKey, signing_pub: &CompressedPu
     challenge
 }
 
-/// Signs the Borsh-serialised `Prepare*` payload with `signing_key_id`: the view key or the imported payload key.
+/// Signs the canonical bytes of a `Prepare*` payload or of a signed result with `signing_key_id`: the view key or a
+/// payload key.
 ///
 /// The challenge binds the nonce public key R and the signing public key P so that neither
 /// can be substituted after signing.
@@ -276,22 +287,354 @@ pub(crate) fn verify_payload<KM: TransactionKeyManagerInterface, P: OfflinePaylo
     let canonical = payload
         .canonical_bytes()
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
-    let payload_sig = payload.payload_signature();
-    // R is the nonce public key embedded in the signature.
-    let nonce_pub = payload_sig.signature.get_compressed_public_nonce();
-    let challenge = payload_challenge(nonce_pub, &signing_pub, &canonical);
-    let pub_key = signing_pub
-        .to_public_key()
-        .map_err(|e| TransactionBuilderError::Other(format!("Invalid signing public key: {e}")))?;
-    let sig = payload_sig
-        .signature
-        .to_schnorr_signature()
-        .map_err(|e| TransactionBuilderError::Other(format!("Invalid signature in payload: {e}")))?;
-    if !sig.verify_raw_uniform(&pub_key, &challenge[..]) {
+    if !signature_is_valid(&signing_pub, payload.payload_signature(), &canonical)? {
         return Err(TransactionBuilderError::Other(
             "Offline payload integrity check failed: payload signature is invalid. The payload was tampered with in \
              transit, is corrupt, or was signed with a different key than it claims."
                 .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Whether `signature` is `signing_pub`'s signature over `canonical`.
+fn signature_is_valid(
+    signing_pub: &CompressedPublicKey,
+    signature: &PayloadIntegritySignature,
+    canonical: &[u8],
+) -> Result<bool, TransactionBuilderError> {
+    // R is the nonce public key embedded in the signature.
+    let nonce_pub = signature.signature.get_compressed_public_nonce();
+    let challenge = payload_challenge(nonce_pub, signing_pub, canonical);
+    let pub_key = signing_pub
+        .to_public_key()
+        .map_err(|e| TransactionBuilderError::Other(format!("Invalid signing public key: {e}")))?;
+    let sig = signature
+        .signature
+        .to_schnorr_signature()
+        .map_err(|e| TransactionBuilderError::Other(format!("Invalid signature in payload: {e}")))?;
+    Ok(sig.verify_raw_uniform(&pub_key, &challenge[..]))
+}
+
+// ---------------------------------------------------------------------------
+// Signed results (signed by the offline signer, verified by the online wallet)
+// ---------------------------------------------------------------------------
+
+/// The bytes a signed result's `payload_signature` covers.
+fn signed_result_canonical<P: OfflinePayload>(
+    kind: SignedResultKind,
+    request: &P,
+    signed: &SignedTransaction,
+    receipt: Option<&SigningReceipt>,
+) -> Result<Vec<u8>, TransactionBuilderError> {
+    request
+        .canonical_bytes()
+        .and_then(|request_canonical| {
+            borsh_canonical_signed(
+                kind,
+                request.get_version(),
+                &request_canonical,
+                request.payload_signature(),
+                signed,
+                receipt,
+            )
+        })
+        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))
+}
+
+/// Signs the result for `request` with the key that signed the request: the payload key it names, otherwise the view
+/// key. A request older than version 7 gets no signature, as a wallet of that version does not read one.
+fn sign_result<KM: TransactionKeyManagerInterface, P: OfflinePayload>(
+    key_manager: &KM,
+    kind: SignedResultKind,
+    request: &P,
+    signed: &SignedTransaction,
+    receipt: &SigningReceipt,
+) -> Result<Option<PayloadIntegritySignature>, TransactionBuilderError> {
+    if !has_result_signature(request.get_version()) {
+        return Ok(None);
+    }
+    let canonical = signed_result_canonical(kind, request, signed, Some(receipt))?;
+    let signing_key_id = request.payload_key_id().cloned().unwrap_or(TariKeyId::ViewKey);
+    sign_payload(key_manager, &signing_key_id, &canonical).map(Some)
+}
+
+fn result_refused(reason: &str) -> TransactionBuilderError {
+    TransactionBuilderError::Other(format!("Signed transaction integrity check failed: {reason}"))
+}
+
+/// What to do about a result whose request this wallet can no longer check or use.
+const PREPARE_AGAIN: &str =
+    "Prepare the payload again, and cancel the pending transaction of this one to release its inputs.";
+
+/// The parts of a signed result that are checked, whichever of the three kinds it is.
+struct ResultParts<'a, P> {
+    kinds: &'a [SignedResultKind],
+    version: &'a Version,
+    request: &'a P,
+    info: &'a OneSidedTransactionInfo,
+    signed: &'a SignedTransaction,
+    receipt: Option<&'a SigningReceipt>,
+    signature: Option<&'a PayloadIntegritySignature>,
+}
+
+/// Checks a signed result before the online wallet records or broadcasts anything from it.
+///
+/// - The request inside the result must carry a valid payload signature by a key this wallet holds. A view-only wallet
+///   with an imported payload key only accepts that key, as it signs every payload it prepares with it. A wallet that
+///   holds the spend key derives every payload key and accepts a request under any of them.
+/// - The result must have the version of its request. Whether the result itself must be signed is then read from the
+///   request's version, which the request's signature covers, and not from the result: a version 7 request is only
+///   answered by a signed result. A version 5 or 6 request is answered by a signer that does not sign its result.
+/// - The result's signature must be by the key that signed the request.
+/// - The signed transaction must spend the request's inputs and no others, and name one distinct sent output per
+///   recipient.
+/// - The outputs the wallet is about to record must be outputs of the signed transaction, and the change output must
+///   match its own contents: see [`check_recorded_outputs`].
+///
+/// This function sees keys, not the wallet's records, and writes nothing. The caller must still check what only its
+/// database can tell: that no transaction id the result names (`signed_transaction.tx_id`, which no check here binds
+/// for an unsigned result) is already in use, and that the inputs are locked for the request or can be locked again.
+///
+/// The request's expiry is not checked here. It limits when the signer may sign, and the signer enforces it. A result
+/// that was signed in time is still accepted after `expires_at` while its inputs are locked for the request; the
+/// caller only refuses an expired request when it would have to lock the inputs again.
+///
+/// # Security
+///
+/// The signature shows that nobody without the signing key changed the result in transit. It does not show who
+/// produced it: a view-key signature can be made by every holder of the view key, and a payload-key signature by the
+/// online wallet itself. An unsigned result (version 5 or 6) is only tied to its request by the checks on the inputs
+/// and the recorded outputs. Its transaction id, its receipt, the change output's memo and the `outputs` list are not
+/// covered, the change output can be left out together with its hash, and which output is recorded as sent can be
+/// changed. In no version is the signed transaction itself validated here: a result whose kernel signature or offset
+/// was changed passes, is recorded, and is only rejected by the base node. See `A-SIGNER-02`.
+pub fn verify_signed_result<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    result: &SignedTransactionResult,
+) -> Result<(), TransactionBuilderError> {
+    match result {
+        SignedTransactionResult::OneSided(result) => verify_result(key_manager, &ResultParts {
+            // A multisig withdraw is read back as the same type
+            kinds: &[SignedResultKind::OneSided, SignedResultKind::WithdrawMultisig],
+            version: &result.version,
+            request: &result.request,
+            info: &result.request.info,
+            signed: &result.signed_transaction,
+            receipt: result.receipt.as_ref(),
+            signature: result.payload_signature.as_ref(),
+        }),
+        SignedTransactionResult::DepositMultisig(result) => verify_result(key_manager, &ResultParts {
+            kinds: &[SignedResultKind::DepositMultisig],
+            version: &result.version,
+            request: &result.request,
+            info: &result.request.info.base,
+            signed: &result.signed_transaction,
+            receipt: result.receipt.as_ref(),
+            signature: result.payload_signature.as_ref(),
+        }),
+    }
+}
+
+fn verify_result<KM: TransactionKeyManagerInterface, P: OfflinePayload>(
+    key_manager: &KM,
+    result: &ResultParts<'_, P>,
+) -> Result<(), TransactionBuilderError> {
+    let request = result.request;
+    let request_version = request.get_version();
+    if result.version != request_version {
+        return Err(result_refused(&format!(
+            "the result is version {}, but the request in it is version {request_version}",
+            result.version
+        )));
+    }
+    let signing_key_id = match (request.payload_key_id(), key_manager.get_payload_auth_key()) {
+        (None, Some(index)) => {
+            return Err(result_refused(&format!(
+                "the request in it was signed with the view key, but this wallet signs with payload key #{index}. \
+                 {PREPARE_AGAIN}"
+            )));
+        },
+        (key_id, _) => key_id.cloned().unwrap_or(TariKeyId::ViewKey),
+    };
+    let signing_pub = key_manager.get_public_key_at_key_id(&signing_key_id).map_err(|e| {
+        result_refused(&format!(
+            "this wallet does not hold the key that signed the request ({e}). {PREPARE_AGAIN}"
+        ))
+    })?;
+    let request_canonical = request
+        .canonical_bytes()
+        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
+    if !signature_is_valid(&signing_pub, request.payload_signature(), &request_canonical)? {
+        return Err(result_refused(
+            "the request in it is not one this wallet signed. It was changed after signing or belongs to another \
+             wallet.",
+        ));
+    }
+
+    if has_result_signature(request_version) {
+        let Some(signature) = result.signature else {
+            return Err(result_refused(&format!(
+                "a version {request_version} result must be signed and this one is not"
+            )));
+        };
+        let mut signed_by_request_key = false;
+        for kind in result.kinds {
+            let canonical = signed_result_canonical(*kind, request, result.signed, result.receipt)?;
+            if signature_is_valid(&signing_pub, signature, &canonical)? {
+                signed_by_request_key = true;
+                break;
+            }
+        }
+        if !signed_by_request_key {
+            return Err(result_refused(
+                "the result's signature is invalid. The file was changed after signing or is corrupt.",
+            ));
+        }
+    }
+    // Run for a signed result too: its signature can be made by every holder of the request's key
+    check_spent_inputs(result.info, result.signed)?;
+    check_recorded_outputs(key_manager, result.info, result.signed)
+}
+
+/// The signed transaction must spend exactly the inputs its request names, each of them once.
+fn check_spent_inputs(
+    info: &OneSidedTransactionInfo,
+    signed: &SignedTransaction,
+) -> Result<(), TransactionBuilderError> {
+    let requested = info.inputs.iter().map(|input| input.output_hash()).collect::<Vec<_>>();
+    let spent = signed
+        .transaction
+        .body
+        .inputs()
+        .iter()
+        .map(|input| input.output_hash())
+        .collect::<Vec<_>>();
+    let distinct = |hashes: &[FixedHash]| {
+        hashes
+            .iter()
+            .enumerate()
+            .all(|(i, hash)| !hashes.iter().take(i).any(|earlier| earlier == hash))
+    };
+    let same = requested.len() == spent.len() &&
+        distinct(&requested) &&
+        distinct(&spent) &&
+        requested.iter().all(|hash| spent.contains(hash));
+    if requested.is_empty() || !same {
+        return Err(result_refused(
+            "the signed transaction does not spend the inputs of the request in it",
+        ));
+    }
+    Ok(())
+}
+
+/// The outputs and hashes the wallet records from a signed result must belong to the transaction it broadcasts.
+///
+/// - The request names at least one recipient and the result one sent output for each, no two of them the same.
+/// - No output is both sent and change, and every hash is an output of the signed transaction.
+/// - A result that lists change hashes carries the change output.
+/// - The change output is checked against its own contents, as `WalletOutput` reads its hash and commitment from the
+///   file: the hash is recomputed from its fields (which covers its features, script, covenant and commitment) and must
+///   be listed in `change_hashes`, the commitment must open to its value under its mask key id, and its script must be
+///   a single `PushPubKey` of the key its script key id names.
+/// - The change output's `script_lock_height` and `input_data` are stored with it but are not part of its hash. They
+///   must be what the signer writes: `0` and an empty stack.
+fn check_recorded_outputs<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    info: &OneSidedTransactionInfo,
+    signed: &SignedTransaction,
+) -> Result<(), TransactionBuilderError> {
+    if info.recipients.is_empty() {
+        return Err(result_refused("the request in it names no recipient"));
+    }
+    if signed.sent_hashes.len() != info.recipients.len() {
+        return Err(result_refused(&format!(
+            "it names {} sent output(s) for {} recipient(s)",
+            signed.sent_hashes.len(),
+            info.recipients.len()
+        )));
+    }
+    if let Some((_, hash)) = signed
+        .sent_hashes
+        .iter()
+        .enumerate()
+        .find(|(i, hash)| signed.sent_hashes.iter().take(*i).any(|earlier| earlier == *hash))
+    {
+        return Err(result_refused(&format!(
+            "output {hash} is listed as sent to more than one recipient"
+        )));
+    }
+    if let Some(hash) = signed
+        .sent_hashes
+        .iter()
+        .find(|hash| signed.change_hashes.contains(hash))
+    {
+        return Err(result_refused(&format!(
+            "output {hash} is listed as both sent and change"
+        )));
+    }
+    let hashes = signed
+        .transaction
+        .body
+        .outputs()
+        .iter()
+        .map(|output| output.hash())
+        .collect::<Vec<_>>();
+    if let Some(hash) = signed
+        .sent_hashes
+        .iter()
+        .chain(&signed.change_hashes)
+        .find(|hash| !hashes.contains(hash))
+    {
+        return Err(result_refused(&format!(
+            "output {hash} is not an output of the signed transaction"
+        )));
+    }
+    let Some(change) = &signed.change_output else {
+        if signed.change_hashes.is_empty() {
+            return Ok(());
+        }
+        return Err(result_refused(
+            "it lists change of the signed transaction but does not carry the change output",
+        ));
+    };
+    let hash = change
+        .to_transaction_output()
+        .map_err(|e| result_refused(&format!("the change output is not valid ({e})")))?
+        .hash();
+    if hash != change.output_hash() {
+        return Err(result_refused("the change output's hash does not match its contents"));
+    }
+    if !signed.change_hashes.contains(&hash) {
+        return Err(result_refused(
+            "the change output is not listed as change of the signed transaction",
+        ));
+    }
+    if key_manager
+        .verify_mask(
+            change.commitment(),
+            change.commitment_mask_key_id(),
+            change.value().as_u64(),
+        )
+        .is_err()
+    {
+        return Err(result_refused(
+            "the change output's commitment does not open to its value under its mask key",
+        ));
+    }
+    let script_key = key_manager.get_public_key_at_key_id(change.script_key_id()).ok();
+    let script_matches = match (change.script().as_slice(), &script_key) {
+        ([Opcode::PushPubKey(key)], Some(script_key)) => **key == *script_key,
+        _ => false,
+    };
+    if !script_matches {
+        return Err(result_refused(
+            "the change output's script does not pay to its script key",
+        ));
+    }
+    if change.script_lock_height() != 0 || *change.input_data() != ExecutionStack::default() {
+        return Err(result_refused(
+            "the change output's script lock height or input data is not what the signer writes",
         ));
     }
     Ok(())
@@ -557,11 +900,20 @@ fn verify_and_sign_one_sided<KM: TransactionKeyManagerInterface>(
 
     let signed_transaction =
         build_and_sign_transaction(key_manager, consensus_constants, network, request.info.clone())?;
+    // The result goes back over the same medium as the request
+    let payload_signature = sign_result(
+        key_manager,
+        SignedResultKind::OneSided,
+        &request,
+        &signed_transaction,
+        &receipt,
+    )?;
 
     Ok(SignedOneSidedTransactionResult {
         version: request.version.clone(),
         request,
         signed_transaction,
+        payload_signature,
         receipt: Some(receipt),
     })
 }
@@ -604,11 +956,20 @@ fn verify_and_sign_deposit_multisig<KM: TransactionKeyManagerInterface>(
 
     let signed_transaction =
         sign_multisig_transaction(key_manager, consensus_constants, network, request.info.clone())?;
+    // The result goes back over the same medium as the request
+    let payload_signature = sign_result(
+        key_manager,
+        SignedResultKind::DepositMultisig,
+        &request,
+        &signed_transaction,
+        &receipt,
+    )?;
 
     Ok(SignedOneSidedDepositMultisigTransactionResult {
         version: request.version.clone(),
         request,
         signed_transaction,
+        payload_signature,
         receipt: Some(receipt),
     })
 }
@@ -651,11 +1012,20 @@ fn verify_and_sign_withdraw_multisig<KM: TransactionKeyManagerInterface>(
 
     let signed_transaction =
         sign_multisig_withdraw_transaction(key_manager, consensus_constants, network, request.info.clone())?;
+    // The result goes back over the same medium as the request
+    let payload_signature = sign_result(
+        key_manager,
+        SignedResultKind::WithdrawMultisig,
+        &request,
+        &signed_transaction,
+        &receipt,
+    )?;
 
     Ok(SignedOneSidedWithdrawMultisigTransactionResult {
         version: request.version.clone(),
         request,
         signed_transaction,
+        payload_signature,
         receipt: Some(receipt),
     })
 }

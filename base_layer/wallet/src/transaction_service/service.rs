@@ -80,7 +80,7 @@ use tari_transaction_components::{
     key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{
-        models::{PaymentRecipient, SignedOneSidedTransactionResult},
+        models::{PaymentRecipient, SignedTransaction, SignedTransactionResult},
         offline_signer::{
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
@@ -88,6 +88,7 @@ use tari_transaction_components::{
             sign_locked_deposit_multisig_transaction,
             sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
+            verify_signed_result,
         },
         one_sided_signer::{multisig_pending_output, multisig_placeholder_script, withdraw_pending_output},
     },
@@ -4521,21 +4522,13 @@ where
     }
 
     /// The tx_id the record of the payload's `i`th recipient is stored under.
-    fn recipient_tx_id(
-        &self,
-        request: &SignedOneSidedTransactionResult,
-        i: usize,
-    ) -> Result<TxId, TransactionServiceError> {
+    fn recipient_tx_id(&self, signed: &SignedTransaction, i: usize) -> Result<TxId, TransactionServiceError> {
         if i == 0 {
-            return Ok(request.signed_transaction.tx_id);
+            return Ok(signed.tx_id);
         }
-        let sent_hash = request
-            .signed_transaction
-            .sent_hashes
-            .get(i)
-            .ok_or(TransactionServiceError::Other(
-                "sent_outputs index out of bounds".to_string(),
-            ))?;
+        let sent_hash = signed.sent_hashes.get(i).ok_or(TransactionServiceError::Other(
+            "sent_outputs index out of bounds".to_string(),
+        ))?;
         Ok(TxId::new_deterministic(
             self.resources
                 .transaction_key_manager_service
@@ -4547,53 +4540,21 @@ where
 
     /// Refuses, before anything is locked, a signed payload whose records could not all be written: one that names a
     /// transaction this wallet already has a record of - a prepared payload has none until it is submitted - or, other
-    /// than its own prepared tx_id, one that already has outputs (such as another prepared payload's), or a recipient
-    /// or change output its transaction does not carry, or that does not name a distinct sent output for each
-    /// recipient.
+    /// than its own prepared tx_id, one that already has outputs (such as another prepared payload's), or that names
+    /// the same transaction twice. This is what binds `signed.tx_id`, which an unsigned result is free to choose.
+    ///
+    /// Called after `verify_signed_result`, which has checked what the file alone can tell: the recipients, the sent
+    /// and change hashes, the change output and that the transaction spends the request's inputs.
     async fn check_signed_payload(
         &self,
-        request: &SignedOneSidedTransactionResult,
+        request_tx_id: TxId,
+        recipients: usize,
+        signed: &SignedTransaction,
     ) -> Result<(), TransactionServiceError> {
         let refuse = |reason: &str| Err(TransactionServiceError::Other(format!("The signed payload {reason}")));
-        let signed = &request.signed_transaction;
-        let recipients = request.request.info.recipients.len();
-        let sent_hashes = signed.sent_hashes.iter().take(recipients).collect::<HashSet<_>>();
-        if recipients == 0 || sent_hashes.len() < recipients {
-            return refuse("has no recipients, or fewer distinct sent outputs than recipients");
-        }
-        let body_hashes = signed
-            .transaction
-            .body
-            .outputs()
-            .iter()
-            .map(TransactionOutput::hash)
-            .collect::<HashSet<_>>();
-        if sent_hashes
-            .into_iter()
-            .chain(&signed.change_hashes)
-            .any(|hash| !body_hashes.contains(hash))
-        {
-            return refuse("names an output its transaction does not carry");
-        }
-        if signed.transaction.body.inputs().is_empty() {
-            return refuse("spends nothing");
-        }
-        // The change output is stored as this wallet's own, so it must be the transaction's change output. Its hash is
-        // recomputed, as the stored one is just a field of the file; the hash covers the commitment.
-        match &signed.change_output {
-            None if signed.change_hashes.is_empty() => {},
-            Some(change) => {
-                // The stored hash is what the output is looked up by once it is mined
-                let hash = change.to_transaction_output()?.hash();
-                if hash != change.output_hash() || !signed.change_hashes.contains(&hash) {
-                    return refuse("does not carry its transaction's change output");
-                }
-            },
-            None => return refuse("does not carry its transaction's change output"),
-        }
-        let mut tx_ids = HashSet::from([request.request.tx_id]);
+        let mut tx_ids = HashSet::from([request_tx_id]);
         for i in 0..recipients {
-            tx_ids.insert(self.recipient_tx_id(request, i)?);
+            tx_ids.insert(self.recipient_tx_id(signed, i)?);
         }
         if tx_ids.len() <= recipients {
             return refuse("names the same transaction twice");
@@ -4606,7 +4567,7 @@ where
                 ));
             }
             // The records are written under these tx_ids, and the confirm moves the payload's outputs to the first
-            if tx_id != request.request.tx_id && !output_manager.fetch_outputs_by_tx_id(tx_id).await?.is_empty() {
+            if tx_id != request_tx_id && !output_manager.fetch_outputs_by_tx_id(tx_id).await?.is_empty() {
                 return refuse(&format!("names transaction {tx_id}, which already has outputs"));
             }
         }
@@ -4942,36 +4903,40 @@ where
 
     async fn submit_signed_one_sided_transaction(
         &mut self,
-        request: SignedOneSidedTransactionResult,
+        request: SignedTransactionResult,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<Vec<TxId>, TransactionServiceError> {
-        let old_tx_id = request.request.tx_id;
-        let new_tx_id = request.signed_transaction.tx_id;
-        for recipient in &request.request.info.recipients {
+        // Everything recorded below comes out of this file. This check writes nothing, so a file that fails it
+        // neither locks nor releases anything.
+        verify_signed_result(&self.resources.transaction_key_manager_service, &request)?;
+
+        let expires_at = request.expires_at();
+        let (old_tx_id, info, signed_transaction) = request.into_parts();
+        let new_tx_id = signed_transaction.tx_id;
+        for recipient in &info.recipients {
             self.verify_send(&recipient.address, TariAddressFeatures::create_one_sided_only())?;
         }
-        self.check_signed_payload(&request).await?;
-        let payment_id = &request.request.info.payment_id;
+        self.check_signed_payload(old_tx_id, info.recipients.len(), &signed_transaction)
+            .await?;
+        let payment_id = &info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
-        let change = request.signed_transaction.change_output.clone().map(|v| vec![v]);
-        let fee = request.signed_transaction.transaction.body.get_total_fee()?;
+        let change = signed_transaction.change_output.clone().map(|v| vec![v]);
+        let fee = signed_transaction.transaction.body.get_total_fee()?;
         let mut tx_ids = Vec::new();
         let mut completed_txs = Vec::new();
 
-        for (i, recipient) in request.request.info.recipients.iter().enumerate() {
-            let tx_id = self.recipient_tx_id(&request, i)?;
+        for (i, recipient) in info.recipients.iter().enumerate() {
+            let tx_id = self.recipient_tx_id(&signed_transaction, i)?;
             tx_ids.push(tx_id);
-            let sent_hash =
-                request
-                    .signed_transaction
-                    .sent_hashes
-                    .get(i)
-                    .copied()
-                    .ok_or(TransactionServiceError::Other(
-                        "sent_output_hashes index out of bounds".to_string(),
-                    ))?;
+            let sent_hash = signed_transaction
+                .sent_hashes
+                .get(i)
+                .copied()
+                .ok_or(TransactionServiceError::Other(
+                    "sent_output_hashes index out of bounds".to_string(),
+                ))?;
             let mut final_payment_id = payment_id.clone();
             final_payment_id.set_fee(fee);
             let completed_tx = CompletedTransaction::new_with_output_hashes(
@@ -4980,7 +4945,7 @@ where
                 recipient.address.clone(),
                 recipient.amount,
                 fee,
-                request.signed_transaction.transaction.clone(),
+                signed_transaction.transaction.clone(),
                 LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
@@ -4989,17 +4954,13 @@ where
                 final_payment_id,
                 vec![sent_hash],
                 vec![],
-                request.signed_transaction.change_hashes.clone(),
+                signed_transaction.change_hashes.clone(),
                 0,
             )?;
             completed_txs.push(completed_tx);
         }
         let relocked = match self
-            .lock_signed_inputs(
-                old_tx_id,
-                &request.signed_transaction.transaction,
-                request.request.expires_at,
-            )
+            .lock_signed_inputs(old_tx_id, &signed_transaction.transaction, expires_at)
             .await?
         {
             Ok(relocked) => relocked,

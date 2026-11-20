@@ -71,24 +71,62 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   `applications/minotari_console_wallet` (offline-payload signing commands, `sign-script-message`).
 - **Recorded:** 2026-11-17.
 
-### A-SIGNER-02: The online wallet trusts the signed-result file it is given to submit
+### A-SIGNER-02: The online wallet relies on the signature over a signed result
 
-- **Assumption:** The channel that carries a signed-result file from the offline signer back to the online wallet is
-  trusted. At submit the wallet does not verify the file's payload signature, which does not cover the signed
-  transaction anyway, and does not bind the signed transaction to the prepared request.
-- **What that means:** Whoever can replace the file can have the wallet broadcast any transaction the signer has
-  signed, including one for a payload the operator cancelled, and record it with another prepared payload's
-  recipient and amount. When nothing is locked under the file's tx_id, the file can lock the `Unspent` outputs its
-  transaction spends until the broadcast is rejected. It can release the locks of the prepared payload it names by
-  pairing its request with a transaction that is rejected. Closing this needs the payload signature verified at
-  submit, the signed inputs, outputs and tx_id required to match the request, and the signed transaction validated
-  before anything is locked.
-- **Not covered:** A tampered file releasing outputs other than those locked under the prepared tx_id it names,
-  creating records under tx_ids the wallet already has, or adding a wallet output whose commitment does not open to
-  its stated value.
-- **Where:** `base_layer/wallet` (`transaction_service`, `output_manager_service`),
-  `applications/minotari_console_wallet`.
-- **Recorded:** 2026-11-24.
+- **Assumption:** The online wallet records and broadcasts what a signed result file says (the recipients it shows in
+  its history, the change output, the transaction) once the file passes `verify_signed_result` and the checks against
+  the wallet's own records. For a version 7 request the offline signer signs the result, including its receipt, with
+  the key that signed the request: the payload key the request names, otherwise the view key. The wallet verifies
+  both signatures with a key it holds. A view-only wallet with an imported payload key accepts no other key; a wallet
+  that holds the spend key derives every payload key and accepts a request under any of them. Results for version 5
+  and 6 requests carry no signature and are accepted for a request the wallet signed.
+- **What that means:** The signature detects a change made in transit by anyone without that key. It does not show
+  who produced the file: every holder of the view key can produce a view-key signature, and the online wallet itself
+  holds its payload key. Such a party can make the wallet record a wrong recipient or change output; it cannot move
+  funds, as the transaction still needs spend-key signatures. An unsigned version 5 or 6 result can be changed by
+  anyone, and a version 7 result by a holder of the key that signed its request, within what the checks in "Not
+  covered" allow. In such a result:
+  - its `tx_id` (to one the wallet does not use yet), its receipt, the memo stored with the change output and its
+    `outputs` list are not checked;
+  - the signed transaction is not validated before its inputs are locked and it is recorded. A file can keep the
+    inputs, the sent and change hashes and the change output, and carry a kernel signature or offset that was
+    changed. It passes every check and is recorded as completed, and the base node rejects the transaction. The
+    broadcast then cancels the record and releases the inputs, so the file releases the locks of the prepared
+    payload it names. The genuine result for that request is refused afterwards, as its `tx_id` is in use. Closing
+    this needs the transaction validated before anything is locked;
+  - the change output can be left out. A result with no change output and no change hashes passes. Its transaction
+    is broadcast, but the change is not stored, and the balance stays too low until the wallet scans for its outputs
+    again;
+  - which output is recorded as sent can be changed. With several recipients the sent hashes can be reordered. With
+    one recipient and no listed change, the change output can be recorded as the sent output.
+
+  The request's expiry limits when the signer may sign, and the signer enforces it. The wallet does not refuse a
+  result because it comes back after the request has expired: while the request's inputs are locked under its
+  `tx_id`, the result is accepted, and refusing it would leave those inputs locked. Releasing a prepared payload's
+  locks does not revoke a copy that was already signed: the result of a cancelled payload is still accepted while
+  its inputs are `Unspent` and it has not expired (a version 5 payload never expires), and locks them again.
+- **Not covered:** The file must not decide whether it is checked: a version 7 request is only answered by a signed
+  result of the same version, and the request's version is covered by its own signature. Without the signing key it
+  must not be possible to change any field of a version 7 result, its receipt included, or the request inside a
+  result of any version, and have the wallet accept it. In every version, and before the wallet writes anything:
+  - the transaction must spend exactly the request's inputs, each of them once;
+  - there must be one distinct sent output per recipient, no output may be both sent and change, and every recorded
+    hash must be an output of the transaction;
+  - a result that lists change must carry the change output, and the change output must match its own contents: its
+    hash recomputed from its fields, its commitment opening to its value under its mask key, its script paying to
+    its script key, and its `script_lock_height` and `input_data`, which the hash does not cover, as the signer
+    writes them (`0` and empty). No change output is stored whose commitment does not open to its stated value;
+  - no record is created under a `tx_id` the wallet already has a record or outputs for;
+  - if outputs are locked under the request's `tx_id`, the signed inputs must be exactly those outputs and all of
+    them still locked; if none are, the request must not have expired (version 6 or later) and every input must be
+    `Unspent`.
+
+  A file that fails a check locks nothing, and releases nothing except in one case: the request is one the wallet
+  signed and one of its own inputs is gone, and then only the outputs locked under that request's `tx_id` are
+  released.
+- **Where:** `base_layer/transaction_components` (`offline_signing`), `base_layer/wallet` (`transaction_service`,
+  `output_manager_service`), `applications/minotari_offline_signer`, `applications/minotari_console_wallet`.
+- **Recorded:** 2026-11-25.
 
 ### A-MULTISIG-01: Multisig co-signers trust the party that builds the spending transaction
 

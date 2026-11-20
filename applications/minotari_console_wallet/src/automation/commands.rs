@@ -94,7 +94,7 @@ use tari_transaction_components::{
             PrepareDepositMultisigTransactionResult,
             PrepareOneSidedTransactionForSigningResult,
             PrepareWithdrawMultisigTransactionResult,
-            SignedOneSidedTransactionResult,
+            SignedTransactionResult,
             TransactionResult,
         },
         present_payload_summary,
@@ -3320,7 +3320,7 @@ pub async fn command_runner(
             },
             BroadcastSignedOneSidedTransaction(args) => {
                 let data = read_payload_file(&args.input_file)?;
-                let request = SignedOneSidedTransactionResult::from_json(&data)?;
+                let request = SignedTransactionResult::from_json(&data)?;
 
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service

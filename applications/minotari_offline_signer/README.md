@@ -74,9 +74,11 @@ escaped), and finally a recap. When run from a terminal it then asks `Sign this 
 `y` or `yes`. When stdin is not a terminal it prints the summary and signs without a prompt.
 
 The signed file carries a `receipt`: the transaction id, a hash of the payload that was approved, whether it was
-approved at a prompt (`Prompt`) or signed without one (`NoPrompt`), and when it was signed (unix seconds). The receipt
-is not signed, so anyone handling the file can change it: it is not proof of approval and nothing should trust it as
-such. Files written by older signers have no receipt.
+approved at a prompt (`Prompt`) or signed without one (`NoPrompt`), and when it was signed (unix seconds). For a
+version 7 payload the receipt is covered by the signature over the signed file (see "Signed Results"). For a version 5
+or 6 payload it is not signed, so anyone handling the file can change it. Either way it is not proof of approval and
+nothing should trust it as such: the online wallet holds the signing key too. Files written by older signers have no
+receipt.
 
 The signer only signs transactions that leave a change output. A payload where what is left after the outputs and
 the fee is no more than a change output would cost, such as a send-all or sweep, is refused, because with no change
@@ -96,9 +98,9 @@ key on the signer, so only the signer can create it, and only the wallet it is g
 
 Nothing changes unless you set it up; payloads signed with the view key, and older version 5 payloads, keep working
 until the signer exports its first payload key.
-Upgrade the signer before the online wallet: an older signer cannot read the version 6 payloads a new online wallet
-prepares, while a new signer signs version 5 payloads and returns the result as version 5, which an older online
-wallet can broadcast.
+Upgrade the signer before the online wallet: an older signer cannot read the version 7 payloads a new online wallet
+prepares, while a new signer signs version 5 and 6 payloads and returns the result in the same version, which an
+older online wallet can broadcast.
 To set it up:
 
 1. On the signer, export payload key 1 (any index works; a key is retired with `retire-payload-key`):
@@ -165,6 +167,52 @@ Before showing the summary the signer checks the payload's expiry, checks its si
 and verifies its signature, so a payload it would refuse is never shown for approval. The summary then says which key
 signed the payload: `payload key #<index>`, or `view key (shared key)` followed by a warning that anyone holding the
 view key could have prepared it.
+
+### Signed Results
+
+For a version 7 payload the signer also signs the file it hands back, receipt included, with the key that signed the
+payload: the payload key it names, otherwise the view key. The online wallet checks that signature before it records
+or broadcasts anything from the file, so a change to the recipients, the change output, the transaction or the receipt
+on the way back is refused.
+
+A view-only wallet with an imported payload key only accepts results for payloads signed with that key. A result for
+a payload it prepared before the key was imported, or with a key it has since replaced, is refused: prepare the
+payload again, and cancel the pending transaction of the old one to release its inputs. A wallet that holds the spend
+key derives every payload key itself and accepts results under any of them.
+
+Results for version 5 and 6 payloads are not signed. The online wallet still accepts them for a request it signed.
+In every version it checks, before it writes anything, that:
+
+- the transaction spends exactly the request's inputs, each once, and there is one sent output per recipient, each a different
+  one;
+- every output it is about to record is an output of the signed transaction. A result that lists change carries the
+  change output, and the change output matches its own contents: hash, value and mask key, script and script key,
+  and a script lock height of `0` and empty input data, as the signer writes them;
+- none of the transaction ids the result names is already in use in the wallet, so the same result is not recorded
+  twice;
+- the inputs are the ones reserved for the request, all still reserved. If nothing is reserved for it any more, a
+  version 6 or 7 request must not have expired and the inputs must all be unspent, and they are reserved again.
+
+The expiry is a limit on when the signer signs. A result that was signed in time and comes back after its payload's
+expiry is still accepted while the payload's inputs are reserved for it. It is only refused when the reservation is
+gone (the pending transaction was cancelled) and the inputs would have to be reserved again.
+
+Cancelling a prepared payload releases its inputs but does not revoke a result that was already signed for it: the
+wallet still accepts that result while the inputs are unspent and the payload has not expired (a version 5 payload
+never expires). To make sure a signed result can no longer be used, spend its inputs in another transaction.
+
+The signature shows that the file was not changed by anyone without the signing key. It does not show who produced
+it. In an unsigned result, and in a signed one made by a holder of the key that signed its request, the following is
+not checked:
+
+- the transaction id, the receipt, the memo stored with the change output and the `outputs` list;
+- the signed transaction itself. A result whose kernel signature or offset was changed is recorded and then rejected
+  by the base node. The wallet cancels it and releases its inputs, and the genuine result for that payload is refused
+  afterwards because its transaction id is in use: prepare the payload again;
+- that the change output is present. A result without a change output and without change hashes is accepted and
+  broadcast, and the wallet does not show the change until it scans for its outputs again;
+- which output is recorded as sent. With several recipients the sent outputs can be reordered, and with one recipient
+  and no listed change, the change output can be recorded as the sent output.
 
 ### Payload Expiry
 
