@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use borsh::{BorshDeserialize, BorshSerialize};
 use semver::Version;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
@@ -31,16 +31,27 @@ use tari_common_types::{
 use crate::{
     MicroMinotari,
     helpers::terminal_safe::escape_str_for_terminal,
+    key_manager::TariKeyId,
     transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, TransactionError, WalletOutput},
 };
 
 /// Version 4 had no payload integrity signature.
 /// Version 5 adds `payload_signature` to all `Prepare*` results so the offline
 /// signer can verify the payload was not tampered with in transit.
-const SUPPORTED_VERSION: &str = "5.0.0";
+const VERSION_5: &str = "5.0.0";
+/// Version 6 adds `payload_key_id` and `expires_at`, both covered by the payload signature.
+const SUPPORTED_VERSION: &str = "6.0.0";
 
 pub fn get_supported_versions() -> Vec<Version> {
-    vec![Version::parse(SUPPORTED_VERSION).unwrap()]
+    vec![
+        Version::parse(VERSION_5).unwrap(),
+        Version::parse(SUPPORTED_VERSION).unwrap(),
+    ]
+}
+
+/// Whether a payload of `version` carries `payload_key_id` and `expires_at`.
+pub fn has_payload_auth_fields(version: &Version) -> bool {
+    version.major >= 6
 }
 
 pub fn get_latest_version() -> Version {
@@ -64,10 +75,13 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
             .ok_or_else(|| TransactionError::SerializationError("Missing version".into()))?;
         let version: Version = serde_json::from_value(version.clone()).map_err(parse_error)?;
         if !get_supported_versions().contains(&version) {
+            let supported = get_supported_versions()
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("', '");
             return Err(TransactionError::SerializationError(format!(
-                "Unsupported version. Expected '{}', got '{}'",
-                get_supported_versions().first().expect("at least one version"),
-                version
+                "Unsupported version. Expected one of '{supported}', got '{version}'"
             )));
         }
 
@@ -81,32 +95,31 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
     }
 }
 
-/// A domain-separated Schnorr signature produced by the view wallet over the Borsh-encoded
+/// A domain-separated Schnorr signature produced by the online wallet over the Borsh-encoded
 /// payload data.  The offline signer verifies this before using the spend key, so that any
 /// in-transit tampering (recipient swap, amount change, input substitution, …) by a party
-/// that does not hold the view key is detected and the signing operation is aborted.
+/// that does not hold the signing key is detected and the signing operation is aborted.
 ///
-/// The challenge binds the nonce public key R, the view public key P, and the canonical
-/// Borsh bytes of the transaction payload: `H_domain(R || P || borsh_bytes)`.  Both
-/// wallets share the same view key, so the verifier derives P locally rather than
-/// trusting a key embedded in the payload.
+/// The challenge binds the nonce public key R, the public key P the payload claims to be
+/// signed with, and the canonical Borsh bytes of the transaction payload:
+/// `H_domain(R || P || borsh_bytes)`.  The verifier derives P locally (from its own view key,
+/// or from its spend key for a payload key) rather than trusting a key embedded in the payload.
 ///
-/// # Security — what this does *not* prove
+/// # Security — which key signed it matters
 ///
-/// The signing key here is the wallet's **view key**, which is shareable by design: it is
-/// handed out to view-only wallets, auditors, exchanges and block explorers so that they can
-/// observe incoming payments.  Anyone holding the view key can therefore *forge* this
-/// signature over a payload of their choosing — for example one that redirects the funds to
-/// themselves — and the air-gapped signer will verify it as authentic.
+/// A version 6 payload is normally signed with a **payload key** (`payload_key_id` is
+/// `Some(PayloadAuth { index })`): a key derived from the spend key on the signer and imported
+/// into the online wallet, so nobody else can produce it. Without one, the payload is signed with
+/// the wallet's **view key** (`payload_key_id` is `None`, and always on version 5), which is
+/// shareable by design: it is handed out to view-only wallets, auditors, exchanges and block
+/// explorers. Anyone holding the view key can *forge* a view-key signature over a payload of their
+/// choosing, so it is only a **transit-integrity** check. A signer that requires a payload key
+/// (see [`crate::offline_signing::PayloadKeyPolicy`]) refuses view-key payloads.
 ///
-/// This signature is consequently a **transit-integrity** check, not an authenticity check.
-/// The authoritative authorisation step is the human operating the air-gapped signer
+/// Either way the authoritative authorisation step is the human operating the air-gapped signer
 /// confirming a [`crate::offline_signing::PayloadSummary`] of what is about to be signed. The
 /// type system requires it: the `sign_locked_*` functions only accept a
 /// [`crate::offline_signing::ConfirmedPayload`], which is produced by confirming a presented summary.
-/// Closing the gap in the protocol itself requires a dedicated authentication key that is
-/// provisioned to the online wallet separately from the view key, which is a breaking change
-/// to the key-export format and the payload version.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct PayloadIntegritySignature {
     /// Schnorr signature produced with the view private key.
@@ -116,7 +129,8 @@ pub struct PayloadIntegritySignature {
 }
 
 /// Canonical Borsh bytes for a one-sided transaction payload covering all
-/// security-relevant fields (`version`, `tx_id`, and the full `info` struct).
+/// security-relevant fields (`version`, `tx_id`, the full `info` struct and, from version 6,
+/// `payload_key_id` and `expires_at`).
 /// Used for both signing (prepare side) and integrity verification (sign side).
 ///
 /// `OneSidedTransactionInfo` is serialised directly via its `BorshSerialize` impl;
@@ -126,14 +140,10 @@ pub fn borsh_canonical_one_sided(
     version: &Version,
     tx_id: TxId,
     info: &OneSidedTransactionInfo,
+    payload_key_id: Option<&TariKeyId>,
+    expires_at: u64,
 ) -> Result<Vec<u8>, TransactionError> {
-    let mut buf = Vec::new();
-    BorshSerialize::serialize(&version.to_string(), &mut buf)
-        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
-        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    BorshSerialize::serialize(info, &mut buf).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    Ok(buf)
+    borsh_canonical(version, tx_id, info, payload_key_id, expires_at)
 }
 
 /// Canonical Borsh bytes for a multisig transaction payload.
@@ -141,14 +151,61 @@ pub fn borsh_canonical_multisig(
     version: &Version,
     tx_id: TxId,
     info: &OneSidedMultisigTransactionInfo,
+    payload_key_id: Option<&TariKeyId>,
+    expires_at: u64,
 ) -> Result<Vec<u8>, TransactionError> {
+    borsh_canonical(version, tx_id, info, payload_key_id, expires_at)
+}
+
+fn borsh_canonical<T: BorshSerialize>(
+    version: &Version,
+    tx_id: TxId,
+    info: &T,
+    payload_key_id: Option<&TariKeyId>,
+    expires_at: u64,
+) -> Result<Vec<u8>, TransactionError> {
+    let to_err = |e: std::io::Error| TransactionError::SerializationError(e.to_string());
     let mut buf = Vec::new();
-    BorshSerialize::serialize(&version.to_string(), &mut buf)
-        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
-        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    BorshSerialize::serialize(info, &mut buf).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(&version.to_string(), &mut buf).map_err(to_err)?;
+    BorshSerialize::serialize(&u64::from(tx_id), &mut buf).map_err(to_err)?;
+    BorshSerialize::serialize(info, &mut buf).map_err(to_err)?;
+    if has_payload_auth_fields(version) {
+        BorshSerialize::serialize(&payload_key_id, &mut buf).map_err(to_err)?;
+        BorshSerialize::serialize(&expires_at, &mut buf).map_err(to_err)?;
+        return Ok(buf);
+    }
+    if payload_key_id.is_some() || expires_at != 0 {
+        // Version 5 bytes do not cover these fields, so they could be added to a signed payload unnoticed
+        return Err(TransactionError::SerializationError(format!(
+            "A version {version} payload cannot carry a payload key id or an expiry"
+        )));
+    }
     Ok(buf)
+}
+
+/// Accepts only `None` or a `PayloadAuth` key id: nothing else may claim to have signed a payload.
+fn deserialize_payload_key_id<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<TariKeyId>, D::Error> {
+    match <Option<TariKeyId> as Deserialize>::deserialize(deserializer)? {
+        key_id @ (None | Some(TariKeyId::PayloadAuth { .. })) => Ok(key_id),
+        Some(_) => Err(serde::de::Error::custom("payload_key_id must be a payload_auth key id")),
+    }
+}
+
+/// The payload key file `minotari_offline_signer export-payload-key` writes and the console wallet's
+/// `import-payload-key` reads. Holds a private key, so it has no `Debug` and wipes the key when dropped.
+#[derive(Serialize, Deserialize)]
+pub struct ExportedPayloadKey {
+    pub index: u64,
+    /// Hex
+    pub private_key: String,
+    /// Hex
+    pub public_key: String,
+}
+
+impl Drop for ExportedPayloadKey {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.private_key);
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
@@ -232,6 +289,12 @@ pub struct PrepareOneSidedTransactionForSigningResult {
     /// Integrity signature produced by the online view wallet over the canonical
     /// payload bytes.  The offline signer MUST verify this before signing.
     pub payload_signature: PayloadIntegritySignature,
+    /// The payload key that signed this payload, or `None` when the view key did. Version 6 only.
+    #[serde(default, deserialize_with = "deserialize_payload_key_id")]
+    pub payload_key_id: Option<TariKeyId>,
+    /// Unix time in seconds (UTC) after which the signer refuses this payload. Version 6 only; `0` on version 5.
+    #[serde(default)]
+    pub expires_at: u64,
 }
 
 impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
@@ -250,6 +313,12 @@ pub struct PrepareDepositMultisigTransactionResult {
     /// Integrity signature produced by the online view wallet over the canonical
     /// payload bytes.  The offline signer MUST verify this before signing.
     pub payload_signature: PayloadIntegritySignature,
+    /// The payload key that signed this payload, or `None` when the view key did. Version 6 only.
+    #[serde(default, deserialize_with = "deserialize_payload_key_id")]
+    pub payload_key_id: Option<TariKeyId>,
+    /// Unix time in seconds (UTC) after which the signer refuses this payload. Version 6 only; `0` on version 5.
+    #[serde(default)]
+    pub expires_at: u64,
 }
 
 impl TransactionResult for PrepareDepositMultisigTransactionResult {}
@@ -268,6 +337,12 @@ pub struct PrepareWithdrawMultisigTransactionResult {
     /// Integrity signature produced by the online view wallet over the canonical
     /// payload bytes.  The offline signer MUST verify this before signing.
     pub payload_signature: PayloadIntegritySignature,
+    /// The payload key that signed this payload, or `None` when the view key did. Version 6 only.
+    #[serde(default, deserialize_with = "deserialize_payload_key_id")]
+    pub payload_key_id: Option<TariKeyId>,
+    /// Unix time in seconds (UTC) after which the signer refuses this payload. Version 6 only; `0` on version 5.
+    #[serde(default)]
+    pub expires_at: u64,
 }
 
 impl TransactionResult for PrepareWithdrawMultisigTransactionResult {}

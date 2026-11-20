@@ -58,6 +58,7 @@ use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
         AddBlockOutcome,
+        BlockTxos,
         BlockchainBackend,
         BlockchainDatabase,
         CandidateVmKey,
@@ -69,6 +70,7 @@ use crate::{
         HorizonStateTreeUpdate,
         HorizonSyncOutputCheckpoint,
         MmrTree,
+        NotServed,
         PendingChainRewind,
         ResetPermission,
         TargetDifficulties,
@@ -169,10 +171,18 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_horizon_sync_output_checkpoint() -> Option<HorizonSyncOutputCheckpoint>, "fetch_horizon_sync_output_checkpoint");
 
+    make_async_fn!(output_state_is_genesis() -> bool, "output_state_is_genesis");
+
+    make_async_fn!(reset_output_state_to_genesis() -> (), "reset_output_state_to_genesis");
+
+    make_async_fn!(delete_block_data_above_block_tip() -> (), "delete_block_data_above_block_tip");
+
     make_async_fn!(
         verify_horizon_sync_output_root(expected_root: HashOutput) -> (),
         "verify_horizon_sync_output_root"
     );
+
+    make_async_fn!(fetch_output_smt_leaf_count() -> u64, "fetch_output_smt_leaf_count");
 
     //---------------------------------- TXO --------------------------------------------//
 
@@ -207,8 +217,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        fetch_outputs_spent_in_block(hashes: Vec<HashOutput>, header_hash: HashOutput) -> Vec<Option<OutputMinedInfo>>,
-        "fetch_outputs_spent_in_block"
+        fetch_txos_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Result<BlockTxos, NotServed>,
+        "fetch_txos_in_block_on_chain"
     );
 
     make_async_fn!(
@@ -240,6 +250,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(
         fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>,
         "fetch_kernels_in_block"
+    );
+
+    make_async_fn!(
+        fetch_kernels_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Result<Vec<TransactionKernel>, NotServed>,
+        "fetch_kernels_in_block_on_chain"
     );
 
     make_async_fn!(
@@ -662,11 +677,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub(crate) fn clear_horizon_sync_output_state(&mut self) -> &mut Self {
-        self.transaction.clear_horizon_sync_output_state();
-        self
-    }
-
     pub(crate) fn prune_output_copy(
         &mut self,
         header_hash: HashOutput,
@@ -679,8 +689,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
-        self.transaction.delete_utxo_commitment_index_entry(commitment);
+    pub(crate) fn prune_synced_outputs(&mut self, header_hash: HashOutput, outputs: &[TransactionOutput]) -> &mut Self {
+        self.transaction.prune_synced_outputs(header_hash, outputs);
         self
     }
 

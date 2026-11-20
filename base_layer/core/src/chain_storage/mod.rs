@@ -39,10 +39,12 @@ use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
+    BlockTxos,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
     CandidateVmKey,
     MmrRoots,
+    NotServed,
     PendingChainRewind,
     ResetPermission,
     Validators,
@@ -55,6 +57,7 @@ pub use blockchain_database::{
     fetch_target_difficulties_for_next_block,
     fetch_target_difficulty_for_next_block,
     inputs_and_outputs_match_header,
+    is_on_requested_chain,
     reorg_reintroduces_pre_ghsa_blocks,
 };
 mod blockchain_backend;

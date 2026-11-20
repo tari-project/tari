@@ -3397,6 +3397,14 @@ impl LMDBDatabase {
         txn.commit().unwrap();
     }
 
+    /// Deletes the header row at `height` and nothing that belongs to it, as a damaged database would.
+    #[cfg(test)]
+    pub(crate) fn delete_header_row_for_test(&self, height: u64) {
+        let txn = self.create_write_txn();
+        lmdb_delete(&txn, &self.headers_db, &height, "headers_db").unwrap();
+        txn.commit().unwrap();
+    }
+
     /// Overwrites the accumulated data row of a stored header with bytes that do not decode.
     #[cfg(test)]
     pub(crate) fn write_undecodable_header_accumulated_data_for_test(&self, header: &BlockHeader) {
@@ -4472,6 +4480,22 @@ impl BlockchainBackend for LMDBDatabase {
         })
     }
 
+    fn fetch_parents_of_unlinked_orphans(&self) -> Result<Vec<HashOutput>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let mut parents = Vec::new();
+        for (parent, hash) in lmdb_all::<HashOutput>(&txn, &self.orphan_parent_map_index)? {
+            if lmdb_exists_typed(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())? ||
+                lmdb_exists_typed(&txn, &self.orphan_header_accumulated_data_v2_db, hash.as_slice())?
+            {
+                continue;
+            }
+            parents.push(HashOutput::try_from(parent).map_err(|e| ChainStorageError::ConversionError(e.to_string()))?);
+        }
+        // The index is sorted by parent, so the children of a parent are adjacent
+        parents.dedup();
+        Ok(parents)
+    }
+
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         let txn = self.read_transaction()?;
         match lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? {
@@ -4620,6 +4644,30 @@ impl BlockchainBackend for LMDBDatabase {
             )));
         }
         Ok(())
+    }
+
+    fn fetch_output_smt_leaf_count(&self) -> Result<u64, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let k = MetadataKey::JMTVersion;
+        let val = match lmdb_get(&txn, &self.metadata_db, &k.as_u32())? {
+            Some(MetadataValue::JMTVersion(v)) => v,
+            _ => 0u64,
+        };
+
+        let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
+        let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        // The tree writer deletes null nodes, so an empty tree has no root node and jmt errors on its leaf count
+        if output_smt
+            .get_root_hash_option(val)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+            .is_none()
+        {
+            return Ok(0);
+        }
+        let leaf_count = output_smt
+            .get_leaf_count(val)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        Ok(leaf_count as u64)
     }
 
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {

@@ -3528,6 +3528,7 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         OutputFeatures::default(),
         own_address.clone(),
         own_address,
+        None,
     )
     .unwrap();
 
@@ -3598,6 +3599,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payload_without_cha
                 OutputFeatures::default(),
                 fee_per_gram,
                 MemoField::new_empty(),
+                None,
             )
             .await;
         match result {
@@ -3633,6 +3635,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payload_without_cha
             OutputFeatures::default(),
             fee_per_gram,
             MemoField::new_empty(),
+            None,
         )
         .await
         .unwrap();
@@ -3699,6 +3702,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change()
                 OutputFeatures::default(),
                 fee_per_gram,
                 MemoField::new_empty(),
+                None,
             )
             .await;
         match result {
@@ -3740,6 +3744,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change()
             OutputFeatures::default(),
             fee_per_gram,
             MemoField::new_empty(),
+            None,
         )
         .await
         .unwrap();
@@ -3799,7 +3804,7 @@ async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change()
     let (remainder, change_fee) = loop {
         let result = alice_ts_interface
             .transaction_service_handle
-            .prepare_deposit_multisig_transaction(amount, party_number, public_keys.clone(), bob_address.clone())
+            .prepare_deposit_multisig_transaction(amount, party_number, public_keys.clone(), bob_address.clone(), None)
             .await;
         match result {
             Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
@@ -3827,7 +3832,7 @@ async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change()
     let amount = amount + remainder - change_fee - MicroMinotari(1);
     let prepared = alice_ts_interface
         .transaction_service_handle
-        .prepare_deposit_multisig_transaction(amount, party_number, public_keys, bob_address)
+        .prepare_deposit_multisig_transaction(amount, party_number, public_keys, bob_address, None)
         .await
         .unwrap();
     let signed = alice_ts_interface
@@ -3883,6 +3888,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payment_id_the_chan
             OutputFeatures::default(),
             MicroMinotari(1),
             MemoField::new_open_from_string(&"x".repeat(200), TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await;
     assert!(
@@ -3951,6 +3957,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_no_input_when_the_builde
                 OutputFeatures::default(),
                 fee_per_gram,
                 MemoField::new_empty(),
+                None,
             )
             .await;
         match result {
@@ -3993,6 +4000,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_no_input_when_the_builde
             OutputFeatures::default(),
             fee_per_gram,
             MemoField::new_empty(),
+            None,
         )
         .await
         .unwrap();
@@ -4051,6 +4059,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_an_amount_below_the_f
             OutputFeatures::default(),
             MicroMinotari(1),
             MemoField::new_empty(),
+            None,
         )
         .await;
     assert!(
@@ -4111,7 +4120,7 @@ async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() 
     // No transaction pays a fee of a single microminotari, so this amount is below any fee.
     let result = alice_ts_interface
         .transaction_service_handle
-        .prepare_deposit_multisig_transaction(MicroMinotari(1), 2, public_keys, bob_address)
+        .prepare_deposit_multisig_transaction(MicroMinotari(1), 2, public_keys, bob_address, None)
         .await;
     assert!(
         matches!(

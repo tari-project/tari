@@ -75,6 +75,19 @@ impl PeerStorageSql {
         self.peer_db.this_peer_identity()
     }
 
+    /// Errors if `public_key` or `node_id` is this node's, so that no path stores a self row that could be dialled.
+    fn reject_own_identity(
+        &self,
+        public_key: &CommsPublicKey,
+        node_id: Option<&NodeId>,
+    ) -> Result<(), PeerManagerError> {
+        let this_peer = self.peer_db.this_peer_identity();
+        if *public_key == this_peer.public_key || node_id == Some(&this_peer.node_id) {
+            return Err(PeerManagerError::OwnIdentity);
+        }
+        Ok(())
+    }
+
     /// Get the size of the database
     pub fn count(&self) -> usize {
         self.peer_db.size()
@@ -83,6 +96,7 @@ impl PeerStorageSql {
     /// Adds or updates a peer and sets the last connection as successful.
     /// If the peer is marked as offline, it will be unmarked.
     pub fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+        self.reject_own_identity(&peer.public_key, Some(&peer.node_id))?;
         Ok(self.peer_db.add_or_update_peer(peer)?)
     }
 
@@ -96,6 +110,7 @@ impl PeerStorageSql {
         peer_features: &PeerFeatures,
         source: &PeerAddressSource,
     ) -> Result<Peer, PeerManagerError> {
+        self.reject_own_identity(pubkey, Some(node_id))?;
         Ok(self
             .peer_db
             .add_or_update_online_peer(pubkey, node_id, addresses, peer_features, source)?)
@@ -314,6 +329,7 @@ impl PeerStorageSql {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
+        self.reject_own_identity(public_key, None)?;
         Ok(self.peer_db.ban_or_add_banned_peer(public_key, duration, reason)?)
     }
 
@@ -392,6 +408,41 @@ mod test {
 
     fn get_peer_storage_sql_test_db() -> Result<PeerStorageSql, PeerManagerError> {
         PeerStorageSql::new_indexed(get_peer_db_sql_test_db()?)
+    }
+
+    #[test]
+    fn own_identity_is_not_stored() {
+        let own = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let storage = PeerStorageSql::new_indexed(PeerDatabaseSql::new(db_connection, &own).unwrap()).unwrap();
+        let count = storage.count();
+
+        let err = storage.add_or_update_peer(own.clone()).unwrap_err();
+        assert!(matches!(err, PeerManagerError::OwnIdentity));
+        let err = storage
+            .add_or_update_online_peer(
+                &own.public_key,
+                &own.node_id,
+                &[],
+                &PeerFeatures::COMMUNICATION_NODE,
+                &PeerAddressSource::Config,
+            )
+            .unwrap_err();
+        assert!(matches!(err, PeerManagerError::OwnIdentity));
+        let err = storage
+            .ban_peer(&own.public_key, Duration::from_secs(60), "self".to_string())
+            .unwrap_err();
+        assert!(matches!(err, PeerManagerError::OwnIdentity));
+        let mut other_node_id = own.clone();
+        other_node_id.node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false).node_id;
+        let err = storage.add_or_update_peer(other_node_id).unwrap_err();
+        assert!(matches!(err, PeerManagerError::OwnIdentity));
+        assert_eq!(storage.count(), count);
+
+        storage
+            .add_or_update_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, false))
+            .unwrap();
+        assert_eq!(storage.count(), count + 1);
     }
 
     #[test]

@@ -131,12 +131,12 @@ INGRESS_DECODE_TYPES = {
     "ConsensusConstants",  # the node's own consensus constants file
     "Value",  # untyped JSON (the xmrig proxy)
     "PeerMetadata",  # the node's own peer database
+    "JsonRpcRequest",  # the JSON-RPC envelope; `params` stays a `RawValue`, decoded by `decode_transaction`
 }
 # Standard containers a decoded type from INGRESS_DECODE_TYPES may be wrapped in
 CONTAINER_TYPES = {"Vec", "Option", "Box", "String", "HashMap", "BTreeMap"}
 # axum request types (`Json<T>`, `Query<T>`, `Form<T>`) known to hold no block or transaction
 HTTP_REQUEST_TYPES = {
-    "JsonRpcRequest",  # `params` is a `serde_json::Value`; the transaction is decoded by `decode_transaction`
     "GenerateBurnOutputProofParams",
     "GetHeaderByHeightQueryParams",
     "GetHeightAtTimeQueryParams",
@@ -667,9 +667,7 @@ fn config(s: &str) { let c: ConsensusConstants = serde_json::from_str(s).unwrap(
 fn configs(s: &str) { match serde_json::from_str::<Vec<ConsensusConstants>>(&s) { Ok(c) => c } }
 fn proxy(b: &[u8]) { let json: Value = serde_json::from_slice(&b)?; }
 fn peers(v: &[u8]) { v.and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok()) }
-async fn rpc(Json(mut request): Json<JsonRpcRequest>) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
-    Err((StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e))))
-}
+fn rpc(b: &[u8]) -> Result<Json<JsonRpcResponse>, Rejection> { let r = serde_json::from_slice::<JsonRpcRequest>(b)?; }
 async fn utxo(Query(params): Query<GetUtxoQueryParams>) {}
 #[cfg(test)]
 mod test {

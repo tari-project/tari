@@ -25,11 +25,12 @@ use std::{ffi::OsString, time::Duration};
 use cucumber::{then, when};
 use grpc::{PaymentRecipient, payment_recipient::PaymentType};
 use minotari_app_grpc::tari_rpc as grpc;
-use minotari_console_wallet::{CliCommands, SignOneSidedTransactionArgs};
+use minotari_console_wallet::{CliCommands, ImportPayloadKeyArgs, SignOneSidedTransactionArgs};
 use minotari_offline_signer::cli::{
     execute_from_args as execute_offline_signer_from_args,
     execute_from_args_with_output as execute_offline_signer_with_output,
 };
+use tari_common::configuration::Network;
 use tari_integration_tests::{
     TariWorld,
     wait_for,
@@ -101,6 +102,7 @@ async fn prepare_offline_transaction_with_memo(
 
     let request = grpc::PrepareOneSidedTransactionForSigningRequest {
         recipient: Some(recipient),
+        payload_expiry_hours: 0,
     };
 
     let response = sender_client
@@ -122,6 +124,61 @@ async fn prepare_offline_transaction_with_memo(
 
 #[then(expr = "I sign the prepared transaction using wallet {word}")]
 async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_name: String) {
+    let output_file = respawn_wallet_to_sign(world, &wallet_name).await;
+
+    // Poll for the signed output file to appear. The CLI writes it once the
+    // command has finished, which happens after wallet startup + unlock.
+    // Uses `wait_for!` so the deadline honours INTEGRATION_TEST_TIMEOUT_MULTIPLIER like every
+    // other wait in the suite, instead of a hard-coded 60s that CI cannot stretch.
+    wait_for!(
+        timeout: Duration::from_secs(60),
+        description: format!("signed transaction file to appear at {output_file:?}"),
+        condition: async {
+            Ok(output_file.exists())
+        }
+    );
+
+    let signed_json =
+        std::fs::read_to_string(&output_file).unwrap_or_else(|e| panic!("Failed to read signed transaction file: {e}"));
+    assert!(!signed_json.is_empty(), "Signed transaction file is empty");
+
+    println!("Transaction signed via wallet CLI: {} bytes of JSON", signed_json.len());
+    world.offline_signing_signed = Some(signed_json);
+}
+
+/// Restarts wallet `wallet_name` with `require_payload_key` on and only `index` accepted, as an operator would set
+/// it in the wallet config.
+fn require_payload_key_in_wallet_config(world: &mut TariWorld, wallet_name: &str, index: u64) {
+    let wallet_ps = world
+        .wallets
+        .get_mut(wallet_name)
+        .unwrap_or_else(|| panic!("Wallet '{wallet_name}' not found"));
+    wallet_ps.config.transaction_service_config.require_payload_key = true;
+    wallet_ps.config.transaction_service_config.accepted_payload_key_indices = vec![index];
+}
+
+#[then(expr = "I sign the prepared transaction using wallet {word} requiring payload key {int}")]
+async fn sign_prepared_transaction_using_strict_wallet(world: &mut TariWorld, wallet_name: String, index: u64) {
+    require_payload_key_in_wallet_config(world, &wallet_name, index);
+    sign_prepared_transaction_using_wallet(world, wallet_name).await;
+}
+
+#[then(expr = "wallet {word} requiring payload key {int} refuses to sign the prepared transaction")]
+async fn strict_wallet_refuses_prepared_transaction(world: &mut TariWorld, wallet_name: String, index: u64) {
+    require_payload_key_in_wallet_config(world, &wallet_name, index);
+    let output_file = respawn_wallet_to_sign(world, &wallet_name).await;
+    // The sign command runs before the wallet's gRPC server starts, and the respawn waits for that server, so the
+    // command has finished by now
+    assert!(
+        !output_file.exists(),
+        "Wallet {wallet_name} signed a payload its payload key policy should refuse"
+    );
+}
+
+/// Writes the prepared transaction into `wallet_name`'s directory and respawns the wallet with
+/// `SignOneSidedTransaction` as its boot-time command. Returns where the signed transaction will be written.
+async fn respawn_wallet_to_sign(world: &mut TariWorld, wallet_name: &str) -> std::path::PathBuf {
+    let wallet_name = wallet_name.to_string();
     let prepared_json = world
         .offline_signing_prepared
         .as_ref()
@@ -170,26 +227,8 @@ async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_na
         output_file: output_file.clone(),
     }));
 
-    spawn_wallet(world, wallet_name.clone(), base_node_name, peer_seeds, None, Some(cli)).await;
-
-    // Poll for the signed output file to appear. The CLI writes it once the
-    // command has finished, which happens after wallet startup + unlock.
-    // Uses `wait_for!` so the deadline honours INTEGRATION_TEST_TIMEOUT_MULTIPLIER like every
-    // other wait in the suite, instead of a hard-coded 60s that CI cannot stretch.
-    wait_for!(
-        timeout: Duration::from_secs(60),
-        description: format!("signed transaction file to appear at {output_file:?}"),
-        condition: async {
-            Ok(output_file.exists())
-        }
-    );
-
-    let signed_json =
-        std::fs::read_to_string(&output_file).unwrap_or_else(|e| panic!("Failed to read signed transaction file: {e}"));
-    assert!(!signed_json.is_empty(), "Signed transaction file is empty");
-
-    println!("Transaction signed via wallet CLI: {} bytes of JSON", signed_json.len());
-    world.offline_signing_signed = Some(signed_json);
+    spawn_wallet(world, wallet_name, base_node_name, peer_seeds, None, Some(cli)).await;
+    output_file
 }
 
 #[then(expr = "I initialize standalone offline signer {word} from wallet {word} seed words")]
@@ -224,6 +263,183 @@ async fn initialize_standalone_offline_signer(world: &mut TariWorld, signer_name
 
 #[then(expr = "I sign the prepared transaction using standalone offline signer {word}")]
 async fn sign_prepared_transaction_using_standalone_offline_signer(world: &mut TariWorld, signer_name: String) {
+    sign_with_standalone_signer(world, &signer_name, &[]);
+}
+
+#[then(expr = "I sign the prepared transaction using standalone offline signer {word} accepting payload key {int}")]
+async fn sign_prepared_transaction_using_strict_standalone_offline_signer(
+    world: &mut TariWorld,
+    signer_name: String,
+    index: u64,
+) {
+    sign_with_standalone_signer(world, &signer_name, &[
+        "--require-payload-key".to_string(),
+        "--payload-key-index".to_string(),
+        index.to_string(),
+    ]);
+    let summary = world.offline_signing_summary.as_ref().expect("summary captured");
+    assert!(
+        summary.contains(&format!("Signed with    : payload key #{index}")),
+        "{summary}"
+    );
+    assert!(summary.contains("Expires        : "), "{summary}");
+}
+
+#[then(expr = "standalone offline signer {word} refuses the prepared transaction as signed with the view key")]
+async fn standalone_offline_signer_refuses_view_key_payload(world: &mut TariWorld, signer_name: String) {
+    let (input_file, output_file) = standalone_signer_files(world, &signer_name);
+    let keystore_file = world.offline_signer_keystores.get(&signer_name).unwrap().clone();
+    let mut output = Vec::new();
+    // Strict without any flag: the signer has exported a payload key
+    let result = execute_offline_signer_with_output(
+        os_args([
+            OsString::from("minotari_offline_signer"),
+            OsString::from("--test-keystore-file"),
+            keystore_file.as_os_str().to_os_string(),
+            OsString::from("sign"),
+            OsString::from("--input-file"),
+            input_file.as_os_str().to_os_string(),
+            OsString::from("--output-file"),
+            output_file.as_os_str().to_os_string(),
+            OsString::from("--passphrase"),
+            OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+            OsString::from("--network"),
+            OsString::from(Network::get_current().to_string()),
+        ]),
+        &mut output,
+    );
+    let err = result.expect_err("the signer must refuse a view key payload once a payload key is exported");
+    assert!(
+        err.to_string().contains("signed with the view key"),
+        "Expected a view key refusal, got: {err:?}"
+    );
+    assert!(!output_file.exists());
+    let output = String::from_utf8(output).unwrap();
+    assert!(!output.contains("about to be signed"), "{output}");
+}
+
+#[then(expr = "I export payload key {int} from standalone offline signer {word}")]
+async fn export_payload_key_from_standalone_offline_signer(world: &mut TariWorld, index: u64, signer_name: String) {
+    let keystore_file = world
+        .offline_signer_keystores
+        .get(&signer_name)
+        .unwrap_or_else(|| panic!("Standalone offline signer '{signer_name}' not initialized"))
+        .clone();
+    let key_file = payload_key_file(&keystore_file, index);
+    drop(std::fs::remove_file(&key_file));
+    execute_offline_signer_from_args(os_args([
+        OsString::from("minotari_offline_signer"),
+        OsString::from("--test-keystore-file"),
+        keystore_file.as_os_str().to_os_string(),
+        OsString::from("export-payload-key"),
+        OsString::from("--index"),
+        OsString::from(index.to_string()),
+        OsString::from("--output"),
+        key_file.as_os_str().to_os_string(),
+        OsString::from("--passphrase"),
+        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+    ]))
+    .unwrap_or_else(|e| panic!("Failed to export payload key {index}: {e}"));
+}
+
+/// Where `export-payload-key --index <index>` writes the key for the signer keeping its keystore at `keystore_file`.
+fn payload_key_file(keystore_file: &std::path::Path, index: u64) -> std::path::PathBuf {
+    keystore_file.with_file_name(format!("payload_key_{index}.json"))
+}
+
+#[then(expr = "I import payload key {int} from standalone offline signer {word} into wallet {word}")]
+async fn import_payload_key_into_wallet(world: &mut TariWorld, index: u64, signer_name: String, wallet_name: String) {
+    let key_file = payload_key_file(
+        world
+            .offline_signer_keystores
+            .get(&signer_name)
+            .unwrap_or_else(|| panic!("Standalone offline signer '{signer_name}' not initialized")),
+        index,
+    );
+    let (base_node_name, peer_seeds) = {
+        let wallet_ps = world
+            .wallets
+            .get_mut(&wallet_name)
+            .unwrap_or_else(|| panic!("Wallet '{wallet_name}' not found"));
+        wallet_ps.kill().await;
+        (wallet_ps.base_node_name.clone(), wallet_ps.peer_seeds.clone())
+    };
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // As an operator would: the console wallet's `import-payload-key --file` command
+    let mut cli = get_default_cli();
+    cli.command2 = Some(CliCommands::ImportPayloadKey(ImportPayloadKeyArgs {
+        index,
+        key: None,
+        file: Some(key_file),
+    }));
+    spawn_wallet(
+        world,
+        wallet_name.clone(),
+        base_node_name.clone(),
+        peer_seeds.clone(),
+        None,
+        Some(cli),
+    )
+    .await;
+
+    // Restart it, so the key the next steps use is the one `Wallet::start` loads from the database
+    world.wallets.get_mut(&wallet_name).unwrap().kill().await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    spawn_wallet(world, wallet_name, base_node_name, peer_seeds, None, None).await;
+}
+
+#[then(expr = "the prepared offline signing payload is signed with payload key {int}")]
+async fn prepared_payload_is_signed_with_payload_key(world: &mut TariWorld, index: u64) {
+    let payload = prepared_payload_json(world);
+    assert_eq!(payload.get("version"), Some(&serde_json::json!("6.0.0")), "{payload}");
+    assert_eq!(
+        payload.get("payload_key_id"),
+        Some(&serde_json::json!({ "PayloadAuth": { "index": index } })),
+        "{payload}"
+    );
+}
+
+#[then(expr = "the prepared offline signing payload is signed with the view key")]
+async fn prepared_payload_is_signed_with_the_view_key(world: &mut TariWorld) {
+    let payload = prepared_payload_json(world);
+    assert_eq!(payload.get("version"), Some(&serde_json::json!("6.0.0")), "{payload}");
+    assert!(
+        payload.get("payload_key_id").is_none_or(serde_json::Value::is_null),
+        "{payload}"
+    );
+}
+
+fn prepared_payload_json(world: &TariWorld) -> serde_json::Value {
+    let prepared = world
+        .offline_signing_prepared
+        .as_ref()
+        .expect("No prepared transaction found — run the prepare step first");
+    serde_json::from_str(prepared).expect("prepared payload is JSON")
+}
+
+/// Writes the prepared transaction next to `signer_name`'s keystore and returns the input file and where a signed
+/// result would go.
+fn standalone_signer_files(world: &TariWorld, signer_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let prepared_json = world
+        .offline_signing_prepared
+        .as_ref()
+        .expect("No prepared transaction found — run the prepare step first");
+    let keystore_file = world
+        .offline_signer_keystores
+        .get(signer_name)
+        .unwrap_or_else(|| panic!("Standalone offline signer '{signer_name}' not initialized"));
+    let input_file = keystore_file.with_file_name("offline_signing_input.json");
+    let output_file = keystore_file.with_file_name("offline_signing_output.json");
+    drop(std::fs::remove_file(&output_file));
+    std::fs::write(&input_file, prepared_json).expect("Failed to write prepared transaction file");
+    (input_file, output_file)
+}
+
+/// Signs the prepared transaction with the standalone offline signer, without a prompt, passing `extra` arguments,
+/// and stores the summary and the signed result.
+fn sign_with_standalone_signer(world: &mut TariWorld, signer_name: &str, extra: &[String]) {
+    let signer_name = signer_name.to_string();
     let prepared_json = world
         .offline_signing_prepared
         .as_ref()
@@ -257,7 +473,10 @@ async fn sign_prepared_transaction_using_standalone_offline_signer(world: &mut T
             OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
             OsString::from("--network"),
             OsString::from("localnet"),
-        ]),
+        ])
+        .into_iter()
+        .chain(extra.iter().map(OsString::from))
+        .collect::<Vec<_>>(),
         &mut summary,
     )
     .unwrap_or_else(|e| panic!("Failed to sign transaction with standalone offline signer: {e}"));
