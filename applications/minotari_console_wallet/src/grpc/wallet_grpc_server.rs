@@ -24,6 +24,7 @@ use std::{
     cmp::max,
     collections::VecDeque,
     convert::{TryFrom, TryInto},
+    future::Future,
     str::FromStr,
     sync::Arc,
     time::Duration,
@@ -275,108 +276,32 @@ impl WalletGrpcServer {
     }
 
     /// Wait for a transaction to reach a terminal broadcast state (Broadcast, Rejected, Mined, etc.)
-    /// or timeout. Returns the transaction in whatever state it is in.
-    async fn wait_for_broadcast_confirmation(&self, tx_id: TxId) -> Result<WalletTransaction, Status> {
-        let timeout_ms = self.wallet.config.grpc_broadcast_confirmation;
-        match timeout(Duration::from_millis(timeout_ms), async {
-            loop {
-                let tx = self
-                    .get_transaction_service()
-                    .get_any_transaction(tx_id)
-                    .await
-                    .map_err(|e| Status::internal(format!("{e:?}")));
-
-                if let Ok(Some(tx)) = tx {
-                    match tx.status() {
-                        LegacyTransactionStatus::Broadcast |
-                        LegacyTransactionStatus::MinedUnconfirmed |
-                        LegacyTransactionStatus::MinedConfirmed |
-                        LegacyTransactionStatus::OneSidedUnconfirmed |
-                        LegacyTransactionStatus::OneSidedConfirmed |
-                        LegacyTransactionStatus::MinedConfirmedLocked |
-                        LegacyTransactionStatus::OneSidedConfirmedLocked |
-                        LegacyTransactionStatus::CoinbaseConfirmedLocked |
-                        LegacyTransactionStatus::Imported |
-                        LegacyTransactionStatus::Rejected => break tx,
-                        _ => {
-                            sleep(Duration::from_millis(10)).await;
-                            continue;
-                        },
-                    }
-                } else {
-                    sleep(Duration::from_millis(10)).await;
-                }
-            }
-        })
-        .await
-        {
-            Ok(tx) => Ok(tx),
-            Err(_) => {
-                // Timeout - return whatever state the tx is in now
-                match self.get_transaction_service().get_any_transaction(tx_id).await {
-                    Ok(Some(tx)) => Ok(tx),
-                    Ok(None) => Err(Status::not_found(format!(
-                        "Transaction {tx_id} not found within timeout"
-                    ))),
-                    Err(e) => Err(Status::internal(format!("{e:?}"))),
-                }
+    /// or timeout. Returns the transaction in whatever state it is in, or `None` if it could not be read within the
+    /// configured timeouts.
+    async fn wait_for_broadcast_confirmation(&self, tx_id: TxId) -> Option<WalletTransaction> {
+        poll_for_broadcast_confirmation(
+            tx_id,
+            Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation),
+            Duration::from_millis(self.wallet.config.grpc_db_write_timeout),
+            || {
+                let mut transaction_service = self.get_transaction_service();
+                async move { transaction_service.get_any_transaction(tx_id).await }
             },
-        }
+        )
+        .await
     }
 
-    /// Build a TransferResult from a wallet transaction, checking its broadcast status.
-    /// - Broadcast/Mined: success
-    /// - Rejected: failure with transaction info (can be retried)
-    /// - Completed/Queued (timeout): success with pending broadcast message
-    fn build_transfer_result_from_tx(
-        &self,
-        tx_id: TxId,
-        address: String,
-        wallet_tx: WalletTransaction,
-        wallet_address: &TariAddress,
-    ) -> TransferResult {
-        let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx.clone(), wallet_address);
-        match wallet_tx.status() {
-            LegacyTransactionStatus::Rejected => {
-                let reason = wallet_tx
-                    .cancelled_reason()
-                    .map(|r| format!("{r}"))
-                    .unwrap_or_else(|| "Unknown reason".to_string());
-                TransferResult {
-                    address,
-                    transaction_id: tx_id.into(),
-                    is_success: false,
-                    failure_message: format!(
-                        "Transaction completed but was rejected during submission: {reason}. Transaction (ID: \
-                         {tx_id}) is saved and can be retried.",
-                    ),
-                    transaction_info: Some(final_tx),
-                }
+    /// Wait up to `grpc_db_write_timeout` for a newly submitted transaction record to become readable.
+    async fn wait_for_submitted_transaction(&self, tx_id: TxId) -> Option<WalletTransaction> {
+        poll_for_submitted_transaction(
+            tx_id,
+            Duration::from_millis(self.wallet.config.grpc_db_write_timeout),
+            || {
+                let mut transaction_service = self.get_transaction_service();
+                async move { transaction_service.get_any_transaction(tx_id).await }
             },
-            LegacyTransactionStatus::Completed | LegacyTransactionStatus::Queued => {
-                // Broadcast not yet confirmed (timeout waiting for broadcast)
-                TransferResult {
-                    address,
-                    transaction_id: tx_id.into(),
-                    is_success: true,
-                    failure_message: format!(
-                        "Transaction completed but broadcast is still pending. Transaction (ID: {tx_id}) is saved and \
-                         will be broadcast when possible.",
-                    ),
-                    transaction_info: Some(final_tx),
-                }
-            },
-            _ => {
-                // Successfully broadcast or mined
-                TransferResult {
-                    address,
-                    transaction_id: tx_id.into(),
-                    is_success: true,
-                    failure_message: Default::default(),
-                    transaction_info: Some(final_tx),
-                }
-            },
-        }
+        )
+        .await
     }
 
     async fn transfer_single_tx(
@@ -414,6 +339,10 @@ impl WalletGrpcServer {
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         let mut transaction_service = self.get_transaction_service();
         let ids = transaction_service
             .send_one_sided_multi_recipient_transaction(
@@ -424,10 +353,6 @@ impl WalletGrpcServer {
             )
             .await
             .map_err(|e| Status::internal(format!("Transaction abandoned: {e}")))?;
-        let wallet_address = self
-            .wallet
-            .get_wallet_one_sided_address()
-            .map_err(|e| Status::internal(format!("{e:?}")))?;
         let mut results = Vec::new();
 
         let mut broadcast_futures = Vec::new();
@@ -437,21 +362,15 @@ impl WalletGrpcServer {
         let broadcast_results = future::join_all(broadcast_futures).await;
         for (id, result) in broadcast_results {
             match result {
-                Ok(wallet_tx) => {
-                    let address = wallet_tx.destination_address().expect("cannot fail").to_string();
-                    results.push(self.build_transfer_result_from_tx(id, address, wallet_tx, &wallet_address));
+                Some(wallet_tx) => {
+                    let address = wallet_tx
+                        .destination_address()
+                        .map(|addr| addr.to_string())
+                        .unwrap_or_default();
+                    results.push(build_transfer_result_from_tx(id, address, wallet_tx, &wallet_address));
                 },
-                Err(_) => {
-                    results.push(minotari_app_grpc::tari_rpc::TransferResult {
-                        address: Default::default(),
-                        transaction_id: id.into(),
-                        is_success: true,
-                        failure_message: format!(
-                            "Transaction completed but broadcast status could not be determined. Transaction (ID: \
-                             {id}) is saved and will be broadcast when possible.",
-                        ),
-                        transaction_info: None,
-                    });
+                None => {
+                    results.push(build_pending_transfer_result(id, String::new()));
                 },
             }
         }
@@ -790,6 +709,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let output = BlockHash::from_hex(&message.output)
             .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
         debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
+        let memo = MemoField::new_open_from_string("Claiming HTLC transaction with pre-image", TxType::ClaimAtomicSwap)
+            .map_err(Status::internal)?;
         let mut transaction_service = self.get_transaction_service();
         let mut output_manager_service = self.get_output_manager_service();
         let response = match output_manager_service
@@ -797,38 +722,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
         {
             Ok((tx_id, _fee, amount, tx)) => {
-                match transaction_service
-                    .submit_transaction(
-                        tx_id,
-                        tx,
-                        amount,
-                        MemoField::new_open_from_string(
-                            "Claiming HTLC transaction with pre-image",
-                            TxType::ClaimAtomicSwap,
-                        )
-                        .map_err(Status::internal)?,
-                    )
-                    .await
-                {
-                    Ok(()) => {
-                        let wallet_address = self
-                            .wallet
-                            .get_wallet_one_sided_address()
-                            .map_err(|e| Status::internal(format!("{e:?}")))?;
-                        let wallet_tx = self
-                            .get_transaction_service()
-                            .get_any_transaction(tx_id)
-                            .await
-                            .map_err(|e| Status::internal(format!("{e:?}")))?
-                            .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
-                        let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
-                        TransferResult {
-                            address: Default::default(),
-                            transaction_id: tx_id.as_u64(),
-                            is_success: true,
-                            failure_message: Default::default(),
-                            transaction_info: Some(final_tx),
-                        }
+                match transaction_service.submit_transaction(tx_id, tx, amount, memo).await {
+                    Ok(()) => match self.wait_for_submitted_transaction(tx_id).await {
+                        Some(wallet_tx) => {
+                            build_submitted_transfer_result_from_tx(tx_id, String::new(), wallet_tx, &wallet_address)
+                        },
+                        None => build_pending_transfer_result(tx_id, String::new()),
                     },
                     Err(e) => TransferResult {
                         address: Default::default(),
@@ -864,6 +763,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let output = BlockHash::from_hex(&message.output_hash)
             .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
 
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
+        let memo = MemoField::new_open_from_string("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund)
+            .map_err(Status::internal)?;
         let mut transaction_service = self.get_transaction_service();
         let mut output_manager_service = self.get_output_manager_service();
         debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
@@ -872,38 +777,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
         {
             Ok((tx_id, _fee, amount, tx)) => {
-                match transaction_service
-                    .submit_transaction(
-                        tx_id,
-                        tx,
-                        amount,
-                        MemoField::new_open_from_string(
-                            "Creating HTLC refund transaction",
-                            TxType::HtlcAtomicSwapRefund,
-                        )
-                        .map_err(Status::internal)?,
-                    )
-                    .await
-                {
-                    Ok(()) => {
-                        let wallet_address = self
-                            .wallet
-                            .get_wallet_one_sided_address()
-                            .map_err(|e| Status::internal(format!("{e:?}")))?;
-                        let wallet_tx = self
-                            .get_transaction_service()
-                            .get_any_transaction(tx_id)
-                            .await
-                            .map_err(|e| Status::internal(format!("{e:?}")))?
-                            .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
-                        let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
-                        TransferResult {
-                            address: Default::default(),
-                            transaction_id: tx_id.as_u64(),
-                            is_success: true,
-                            failure_message: Default::default(),
-                            transaction_info: Some(final_tx),
-                        }
+                match transaction_service.submit_transaction(tx_id, tx, amount, memo).await {
+                    Ok(()) => match self.wait_for_submitted_transaction(tx_id).await {
+                        Some(wallet_tx) => {
+                            build_submitted_transfer_result_from_tx(tx_id, String::new(), wallet_tx, &wallet_address)
+                        },
+                        None => build_pending_transfer_result(tx_id, String::new()),
                     },
                     Err(e) => TransferResult {
                         address: Default::default(),
@@ -1274,11 +1153,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             });
         }
 
-        let transfers_results = future::join_all(transfers).await;
         let wallet_address = self
             .wallet
             .get_wallet_one_sided_address()
             .map_err(|e| Status::internal(format!("{e:?}")))?;
+        let transfers_results = future::join_all(transfers).await;
 
         // Collect successful tx_ids for parallel broadcast confirmation
         let indexed_results: Vec<(usize, String, Result<TxId, TransactionServiceError>)> = transfers_results
@@ -1325,23 +1204,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 continue;
             };
             match broadcast_result {
-                Ok(wallet_tx) => {
-                    *slot =
-                        Some(self.build_transfer_result_from_tx(*tx_id, address.clone(), wallet_tx, &wallet_address));
+                Some(wallet_tx) => {
+                    *slot = Some(build_transfer_result_from_tx(
+                        *tx_id,
+                        address.clone(),
+                        wallet_tx,
+                        &wallet_address,
+                    ));
                 },
-                Err(_) => {
-                    // Transaction was completed (we have the tx_id) but we couldn't confirm
-                    // broadcast status. Return success with a pending message.
-                    *slot = Some(TransferResult {
-                        address: address.clone(),
-                        transaction_id: (*tx_id).into(),
-                        is_success: true,
-                        failure_message: format!(
-                            "Transaction completed but broadcast status could not be determined. Transaction (ID: \
-                             {tx_id}) is saved and will be broadcast when possible.",
-                        ),
-                        transaction_info: None,
-                    });
+                None => {
+                    *slot = Some(build_pending_transfer_result(*tx_id, address.clone()));
                 },
             }
         }
@@ -1379,7 +1251,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             )));
         }
         let mut wallet = self.wallet.clone();
-        let mut results = Vec::new();
         let buckets = wallet
             .output_manager_service
             .count_outputs_in_ranges(vec![range])
@@ -1435,110 +1306,39 @@ impl wallet_server::Wallet for WalletGrpcServer {
         // Note:
         //   This is done synchronously to ensure each transaction can be successfully processed and submitted to a base
         //   node before the next is created.
-        let mut transaction_service = self.get_transaction_service();
-        let batch_result = loop {
-            let tx_result = transaction_service
-                .send_range_limited_coin_join_transaction(
-                    UtxoSelectionCriteria {
-                        range_limit: Some(RangeLimit {
-                            range: message.lower_bound..message.upper_bound,
-                            transaction_input_limit: message.maximum_inputs_per_transaction,
-                            target_minimum_amount: message.target_minimum_amount,
-                        }),
-                        ..Default::default()
-                    },
-                    OutputFeatures::default(),
-                    fee,
-                    payment_id.clone(),
-                )
-                .await;
-            let tx_id = match tx_result {
-                Ok(val) => val,
-                Err(err) => {
-                    if let TransactionServiceError::OutputManagerError(OutputManagerError::RangeLimitError {
-                        range_exhausted,
-                        ..
-                    }) = err &&
-                        range_exhausted &&
-                        !results.is_empty()
-                    {
-                        break Ok(());
-                    }
-                    break Err(err);
-                },
-            };
-
-            let wallet_tx = timeout(
-                Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation),
-                async {
-                    loop {
-                        let tx = self.get_transaction_service().get_any_transaction(tx_id).await;
-
-                        if let Ok(Some(tx)) = tx {
-                            match tx.status() {
-                                LegacyTransactionStatus::Broadcast |
-                                LegacyTransactionStatus::MinedUnconfirmed |
-                                LegacyTransactionStatus::MinedConfirmed |
-                                LegacyTransactionStatus::OneSidedUnconfirmed |
-                                LegacyTransactionStatus::OneSidedConfirmed |
-                                LegacyTransactionStatus::MinedConfirmedLocked |
-                                LegacyTransactionStatus::OneSidedConfirmedLocked |
-                                LegacyTransactionStatus::CoinbaseConfirmedLocked => break Ok(tx),
-                                LegacyTransactionStatus::Rejected => {
-                                    let error = if let Some(reason) = tx.cancelled_reason() {
-                                        TransactionServiceError::MempoolRejection {
-                                            reason: format!("{}", reason),
-                                        }
-                                    } else {
-                                        TransactionServiceError::MempoolRejection {
-                                            reason: "Unknown reason".to_string(),
-                                        }
-                                    };
-                                    break Err(error);
-                                },
-                                _ => {
-                                    sleep(Duration::from_millis(10)).await;
-                                    continue;
-                                },
-                            }
-                        } else {
-                            sleep(Duration::from_millis(10)).await;
-                        }
-                    }
-                },
-            )
-            .await;
-            let wallet_tx = match wallet_tx {
-                Ok(Ok(val)) => val,
-                Ok(Err(e)) => break Err(e),
-                Err(_) => {
-                    break Err(TransactionServiceError::Other(format!(
-                        "Transaction {tx_id} not found within timeout of {:.2?}",
-                        Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation)
-                    )));
-                },
-            };
-
-            let address = wallet_tx
-                .destination_address()
-                .unwrap_or_else(|| {
-                    error!(target: LOG_TARGET, "range_limit_coin_join: Missing destination address for tx {}", tx_id);
-                    TariAddress::default()
-                })
-                .to_string();
-
-            let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
-            results.push(minotari_app_grpc::tari_rpc::TransferResult {
-                address,
-                transaction_id: tx_id.into(),
-                is_success: true,
-                failure_message: Default::default(),
-                transaction_info: Some(final_tx),
-            });
-        };
+        let lower_bound = message.lower_bound;
+        let upper_bound = message.upper_bound;
+        let maximum_inputs_per_transaction = message.maximum_inputs_per_transaction;
+        let target_minimum_amount = message.target_minimum_amount;
+        let batch_result = collect_range_limited_coin_join_results(
+            &wallet_address,
+            || {
+                let mut transaction_service = self.get_transaction_service();
+                let payment_id = payment_id.clone();
+                async move {
+                    transaction_service
+                        .send_range_limited_coin_join_transaction(
+                            UtxoSelectionCriteria {
+                                range_limit: Some(RangeLimit {
+                                    range: lower_bound..upper_bound,
+                                    transaction_input_limit: maximum_inputs_per_transaction,
+                                    target_minimum_amount,
+                                }),
+                                ..Default::default()
+                            },
+                            OutputFeatures::default(),
+                            fee,
+                            payment_id,
+                        )
+                        .await
+                }
+            },
+            |tx_id| self.wait_for_broadcast_confirmation(tx_id),
+        )
+        .await;
 
         match batch_result {
-            Ok(_) => Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results })),
+            Ok(results) => Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results })),
             Err(err) => {
                 error!(target: LOG_TARGET, "range_limit_coin_join: {}", err);
                 Err(Status::internal(format!("range_limit_coin_join: {}", err)))
@@ -2982,6 +2782,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         let transfer_results: Vec<(TariAddress, Result<TxId, TransactionServiceError>)> =
             future::join_all(recipients.iter().map(|(address, fee, tx_id)| async {
                 (
@@ -2997,57 +2801,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }))
             .await;
 
-        let mut results = Vec::new();
-        for (address, result) in transfer_results {
-            match result {
-                Ok(tx_id) => {
-                    let wallet_address = self
-                        .wallet
-                        .get_wallet_one_sided_address()
-                        .map_err(|e| Status::internal(format!("{e:?}")))?;
-                    let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
-                        loop {
-                            let tx = self
-                                .get_transaction_service()
-                                .get_any_transaction(tx_id)
-                                .await
-                                .map_err(|e| Status::internal(format!("{e:?}")));
-
-                            if let Ok(Some(tx)) = tx {
-                                break tx;
-                            }
-                            sleep(Duration::from_millis(10)).await;
-                        }
-                    })
-                    .await
-                    .map_err(|_| {
-                        error!(target: LOG_TARGET, "Transaction {tx_id} not found within timeout");
-                        Status::not_found(format!("Transaction {tx_id} not found within timeout"))
-                    })?;
-                    let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
-                    results.push(TransferResult {
-                        address: address.to_string(),
-                        transaction_id: tx_id.into(),
-                        is_success: true,
-                        failure_message: Default::default(),
-                        transaction_info: Some(final_tx),
-                    });
-                },
-                Err(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Failed to send transaction for address `{address}`: {err}"
-                    );
-                    results.push(TransferResult {
-                        address: address.to_string(),
-                        transaction_id: Default::default(),
-                        is_success: false,
-                        failure_message: err.to_string(),
-                        transaction_info: None,
-                    });
-                },
-            }
-        }
+        let results = collect_user_pay_for_fee_results(&wallet_address, transfer_results, |tx_id| {
+            self.wait_for_submitted_transaction(tx_id)
+        })
+        .await;
         Ok(Response::new(UserPayForFeeResponse { results }))
     }
 
@@ -4570,14 +4327,374 @@ fn parse_excluded_commitments(commitments: Vec<Vec<u8>>) -> Result<Vec<Compresse
         .collect()
 }
 
+fn is_terminal_broadcast_status(status: LegacyTransactionStatus) -> bool {
+    matches!(
+        status,
+        LegacyTransactionStatus::Broadcast |
+            LegacyTransactionStatus::MinedUnconfirmed |
+            LegacyTransactionStatus::MinedConfirmed |
+            LegacyTransactionStatus::OneSidedUnconfirmed |
+            LegacyTransactionStatus::OneSidedConfirmed |
+            LegacyTransactionStatus::MinedConfirmedLocked |
+            LegacyTransactionStatus::OneSidedConfirmedLocked |
+            LegacyTransactionStatus::CoinbaseConfirmedLocked |
+            LegacyTransactionStatus::Imported |
+            LegacyTransactionStatus::Rejected
+    )
+}
+
+async fn poll_for_broadcast_confirmation<F, Fut>(
+    tx_id: TxId,
+    broadcast_timeout: Duration,
+    db_timeout: Duration,
+    mut fetch_tx: F,
+) -> Option<WalletTransaction>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<Option<WalletTransaction>, TransactionServiceError>>,
+{
+    let mut last_seen: Option<WalletTransaction> = None;
+    let polled = timeout(broadcast_timeout, async {
+        loop {
+            if let Ok(Some(tx)) = fetch_tx().await {
+                if is_terminal_broadcast_status(tx.status()) {
+                    break tx;
+                }
+                last_seen = Some(tx);
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+
+    if let Ok(tx) = polled {
+        return Some(tx);
+    }
+
+    if let Ok(Ok(Some(tx))) = timeout(db_timeout, fetch_tx()).await {
+        return Some(tx);
+    }
+
+    if last_seen.is_none() {
+        warn!(
+            target: LOG_TARGET,
+            "Transaction {tx_id} not readable within broadcast confirmation timeout; returning pending result"
+        );
+    }
+    last_seen
+}
+
+async fn poll_for_submitted_transaction<F, Fut>(
+    tx_id: TxId,
+    db_timeout: Duration,
+    mut fetch_tx: F,
+) -> Option<WalletTransaction>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<Option<WalletTransaction>, TransactionServiceError>>,
+{
+    let polled = timeout(db_timeout, async {
+        loop {
+            if let Ok(Some(tx)) = fetch_tx().await {
+                break tx;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+
+    if let Ok(tx) = polled {
+        return Some(tx);
+    }
+
+    warn!(
+        target: LOG_TARGET,
+        "Transaction {tx_id} not readable within DB timeout; returning pending result"
+    );
+    None
+}
+
+/// Builds a `TransferResult` for an RPC that waits for broadcast confirmation (`transfer`, `transfer_single_tx`,
+/// `range_limited_coin_join`).
+fn build_transfer_result_from_tx(
+    tx_id: TxId,
+    address: String,
+    wallet_tx: WalletTransaction,
+    wallet_address: &TariAddress,
+) -> TransferResult {
+    let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx.clone(), wallet_address);
+    match wallet_tx.status() {
+        LegacyTransactionStatus::Rejected => {
+            let reason = wallet_tx
+                .cancelled_reason()
+                .map(|r| format!("{r}"))
+                .unwrap_or_else(|| "Unknown reason".to_string());
+            TransferResult {
+                address,
+                transaction_id: tx_id.into(),
+                is_success: false,
+                failure_message: format!(
+                    "Transaction completed but was rejected during submission: {reason}. Transaction (ID: {tx_id}) is \
+                     saved and can be retried.",
+                ),
+                transaction_info: Some(final_tx),
+            }
+        },
+        LegacyTransactionStatus::Completed | LegacyTransactionStatus::Queued | LegacyTransactionStatus::Pending => {
+            TransferResult {
+                address,
+                transaction_id: tx_id.into(),
+                is_success: true,
+                failure_message: format!(
+                    "Transaction completed but broadcast is still pending. Transaction (ID: {tx_id}) is saved and \
+                     will be broadcast when possible.",
+                ),
+                transaction_info: Some(final_tx),
+            }
+        },
+        _ => TransferResult {
+            address,
+            transaction_id: tx_id.into(),
+            is_success: true,
+            failure_message: Default::default(),
+            transaction_info: Some(final_tx),
+        },
+    }
+}
+
+/// Builds a `TransferResult` for an RPC that waits only for local DB persistence (`user_pay_for_fee`,
+/// `claim_sha_atomic_swap_transaction`, `claim_htlc_refund_transaction`).
+fn build_submitted_transfer_result_from_tx(
+    tx_id: TxId,
+    address: String,
+    wallet_tx: WalletTransaction,
+    wallet_address: &TariAddress,
+) -> TransferResult {
+    let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx.clone(), wallet_address);
+    match wallet_tx.status() {
+        LegacyTransactionStatus::Rejected => {
+            let reason = wallet_tx
+                .cancelled_reason()
+                .map(|r| format!("{r}"))
+                .unwrap_or_else(|| "Unknown reason".to_string());
+            TransferResult {
+                address,
+                transaction_id: tx_id.into(),
+                is_success: false,
+                failure_message: format!(
+                    "Transaction completed but was rejected during submission: {reason}. Transaction (ID: {tx_id}) is \
+                     saved and can be retried.",
+                ),
+                transaction_info: Some(final_tx),
+            }
+        },
+        _ => TransferResult {
+            address,
+            transaction_id: tx_id.into(),
+            is_success: true,
+            failure_message: Default::default(),
+            transaction_info: Some(final_tx),
+        },
+    }
+}
+
+/// Builds a `TransferResult` when a transaction was already created and saved by the wallet (`tx_id` exists),
+/// but its status could not be read back before the gRPC timeout expired.
+fn build_pending_transfer_result(tx_id: TxId, address: String) -> TransferResult {
+    TransferResult {
+        address,
+        transaction_id: tx_id.into(),
+        is_success: true,
+        failure_message: format!(
+            "Transaction completed but broadcast status could not be determined. Transaction (ID: {tx_id}) is saved \
+             and will be broadcast when possible.",
+        ),
+        transaction_info: None,
+    }
+}
+
+async fn collect_range_limited_coin_join_results<SendFn, SendFut, WaitFn, WaitFut>(
+    wallet_address: &TariAddress,
+    mut send_next: SendFn,
+    mut wait_confirm: WaitFn,
+) -> Result<Vec<TransferResult>, TransactionServiceError>
+where
+    SendFn: FnMut() -> SendFut,
+    SendFut: Future<Output = Result<TxId, TransactionServiceError>>,
+    WaitFn: FnMut(TxId) -> WaitFut,
+    WaitFut: Future<Output = Option<WalletTransaction>>,
+{
+    let mut results = Vec::new();
+    loop {
+        let tx_id = match send_next().await {
+            Ok(tx_id) => tx_id,
+            Err(err) => {
+                if let TransactionServiceError::OutputManagerError(OutputManagerError::RangeLimitError {
+                    range_exhausted,
+                    ..
+                }) = err &&
+                    range_exhausted &&
+                    !results.is_empty()
+                {
+                    break;
+                }
+                if !results.is_empty() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "range_limit_coin_join: stopping after {} transaction(s): {err}",
+                        results.len()
+                    );
+                    results.push(TransferResult {
+                        address: wallet_address.to_string(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: format!("Transaction abandoned: {err}"),
+                        transaction_info: None,
+                    });
+                    break;
+                }
+                return Err(err);
+            },
+        };
+
+        match wait_confirm(tx_id).await {
+            Some(wallet_tx) => {
+                let address = wallet_tx
+                    .destination_address()
+                    .unwrap_or_else(|| {
+                        error!(
+                            target: LOG_TARGET,
+                            "range_limit_coin_join: Missing destination address for tx {tx_id}"
+                        );
+                        wallet_address.clone()
+                    })
+                    .to_string();
+                let transfer_result = build_transfer_result_from_tx(tx_id, address, wallet_tx, wallet_address);
+                let should_stop = !transfer_result.is_success || !transfer_result.failure_message.is_empty();
+                results.push(transfer_result);
+                if should_stop {
+                    // Stop creating dependent coin-join transactions when the latest transaction was rejected
+                    // or its broadcast has not yet been confirmed within the timeout.
+                    break;
+                }
+            },
+            None => {
+                results.push(build_pending_transfer_result(tx_id, wallet_address.to_string()));
+                break;
+            },
+        }
+    }
+    Ok(results)
+}
+
+async fn collect_user_pay_for_fee_results<WaitFn, WaitFut>(
+    wallet_address: &TariAddress,
+    transfer_results: Vec<(TariAddress, Result<TxId, TransactionServiceError>)>,
+    wait_submitted: WaitFn,
+) -> Vec<TransferResult>
+where
+    WaitFn: Fn(TxId) -> WaitFut,
+    WaitFut: Future<Output = Option<WalletTransaction>>,
+{
+    let indexed_results: Vec<(usize, TariAddress, Result<TxId, TransactionServiceError>)> = transfer_results
+        .into_iter()
+        .enumerate()
+        .map(|(i, (address, result))| (i, address, result))
+        .collect();
+
+    let mut submitted_futures = Vec::new();
+    let mut result_slots: Vec<Option<TransferResult>> = vec![None; indexed_results.len()];
+
+    for (i, address, result) in &indexed_results {
+        match result {
+            Ok(tx_id) => {
+                let tx_id = *tx_id;
+                let fut = wait_submitted(tx_id);
+                submitted_futures.push(async move { (*i, fut.await) });
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to send transaction for address `{address}`: {err}"
+                );
+                if let Some(slot) = result_slots.get_mut(*i) {
+                    *slot = Some(TransferResult {
+                        address: address.to_string(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: err.to_string(),
+                        transaction_info: None,
+                    });
+                }
+            },
+        }
+    }
+
+    let submitted_results = future::join_all(submitted_futures).await;
+    for (i, submitted_result) in submitted_results {
+        let Some((_, address, result)) = indexed_results.get(i) else {
+            continue;
+        };
+        let tx_id = result.as_ref().expect("only Ok values have submitted futures");
+        let Some(slot) = result_slots.get_mut(i) else {
+            continue;
+        };
+        match submitted_result {
+            Some(wallet_tx) => {
+                *slot = Some(build_submitted_transfer_result_from_tx(
+                    *tx_id,
+                    address.to_string(),
+                    wallet_tx,
+                    wallet_address,
+                ));
+            },
+            None => {
+                *slot = Some(build_pending_transfer_result(*tx_id, address.to_string()));
+            },
+        }
+    }
+
+    result_slots.into_iter().flatten().collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use tari_common_types::types::{CommitmentFactory, CompressedCommitment};
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
+
+    use chrono::DateTime;
+    use minotari_wallet::{
+        output_manager_service::error::OutputManagerError,
+        transaction_service::{
+            error::TransactionServiceError,
+            storage::models::{CompletedTransaction, TxCancellationReason, WalletTransaction},
+        },
+    };
+    use tari_common_types::{
+        tari_address::TariAddress,
+        transaction::{LegacyTransactionStatus, TransactionDirection as CommonTxDirection, TxId},
+        types::{CommitmentFactory, CompressedCommitment, PrivateKey},
+    };
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
-    use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
+    use tari_transaction_components::{
+        MicroMinotari,
+        rpc::MAX_ALLOWED_QUERY_SIZE,
+        transaction_components::{MemoField, Transaction},
+    };
     use tari_utilities::ByteArray;
+    use tokio::time::sleep;
 
     use super::{
+        build_pending_transfer_result,
+        build_submitted_transfer_result_from_tx,
+        build_transfer_result_from_tx,
+        collect_range_limited_coin_join_results,
+        collect_user_pay_for_fee_results,
         found_or_none,
         is_undecodable_row,
         is_undecodable_transaction,
@@ -4585,6 +4702,8 @@ mod tests {
         memo_from_raw_bytes,
         parse_excluded_commitments,
         payload_lifetime,
+        poll_for_broadcast_confirmation,
+        poll_for_submitted_transaction,
         with_request_offset,
     };
 
@@ -4764,5 +4883,331 @@ mod tests {
         );
         assert_eq!(payload_lifetime(169).unwrap_err().code(), tonic::Code::InvalidArgument);
         assert!(payload_lifetime(u64::MAX).is_err());
+    }
+
+    fn sample_wallet_tx(
+        tx_id: TxId,
+        status: LegacyTransactionStatus,
+        cancelled: Option<TxCancellationReason>,
+    ) -> WalletTransaction {
+        let mut completed = CompletedTransaction::new(
+            tx_id,
+            TariAddress::default(),
+            TariAddress::default(),
+            MicroMinotari(1_000),
+            MicroMinotari(10),
+            Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
+            status,
+            DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            CommonTxDirection::Outbound,
+            None,
+            None,
+            MemoField::new_empty(),
+            0,
+        )
+        .unwrap();
+        completed.cancelled = cancelled;
+        WalletTransaction::Completed(completed)
+    }
+
+    #[test]
+    fn build_transfer_result_distinguishes_pending_broadcast_and_rejected_statuses() {
+        let wallet_address = TariAddress::default();
+        let tx_id = TxId::from(42u64);
+
+        for pending_status in [
+            LegacyTransactionStatus::Completed,
+            LegacyTransactionStatus::Queued,
+            LegacyTransactionStatus::Pending,
+        ] {
+            let res = build_transfer_result_from_tx(
+                tx_id,
+                "dest".to_string(),
+                sample_wallet_tx(tx_id, pending_status, None),
+                &wallet_address,
+            );
+            assert!(res.is_success);
+            assert_eq!(res.transaction_id, 42);
+            assert!(res.failure_message.contains("broadcast is still pending"));
+            assert!(res.transaction_info.is_some());
+        }
+
+        let broadcast = build_transfer_result_from_tx(
+            tx_id,
+            "dest".to_string(),
+            sample_wallet_tx(tx_id, LegacyTransactionStatus::Broadcast, None),
+            &wallet_address,
+        );
+        assert!(broadcast.is_success);
+        assert!(broadcast.failure_message.is_empty());
+        assert!(broadcast.transaction_info.is_some());
+
+        let rejected = build_transfer_result_from_tx(
+            tx_id,
+            "dest".to_string(),
+            sample_wallet_tx(
+                tx_id,
+                LegacyTransactionStatus::Rejected,
+                Some(TxCancellationReason::UserCancelled),
+            ),
+            &wallet_address,
+        );
+        assert!(!rejected.is_success);
+        assert_eq!(rejected.transaction_id, 42);
+        assert!(rejected.failure_message.contains("rejected during submission"));
+        assert!(rejected.transaction_info.is_some());
+    }
+
+    #[test]
+    fn build_submitted_and_pending_transfer_results_preserve_tx_id() {
+        let wallet_address = TariAddress::default();
+        let tx_id = TxId::from(77u64);
+
+        let submitted_completed = build_submitted_transfer_result_from_tx(
+            tx_id,
+            "dest".to_string(),
+            sample_wallet_tx(tx_id, LegacyTransactionStatus::Completed, None),
+            &wallet_address,
+        );
+        assert!(submitted_completed.is_success);
+        assert_eq!(submitted_completed.transaction_id, 77);
+        assert!(submitted_completed.failure_message.is_empty());
+        assert!(submitted_completed.transaction_info.is_some());
+
+        let submitted_rejected = build_submitted_transfer_result_from_tx(
+            tx_id,
+            "dest".to_string(),
+            sample_wallet_tx(
+                tx_id,
+                LegacyTransactionStatus::Rejected,
+                Some(TxCancellationReason::Oversized),
+            ),
+            &wallet_address,
+        );
+        assert!(!submitted_rejected.is_success);
+        assert_eq!(submitted_rejected.transaction_id, 77);
+
+        let fallback = build_pending_transfer_result(tx_id, "dest".to_string());
+        assert!(fallback.is_success);
+        assert_eq!(fallback.transaction_id, 77);
+        assert!(
+            fallback
+                .failure_message
+                .contains("broadcast status could not be determined")
+        );
+        assert!(fallback.transaction_info.is_none());
+    }
+
+    #[tokio::test]
+    async fn poll_for_broadcast_confirmation_bounds_fallback_and_preserves_last_seen_tx() {
+        let tx_id = TxId::from(101u64);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_clone = calls.clone();
+
+        // First poll observes a `Completed` transaction; subsequent polls stall past both timeouts.
+        let tx =
+            poll_for_broadcast_confirmation(tx_id, Duration::from_millis(25), Duration::from_millis(15), move || {
+                let step = calls_clone.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if step == 0 {
+                        Ok(Some(sample_wallet_tx(tx_id, LegacyTransactionStatus::Completed, None)))
+                    } else {
+                        sleep(Duration::from_millis(200)).await;
+                        Ok(None)
+                    }
+                }
+            })
+            .await
+            .expect("should return last seen transaction instead of failing with NOT_FOUND");
+        assert_eq!(tx.status(), LegacyTransactionStatus::Completed);
+
+        // When no transaction is ever observed and lookups stall, it returns bounded `None`.
+        let missing =
+            poll_for_broadcast_confirmation(tx_id, Duration::from_millis(15), Duration::from_millis(15), || async {
+                sleep(Duration::from_millis(200)).await;
+                Ok(None)
+            })
+            .await;
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn poll_for_submitted_transaction_resolves_or_times_out_bounded() {
+        let tx_id = TxId::from(202u64);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_clone = calls.clone();
+
+        let tx = poll_for_submitted_transaction(tx_id, Duration::from_millis(100), move || {
+            let step = calls_clone.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if step < 2 {
+                    Ok(None)
+                } else {
+                    Ok(Some(sample_wallet_tx(tx_id, LegacyTransactionStatus::Completed, None)))
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(tx.status(), LegacyTransactionStatus::Completed);
+
+        let missing = poll_for_submitted_transaction(tx_id, Duration::from_millis(20), || async { Ok(None) }).await;
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn range_limited_coin_join_preserves_created_transactions_on_timeout_or_later_error() {
+        let wallet_address = TariAddress::default();
+
+        // Case 1: first tx broadcasts, second tx confirmation times out -> both created txs are returned.
+        let step = Arc::new(AtomicUsize::new(0));
+        let step_clone = step.clone();
+        let results = collect_range_limited_coin_join_results(
+            &wallet_address,
+            move || {
+                let idx = step_clone.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    match idx {
+                        0 => Ok(TxId::from(1u64)),
+                        1 => Ok(TxId::from(2u64)),
+                        _ => panic!("should stop creating dependent coin-joins after unconfirmed broadcast"),
+                    }
+                }
+            },
+            |tx_id| async move {
+                if tx_id == TxId::from(1u64) {
+                    Some(sample_wallet_tx(tx_id, LegacyTransactionStatus::Broadcast, None))
+                } else {
+                    None
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        let [first, second] = results.as_slice() else {
+            panic!("expected 2 coin-join results, got {}", results.len());
+        };
+        assert_eq!(first.transaction_id, 1);
+        assert!(first.is_success);
+        assert!(first.failure_message.is_empty());
+        assert_eq!(second.transaction_id, 2);
+        assert!(second.is_success);
+        assert!(
+            second
+                .failure_message
+                .contains("broadcast status could not be determined")
+        );
+
+        // Case 2: first tx broadcasts, second `send_next` fails with a non-exhausted error -> first tx is kept.
+        let step = Arc::new(AtomicUsize::new(0));
+        let step_clone = step.clone();
+        let results = collect_range_limited_coin_join_results(
+            &wallet_address,
+            move || {
+                let idx = step_clone.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if idx == 0 {
+                        Ok(TxId::from(10u64))
+                    } else {
+                        Err(TransactionServiceError::Other("lock contention".to_string()))
+                    }
+                }
+            },
+            |tx_id| async move { Some(sample_wallet_tx(tx_id, LegacyTransactionStatus::Broadcast, None)) },
+        )
+        .await
+        .unwrap();
+
+        let [first, failed] = results.as_slice() else {
+            panic!("expected 2 coin-join results, got {}", results.len());
+        };
+        assert_eq!(first.transaction_id, 10);
+        assert!(first.is_success);
+        assert_eq!(failed.transaction_id, 0);
+        assert!(!failed.is_success);
+        assert!(failed.failure_message.contains("Transaction abandoned"));
+
+        // Case 3: range exhausted after first tx -> returns only the first tx.
+        let step = Arc::new(AtomicUsize::new(0));
+        let step_clone = step.clone();
+        let results = collect_range_limited_coin_join_results(
+            &wallet_address,
+            move || {
+                let idx = step_clone.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if idx == 0 {
+                        Ok(TxId::from(20u64))
+                    } else {
+                        Err(TransactionServiceError::OutputManagerError(
+                            OutputManagerError::RangeLimitError {
+                                reason: "exhausted".to_string(),
+                                range_exhausted: true,
+                            },
+                        ))
+                    }
+                }
+            },
+            |tx_id| async move { Some(sample_wallet_tx(tx_id, LegacyTransactionStatus::Broadcast, None)) },
+        )
+        .await
+        .unwrap();
+        let [only] = results.as_slice() else {
+            panic!("expected 1 coin-join result, got {}", results.len());
+        };
+        assert_eq!(only.transaction_id, 20);
+
+        // Case 4: first `send_next` fails before any tx is created -> returns Err.
+        let err = collect_range_limited_coin_join_results(
+            &wallet_address,
+            || async { Err(TransactionServiceError::Other("initial failure".to_string())) },
+            |_| async { unreachable!() },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("initial failure"));
+    }
+
+    #[tokio::test]
+    async fn user_pay_for_fee_batch_preserves_all_created_transactions_when_db_read_times_out() {
+        let wallet_address = TariAddress::default();
+        let batch = vec![
+            (TariAddress::default(), Ok(TxId::from(301u64))),
+            (TariAddress::default(), Ok(TxId::from(302u64))),
+            (
+                TariAddress::default(),
+                Err(TransactionServiceError::Other("already mined".to_string())),
+            ),
+        ];
+
+        let results = collect_user_pay_for_fee_results(&wallet_address, batch, |tx_id| async move {
+            if tx_id == TxId::from(301u64) {
+                Some(sample_wallet_tx(tx_id, LegacyTransactionStatus::Completed, None))
+            } else {
+                None
+            }
+        })
+        .await;
+
+        let [first, second, third] = results.as_slice() else {
+            panic!("expected 3 results, got {}", results.len());
+        };
+        assert_eq!(first.transaction_id, 301);
+        assert!(first.is_success);
+        assert!(first.failure_message.is_empty());
+        assert!(first.transaction_info.is_some());
+
+        assert_eq!(second.transaction_id, 302);
+        assert!(second.is_success);
+        assert!(
+            second
+                .failure_message
+                .contains("broadcast status could not be determined")
+        );
+        assert!(second.transaction_info.is_none());
+
+        assert_eq!(third.transaction_id, 0);
+        assert!(!third.is_success);
+        assert!(third.failure_message.contains("already mined"));
     }
 }
