@@ -106,8 +106,8 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 1 hour
     #[serde(with = "serializers::seconds")]
     pub on_connect_resync_ttl: Duration,
-    /// The longest one OnConnect peer sync may take, however its peer paces the stream. A sync that runs out is
-    /// retried after the failed-sync backoff. Between 5 seconds and 5 minutes.
+    /// The longest one OnConnect or Discovering peer sync may take, however its peer paces the stream. A sync that
+    /// runs out is retried after the failed-sync backoff. Between 5 seconds and 5 minutes.
     /// Default: 30 seconds
     #[serde(with = "serializers::seconds")]
     pub on_connect_sync_timeout: Duration,
@@ -116,8 +116,9 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 5
     pub rebootstrap_connected_peers: usize,
     /// The most new peer records one directly connected peer may have stored within `source_budget_window` through
-    /// Join and Discovery gossip, and separately through OnConnect peer sync. New records past this are dropped (and
-    /// OnConnect stops syncing). Also the most peers stored from one source in a rebootstrap. At least 1.
+    /// Join and Discovery gossip, and separately through OnConnect and Discovering peer sync. New records past this
+    /// are dropped (and OnConnect/Discovering stop syncing from that source). Also the most peers stored from one
+    /// source in a rebootstrap. At least 1.
     /// Default: 50
     pub max_stored_per_source: usize,
     /// The sliding window over which `max_stored_per_source` applies. At least 1 minute.
