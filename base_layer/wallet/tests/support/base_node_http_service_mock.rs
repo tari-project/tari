@@ -72,6 +72,9 @@ struct State {
     /// The answer to `submit_transaction`; accepted if not set
     submit_transaction_response: Option<TxSubmissionResponse>,
     submit_transaction_calls: usize,
+    /// Split each block's outputs into entries of at most this many outputs, sharing the block's height and hash, as
+    /// the base node does for large blocks. `None` sends each block as one entry.
+    utxo_chunk_size: Option<usize>,
 }
 
 impl State {
@@ -163,6 +166,11 @@ impl HttpBaseNodeMock {
     /// Run `hook` on every `get_utxos_mined_info` query.
     pub async fn set_on_mined_info_query(&self, hook: Arc<dyn Fn() + Send + Sync>) {
         self.state.write().await.on_mined_info_query = Some(hook);
+    }
+
+    /// Serve each block from `sync_utxos_by_block` as chunks of at most `chunk_size` outputs.
+    pub async fn set_utxo_chunk_size(&self, chunk_size: usize) {
+        self.state.write().await.utxo_chunk_size = Some(chunk_size.max(1));
     }
 
     pub async fn set_submit_transaction_response(&self, response: TxSubmissionResponse) {
@@ -366,22 +374,31 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
                 if let Some(ub) = state.utxos_by_block.get(&height) {
                     let block_header = state.blocks.get(&height).cloned();
                     if let Some(header) = block_header {
-                        blocks.push(BlockUtxoInfo {
-                            header_hash: header.hash().to_vec(),
-                            height: header.height,
-                            outputs: ub
-                                .utxos
-                                .iter()
-                                .map(|o| models::MinimalUtxoSyncInfo {
-                                    output_hash: o.hash().to_vec(),
-                                    commitment: o.commitment.as_bytes().to_vec(),
-                                    encrypted_data: o.encrypted_data.to_byte_vec(),
-                                    sender_offset_public_key: o.sender_offset_public_key.to_vec(),
-                                })
-                                .collect(),
-                            inputs: Vec::new(),
-                            mined_timestamp: header.timestamp.as_u64(),
-                        });
+                        let outputs = ub
+                            .utxos
+                            .iter()
+                            .map(|o| models::MinimalUtxoSyncInfo {
+                                output_hash: o.hash().to_vec(),
+                                commitment: o.commitment.as_bytes().to_vec(),
+                                encrypted_data: o.encrypted_data.to_byte_vec(),
+                                sender_offset_public_key: o.sender_offset_public_key.to_vec(),
+                            })
+                            .collect::<Vec<_>>();
+                        let chunk_size = state.utxo_chunk_size.unwrap_or(outputs.len()).max(1);
+                        let chunks = if outputs.is_empty() {
+                            vec![Vec::new()]
+                        } else {
+                            outputs.chunks(chunk_size).map(<[_]>::to_vec).collect()
+                        };
+                        for chunk in chunks {
+                            blocks.push(BlockUtxoInfo {
+                                header_hash: header.hash().to_vec(),
+                                height: header.height,
+                                outputs: chunk,
+                                inputs: Vec::new(),
+                                mined_timestamp: header.timestamp.as_u64(),
+                            });
+                        }
                     }
                 }
                 if blocks.len() >= page_size || height == end_height {
@@ -417,6 +434,11 @@ pub struct MockHttpClientFactory {
 }
 
 impl MockHttpClientFactory {
+    /// A factory whose clients all talk to `mock`.
+    pub fn from_mock(mock: HttpBaseNodeMock) -> Self {
+        Self { mock }
+    }
+
     pub fn get_client(&self) -> HttpBaseNodeMock {
         self.mock.clone()
     }
