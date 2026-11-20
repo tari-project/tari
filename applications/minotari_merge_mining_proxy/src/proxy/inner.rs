@@ -182,23 +182,17 @@ impl InnerService {
         let (parts, mut json_resp) = monerod_resp.into_parts();
 
         info!(target: LOG_TARGET, "Block submit request #{}", request);
-        let params = match request["params"].as_array() {
-            Some(v) => v,
-            None => {
-                return proxy::json_response(
-                    StatusCode::OK,
-                    &json_rpc::error_response(
-                        request["id"].as_i64(),
-                        CoreRpcErrorCode::WrongParam.into(),
-                        "`params` field is empty or an invalid type for submit block request. Expected an array.",
-                        None,
-                    ),
-                );
+        let params = match extract_submit_block_params(request) {
+            Ok(v) => v,
+            Err(err_resp) => {
+                return proxy::json_response(StatusCode::OK, &err_resp);
             },
         };
 
-        for (i, param) in params.iter().filter_map(|p| p.as_str()).enumerate() {
-            trace!(target: LOG_TARGET, "handle_submit_block, param {} of {}", i, params.len());
+        let params_len = params.len();
+        let mut tari_block_accepted = false;
+        for (i, param) in params.into_iter().enumerate() {
+            trace!(target: LOG_TARGET, "handle_submit_block, param {} of {}", i, params_len);
             let monero_block = monero_rx::deserialize_monero_block_from_hex(param)?;
             trace!(target: LOG_TARGET, "Monero block: {}", monero_block);
             let hash = monero_rx::extract_aux_merkle_root_from_block(&monero_block)?.ok_or_else(|| {
@@ -299,6 +293,7 @@ impl InnerService {
 
                 match resp {
                     Ok(resp) => {
+                        tari_block_accepted = true;
                         json_resp = json_rpc::success_response(
                             request["id"].as_i64(),
                             json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::SeqCst) }),
@@ -324,21 +319,17 @@ impl InnerService {
                             start.elapsed(),
                             err
                         );
-
-                        if !self.config.submit_to_origin {
-                            // When "submit to origin" is turned off the block is never submitted to monerod, and so we
-                            // need to construct an error message here.
-                            json_resp = json_rpc::error_response(
-                                request["id"].as_i64(),
-                                CoreRpcErrorCode::BlockNotAccepted.into(),
-                                "Block not accepted",
-                                None,
-                            );
-                        }
                     },
                 }
             };
         }
+
+        json_resp = finalize_submit_block_response(
+            request["id"].as_i64(),
+            self.config.submit_to_origin,
+            tari_block_accepted,
+            json_resp,
+        );
 
         debug!(
             target: LOG_TARGET,
@@ -1062,5 +1053,102 @@ impl InnerService {
                 Err(e)
             },
         }
+    }
+}
+
+fn extract_submit_block_params(request: &json::Value) -> Result<Vec<&str>, json::Value> {
+    let Some(params) = request["params"].as_array() else {
+        return Err(json_rpc::error_response(
+            request["id"].as_i64(),
+            CoreRpcErrorCode::WrongParam.into(),
+            "`params` field is empty or an invalid type for submit block request. Expected an array.",
+            None,
+        ));
+    };
+
+    let mut string_params = Vec::with_capacity(params.len());
+    for param in params {
+        let Some(param) = param.as_str() else {
+            return Err(json_rpc::error_response(
+                request["id"].as_i64(),
+                CoreRpcErrorCode::WrongParam.into(),
+                "`params` field contains a non-string element for submit block request.",
+                None,
+            ));
+        };
+        string_params.push(param);
+    }
+
+    Ok(string_params)
+}
+
+fn finalize_submit_block_response(
+    request_id: Option<i64>,
+    submit_to_origin: bool,
+    tari_block_accepted: bool,
+    json_resp: json::Value,
+) -> json::Value {
+    if !submit_to_origin && !tari_block_accepted {
+        // When "submit to origin" is turned off the block is never submitted to monerod, and so we
+        // need to construct an error message whenever no block was accepted by the Minotari node.
+        json_rpc::error_response(
+            request_id,
+            CoreRpcErrorCode::BlockNotAccepted.into(),
+            "Block not accepted",
+            None,
+        )
+    } else {
+        json_resp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{extract_submit_block_params, finalize_submit_block_response};
+    use crate::common::{json_rpc, monero_rpc::CoreRpcErrorCode};
+
+    #[test]
+    fn extract_submit_block_params_rejects_trailing_non_string_before_any_submission() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "submit_block",
+            "params": ["0707deadbeef", 123]
+        });
+        let err = extract_submit_block_params(&req).unwrap_err();
+        assert_eq!(err["id"], 11);
+        assert_eq!(err["error"]["code"], i32::from(CoreRpcErrorCode::WrongParam));
+
+        let valid_req = json!({
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "submit_block",
+            "params": ["0707deadbeef", "0707cafebabe"]
+        });
+        let extracted = extract_submit_block_params(&valid_req).unwrap();
+        assert_eq!(extracted, vec!["0707deadbeef", "0707cafebabe"]);
+    }
+
+    #[test]
+    fn finalize_submit_block_response_rejects_unaccepted_block_when_submit_to_origin_disabled() {
+        let default_accept = json_rpc::default_block_accept_response(Some(42));
+        let resp = finalize_submit_block_response(Some(42), false, false, default_accept);
+        assert_eq!(resp["id"], 42);
+        assert_eq!(resp["error"]["code"], i32::from(CoreRpcErrorCode::BlockNotAccepted));
+        assert_eq!(resp["error"]["message"], "Block not accepted");
+        assert!(resp["result"].is_null());
+    }
+
+    #[test]
+    fn finalize_submit_block_response_preserves_accepted_or_origin_responses() {
+        let accepted = json_rpc::success_response(Some(7), json!({ "status": "OK", "untrusted": false }));
+        let resp = finalize_submit_block_response(Some(7), false, true, accepted.clone());
+        assert_eq!(resp, accepted);
+
+        let origin_resp = json_rpc::success_response(Some(9), json!({ "status": "OK", "untrusted": false }));
+        let resp = finalize_submit_block_response(Some(9), true, false, origin_resp.clone());
+        assert_eq!(resp, origin_resp);
     }
 }
