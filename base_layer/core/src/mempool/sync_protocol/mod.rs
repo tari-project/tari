@@ -105,7 +105,7 @@ use crate::mempool::metrics;
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     chain_storage::BlockAddResult,
-    mempool::{Mempool, MempoolServiceConfig, proto},
+    mempool::{Mempool, MempoolServiceConfig, proto, unconfirmed_pool::MAX_BLOCK_TEMPLATE_BODY_BYTES},
     proto as shared_proto,
 };
 
@@ -115,7 +115,9 @@ mod test;
 mod error;
 mod initializer;
 
-const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
+/// Large enough to carry any transaction the mempool admits: the extra 1 MiB covers the protobuf overhead on top of the
+/// borsh-measured body (about 3% observed).
+const MAX_FRAME_SIZE: usize = MAX_BLOCK_TEMPLATE_BODY_BYTES + 1024 * 1024;
 
 /// Size of a transaction inventory item: a kernel excess signature scalar.
 const INVENTORY_ITEM_SIZE: usize = 32;
@@ -123,12 +125,16 @@ const INVENTORY_ITEM_SIZE: usize = 32;
 /// The decode budget for the `InventoryIndexes` reply. Its only list is a repeated `uint32`, which the budget charges
 /// by byte length when packed and one item per element when unpacked.
 ///
-/// The general [`shared_proto::MESSAGE_MAX_DECODE_ITEMS`] (262,144) is too tight for it: the largest inventory one
+/// The general [`shared_proto::MESSAGE_MAX_DECODE_ITEMS`] (262,144) is too tight for it: the largest inventory a 3 MiB
 /// frame can carry is ~92.5k items (34 wire bytes each), and the packed list of all their indexes is ~261k bytes. And
 /// the item budget adds little here: a list of `u32`s decodes into at most 4 bytes per element, never more than ~4x its
-/// wire size, with no per-element allocation. This cap leaves 3x headroom over the largest honest (packed) list while
-/// still rejecting a full frame of unpacked indexes (~1.57M elements at 2 bytes each).
-const INVENTORY_INDEXES_MAX_DECODE_ITEMS: usize = MAX_FRAME_SIZE / 4;
+/// wire size, with no per-element allocation. This cap leaves 3x headroom over that list while still rejecting a full
+/// [`MAX_FRAME_SIZE`] frame of unpacked indexes (~3.1M elements at 2 bytes each).
+///
+/// Inventory size does not depend on transaction size, so this is not derived from [`MAX_FRAME_SIZE`]: the frame was
+/// raised to carry large transactions, which must not raise this cap. Even the largest inventory a full frame can carry
+/// (~185k items) has a packed index list (~539k bytes) under it.
+const INVENTORY_INDEXES_MAX_DECODE_ITEMS: usize = (3 * 1024 * 1024) / 4;
 
 /// Deadline for a single control message — the transaction inventory and the list of requested
 /// indexes. Both are one bounded frame, so a short deadline is safe.
@@ -139,13 +145,13 @@ const MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 /// The clock restarts for every frame, so this bounds how long any single transaction may take to
 /// arrive. Note it is not an idle-gap bound: the deadline covers complete delivery of the frame,
 /// not merely the wait for its first byte. A frame here carries an entire transaction and may be up
-/// to [`MAX_FRAME_SIZE`] (3 MiB); at the ~50 KiB/s a Tor circuit can sustain, delivering one takes
-/// 61s, so this is set at roughly double that rather than at the edge of it.
+/// to [`MAX_FRAME_SIZE`] (6 MiB); at the ~50 KiB/s a Tor circuit can sustain, delivering one takes
+/// ~123s, so this is set at roughly double that rather than at the edge of it.
 ///
 /// Because it restarts per frame it cannot bound the exchange as a whole — a peer trickling one
 /// frame just inside the deadline would hold the substream open forever. [`PROTOCOL_TIMEOUT`] and
 /// the item cap in `read_and_insert_transactions_until_complete` are what bound that.
-const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(120);
+const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(240);
 
 /// Deadline for one peer's entire mempool sync exchange.
 ///
@@ -443,7 +449,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                         return false;
                     },
                 };
-                match MempoolPeerProtocol::new(config, framed, peer.clone(), mempool)
+                match MempoolPeerProtocol::new(config, framed, MAX_FRAME_SIZE, peer.clone(), mempool)
                     .start_initiator()
                     .await
                 {
@@ -489,7 +495,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         let config = self.config.clone();
         self.tasks.spawn(async move {
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
-            let mut protocol = MempoolPeerProtocol::new(config, framed, node_id.clone(), mempool);
+            let mut protocol = MempoolPeerProtocol::new(config, framed, MAX_FRAME_SIZE, node_id.clone(), mempool);
             // Aggregate deadline, as for the initiator: a responder holds no permit, but an
             // unbounded exchange still keeps a `Mempool` clone alive indefinitely.
             match time::timeout(PROTOCOL_TIMEOUT, protocol.start_responder()).await {
@@ -523,6 +529,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
 struct MempoolPeerProtocol<TSubstream> {
     config: MempoolServiceConfig,
     framed: CanonicalFraming<TSubstream>,
+    /// The frame limit `framed` was built with; transactions that encode larger are not sent.
+    max_frame_size: usize,
     mempool: Mempool,
     peer_node_id: NodeId,
 }
@@ -533,12 +541,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     pub fn new(
         config: MempoolServiceConfig,
         framed: CanonicalFraming<TSubstream>,
+        max_frame_size: usize,
         peer_node_id: NodeId,
         mempool: Mempool,
     ) -> Self {
         Self {
             config,
             framed,
+            max_frame_size,
             mempool,
             peer_node_id,
         }
@@ -864,18 +874,35 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
-        let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
+        let max_frame_size = self.max_frame_size;
+        let txns = transactions
+            .into_iter()
             .filter_map(|txn| {
-                match shared_proto::types::Transaction::try_from(txn) {
-                    Ok(txn) =>   Some(proto::TransactionItem {
-                        transaction: Some(txn),
-                    }),
+                let item = match shared_proto::types::Transaction::try_from(txn.clone()) {
+                    Ok(proto_txn) => proto::TransactionItem {
+                        transaction: Some(proto_txn),
+                    },
                     Err(e) => {
                         warn!(target: LOG_TARGET, "Could not convert transaction: {e}");
-                        None
-                    }
+                        return None;
+                    },
+                };
+                // An over-limit frame fails the whole write, so skip the item rather than abort the exchange
+                let len = prost::Message::encoded_len(&item);
+                if len > max_frame_size {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Not sending transaction `{}`: it encodes to {len} bytes, over the {max_frame_size} byte frame limit",
+                        txn.first_kernel_excess_sig()
+                            .map(|sig| sig.get_signature().to_hex())
+                            .unwrap_or_default(),
+                    );
+                    return None;
                 }
+                Some(item)
             })
+            // Skipped items must not use up the cap
+            .take(self.config.initial_sync_max_transactions)
             // Write an empty `TransactionItem` to indicate we're done
             .chain(iter::once(proto::TransactionItem::empty()));
 
