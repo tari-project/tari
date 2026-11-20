@@ -139,14 +139,11 @@ where
             error!(target: LOG_TARGET, "{msg}");
             Err(ExitError::new(ExitCode::ConfigError, msg))
         },
-        // Invalid UTF-8 surfaces from `read_to_string` as `InvalidData` rather than `Malformed`.
         Err(e @ (IdentityError::Malformed { .. } | IdentityError::Io(_)))
-            if (matches!(&e, IdentityError::Malformed { .. }) ||
-                matches!(&e, IdentityError::Io(err) if err.kind() == io::ErrorKind::InvalidData)) &&
-                identity_file
-                    .as_ref()
-                    .metadata()
-                    .is_ok_and(|m| m.permissions().readonly()) =>
+            if identity_file
+                .as_ref()
+                .metadata()
+                .is_ok_and(|m| m.permissions().readonly()) =>
         {
             let msg = format!(
                 "Node identity file '{}' is read-only and could not be loaded ({e}); it will not be replaced.",
@@ -576,6 +573,10 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
 /// leaves either the old or the new file, never a partial one.
 #[cfg(target_family = "unix")]
 fn write_identity_file<P: AsRef<Path>>(path: P, header: &[u8], contents: &[u8]) -> io::Result<()> {
+    // Writers in this process (e.g. the node's Tor callback and bootstrap) share the fixed temp name, so take turns.
+    // No cross-process lock: other processes (minotari_peer_sync) load without persisting.
+    static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     // Write next to the real file so a symlinked identity is updated rather than replaced by a regular file.
     let path = match fs::canonicalize(path.as_ref()) {
         Ok(real) => real,
@@ -634,12 +635,12 @@ fn write_identity_temp_file(path: &Path, header: &[u8], contents: &[u8]) -> io::
         // `mode()` is reduced by the umask, so set the exact permissions while the file is still empty.
         file.set_permissions(fs::Permissions::from_mode(mode))?;
         // The rename installs a new inode, so keep the existing file's owner (e.g. when run via sudo) or the node
-        // may no longer be able to read its own identity.
-        if let Ok(existing) = fs::metadata(path) {
-            let created = file.metadata()?;
-            if (existing.uid(), existing.gid()) != (created.uid(), created.gid()) {
-                std::os::unix::fs::fchown(&file, Some(existing.uid()), Some(existing.gid()))?;
-            }
+        // may no longer be able to read its own identity. The group is irrelevant at 0600 and an unprivileged owner
+        // may not be allowed to set it, so only a different owner triggers the change.
+        if let Ok(existing) = fs::metadata(path) &&
+            existing.uid() != file.metadata()?.uid()
+        {
+            std::os::unix::fs::fchown(&file, Some(existing.uid()), Some(existing.gid()))?;
         }
         file.write_all(header)?;
         file.write_all(contents)?;
@@ -1391,30 +1392,24 @@ mod test {
     }
 
     #[test]
-    fn rewrite_keeps_the_existing_group() {
-        use std::os::unix::fs::MetadataExt;
-        unsafe extern "C" {
-            fn getgroups(size: i32, list: *mut u32) -> i32;
-        }
-        let (_dir, path, _id) = fresh_identity_file(false);
-        let before = fs::metadata(&path).unwrap();
-        let mut groups = [0u32; 64];
-        // SAFETY: `groups` has room for the 64 entries passed as `size`.
-        let n = unsafe { getgroups(64, groups.as_mut_ptr()) };
-        let other = groups
-            .iter()
-            .take(usize::try_from(n).unwrap_or(0))
-            .find(|g| **g != before.gid());
-        let Some(&other) = other else { return };
-        if std::os::unix::fs::chown(&path, None, Some(other)).is_err() {
-            return;
-        }
-
-        load_node_identity(&path, TransportType::Tcp, true).unwrap();
-
-        let after = fs::metadata(&path).unwrap();
-        assert_ne!(after.ino(), before.ino(), "the file must have been rewritten");
-        assert_eq!((after.uid(), after.gid()), (before.uid(), other));
+    fn concurrent_saves_in_one_process_do_not_collide() {
+        let (_dir, path) = temp_path();
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for _ in 0..10 {
+                        let id = NodeIdentity::random(
+                            &mut rand::rng(),
+                            "/ip4/127.0.0.1/tcp/18141".parse().unwrap(),
+                            PeerFeatures::COMMUNICATION_NODE,
+                        );
+                        save_as_json(&path, &id).unwrap();
+                    }
+                });
+            }
+        });
+        load_node_identity(&path, TransportType::Tcp, false).unwrap();
+        assert!(!tmp_path(&path).exists());
     }
 
     #[test]
