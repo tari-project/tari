@@ -80,7 +80,7 @@ use tari_transaction_components::{
     key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{
-        models::{PaymentRecipient, SignedOneSidedTransactionResult},
+        models::{PaymentRecipient, SignedTransactionResult},
         offline_signer::{
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
@@ -88,6 +88,7 @@ use tari_transaction_components::{
             sign_locked_deposit_multisig_transaction,
             sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
+            verify_signed_result,
         },
         one_sided_signer::{multisig_pending_output, withdraw_pending_output},
     },
@@ -4687,25 +4688,28 @@ where
 
     async fn submit_signed_one_sided_transaction(
         &mut self,
-        request: SignedOneSidedTransactionResult,
+        request: SignedTransactionResult,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<Vec<TxId>, TransactionServiceError> {
-        let old_tx_id = request.request.tx_id;
-        let new_tx_id = request.signed_transaction.tx_id;
-        for recipient in &request.request.info.recipients {
+        // Everything recorded below comes out of this file, so check it was not changed on the way back
+        verify_signed_result(&self.resources.transaction_key_manager_service, &request)?;
+
+        let (old_tx_id, info, signed_transaction) = request.into_parts();
+        let new_tx_id = signed_transaction.tx_id;
+        for recipient in &info.recipients {
             self.verify_send(&recipient.address, TariAddressFeatures::create_one_sided_only())?;
         }
-        let payment_id = request.request.info.payment_id;
+        let payment_id = info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
-        let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
+        let change = signed_transaction.change_output.map(|v| vec![v.clone()]);
 
         let _result = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
 
-        let fee = request.signed_transaction.transaction.body.get_total_fee()?;
+        let fee = signed_transaction.transaction.body.get_total_fee()?;
 
         self.resources
             .output_manager_service
@@ -4716,7 +4720,7 @@ where
         let mut tx_ids = Vec::new();
         let mut completed_txs = Vec::new();
 
-        for (i, recipient) in request.request.info.recipients.iter().enumerate() {
+        for (i, recipient) in info.recipients.iter().enumerate() {
             let tx_id = if i == 0 {
                 new_tx_id
             } else {
@@ -4725,8 +4729,7 @@ where
                         .transaction_key_manager_service
                         .get_private_view_key()
                         .as_bytes(),
-                    request
-                        .signed_transaction
+                    signed_transaction
                         .sent_hashes
                         .get(i)
                         .ok_or(TransactionServiceError::Other(
@@ -4735,15 +4738,13 @@ where
                 )
             };
             tx_ids.push(tx_id);
-            let sent_hash =
-                request
-                    .signed_transaction
-                    .sent_hashes
-                    .get(i)
-                    .copied()
-                    .ok_or(TransactionServiceError::Other(
-                        "sent_output_hashes index out of bounds".to_string(),
-                    ))?;
+            let sent_hash = signed_transaction
+                .sent_hashes
+                .get(i)
+                .copied()
+                .ok_or(TransactionServiceError::Other(
+                    "sent_output_hashes index out of bounds".to_string(),
+                ))?;
             let mut final_payment_id = payment_id.clone();
             final_payment_id.set_fee(fee);
             let completed_tx = CompletedTransaction::new_with_output_hashes(
@@ -4752,7 +4753,7 @@ where
                 recipient.address.clone(),
                 recipient.amount,
                 fee,
-                request.signed_transaction.transaction.clone(),
+                signed_transaction.transaction.clone(),
                 LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
@@ -4761,7 +4762,7 @@ where
                 final_payment_id,
                 vec![sent_hash],
                 vec![],
-                request.signed_transaction.change_hashes.clone(),
+                signed_transaction.change_hashes.clone(),
                 0,
             )?;
             completed_txs.push(completed_tx);

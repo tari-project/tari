@@ -69,6 +69,28 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Where:** `applications/minotari_offline_signer`, `base_layer/transaction_components` (`offline_signing`).
 - **Recorded:** 2026-11-17.
 
+### A-SIGNER-02: The online wallet relies on the signature over a signed result
+
+- **Assumption:** The online wallet records and broadcasts what a signed result file says (the recipients it shows in
+  its history, the change output, the transaction) once the file passes `verify_signed_result`. For a version 7
+  request the offline signer signs the result with the key that signed the request: the payload key the request
+  names, otherwise the view key. The wallet verifies both signatures with a key it holds, and a wallet with an
+  imported payload key accepts no other key. Results for version 5 and 6 requests carry no signature and are accepted
+  for a request the wallet signed.
+- **What that means:** The signature detects a change made in transit by anyone without that key. It does not show
+  who produced the file: every holder of the view key can produce a view-key signature, and the online wallet itself
+  holds its payload key. Such a party can make the wallet record a wrong recipient or change output; it cannot move
+  funds, as the transaction still needs spend-key signatures. An unsigned version 5 or 6 result can also be changed
+  in its `signed_transaction` by anyone, within what the checks in "Not covered" allow.
+- **Not covered:** The file must not decide whether it is checked: a version 7 request is only answered by a signed
+  result of the same version, and the request's version is covered by its own signature. Without the signing key it
+  must not be possible to change any field of a version 7 result, or the request inside a result of any version,
+  and have the wallet accept it. In every version the outputs the wallet records must be outputs of the transaction
+  it broadcasts.
+- **Where:** `base_layer/transaction_components` (`offline_signing`), `base_layer/wallet` (transaction service),
+  `applications/minotari_offline_signer`, `applications/minotari_console_wallet`.
+- **Recorded:** 2026-11-20, pull request #8349.
+
 ### A-MULTISIG-01: Multisig co-signers trust the party that builds the spending transaction
 
 - **Assumption:** A co-signer's signature covers the message fixed in the output's script when the output was

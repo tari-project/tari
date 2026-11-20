@@ -91,9 +91,9 @@ key on the signer, so only the signer can create it, and only the wallet it is g
 
 Nothing changes unless you set it up; payloads signed with the view key, and older version 5 payloads, keep working
 until the signer exports its first payload key.
-Upgrade the signer before the online wallet: an older signer cannot read the version 6 payloads a new online wallet
-prepares, while a new signer signs version 5 payloads and returns the result as version 5, which an older online
-wallet can broadcast.
+Upgrade the signer before the online wallet: an older signer cannot read the version 7 payloads a new online wallet
+prepares, while a new signer signs version 5 and 6 payloads and returns the result in the same version, which an
+older online wallet can broadcast.
 To set it up:
 
 1. On the signer, export payload key 1 (any index works; a key is retired with `retire-payload-key`):
@@ -160,6 +160,20 @@ Before showing the summary the signer checks the payload's expiry, checks its si
 and verifies its signature, so a payload it would refuse is never shown for approval. The summary then says which key
 signed the payload: `payload key #<index>`, or `view key (shared key)` followed by a warning that anyone holding the
 view key could have prepared it.
+
+### Signed Results
+
+For a version 7 payload the signer also signs the file it hands back, with the key that signed the payload: the
+payload key it names, otherwise the view key. The online wallet checks that signature before it records or broadcasts
+anything from the file, so a change to the recipients, the change output or the transaction on the way back is
+refused. A wallet with an imported payload key only accepts results for payloads signed with that key; a result for a
+payload it prepared before the key was imported, or with a key it has since replaced, is refused and has to be
+prepared again.
+
+Results for version 5 and 6 payloads are not signed. The online wallet still accepts them, after checking that the
+request inside the file is one it signed and that the outputs it is about to record belong to the signed transaction.
+The signature shows that the file was not changed by anyone without the signing key. It does not show who produced
+it.
 
 ### Payload Expiry
 

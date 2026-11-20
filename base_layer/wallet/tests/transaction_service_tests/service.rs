@@ -118,6 +118,7 @@ use tari_transaction_components::{
         OfflinePayload,
         PayloadSummary,
         PaymentRecipient,
+        models::{SignedOneSidedWithdrawMultisigTransactionResult, SignedTransactionResult, TransactionResult},
         one_sided_signer::withdraw_pending_output,
         prepare_withdraw_multisig_transaction,
         present_payload_summary,
@@ -3417,6 +3418,65 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
     let connection = make_wallet_database_memory_connection();
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
 
+    let signed = sign_a_multisig_withdraw(&mut alice_ts_interface).await;
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
+    );
+}
+
+/// A signed multisig withdraw goes back to the wallet through `BroadcastSignedOneSidedTransaction`, the only
+/// broadcast request there is. The wallet must accept the file as the signer wrote it, and refuse it once a field
+/// was changed.
+#[tokio::test]
+async fn a_signed_multisig_withdraw_is_broadcast_and_a_changed_one_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let signed = sign_a_multisig_withdraw(&mut alice_ts_interface).await;
+    assert!(signed.payload_signature.is_some());
+    let json = signed.to_json().unwrap();
+
+    let mut changed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    changed["signed_transaction"]["change_output"]["value"] = 1_000_000.into();
+    let err = alice_ts_interface
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(SignedTransactionResult::from_json(&changed.to_string()).unwrap())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("integrity check failed"), "{err}");
+    assert!(
+        alice_ts_interface
+            .transaction_service_handle
+            .get_completed_transactions(None, None, None, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let tx_ids = alice_ts_interface
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(SignedTransactionResult::from_json(&json).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(tx_ids, vec![signed.signed_transaction.tx_id]);
+    let completed = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 10)
+        .await
+        .unwrap();
+    assert_eq!(completed.iter().map(|tx| tx.tx_id).collect::<Vec<_>>(), vec![
+        signed.signed_transaction.tx_id
+    ]);
+}
+
+/// Prepares a withdraw from a multisig output of the wallet's own and signs it through the transaction service.
+#[allow(clippy::arithmetic_side_effects)]
+async fn sign_a_multisig_withdraw(
+    alice_ts_interface: &mut TransactionServiceNoCommsInterface,
+) -> SignedOneSidedWithdrawMultisigTransactionResult {
     let key_manager = alice_ts_interface.key_manager_handle.key_manager();
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let consensus_constants = consensus_manager.consensus_constants(0).clone();
@@ -3539,16 +3599,12 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         .sign_one_sided_withdraw_multisig_transaction(confirmed(PayloadSummary::from_withdraw_multisig(prepared)))
         .await;
 
-    let signed = result.unwrap_or_else(|e| {
+    result.unwrap_or_else(|e| {
         panic!(
             "expected SignOneSidedWithdrawMultisigTransaction to succeed using the output's own \
              commitment_mask_key_id, got: {e:?}"
         )
-    });
-    assert_eq!(
-        signed.signed_transaction.change_output.map(|o| o.value()),
-        Some(MicroMinotari(1))
-    );
+    })
 }
 
 /// Preparing a payload for the offline signer that would leave no change output has to be refused online too, with

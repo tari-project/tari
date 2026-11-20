@@ -181,7 +181,7 @@ use tari_transaction_components::{
     MicroMinotari,
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
-    offline_signing::{MAX_PAYLOAD_LIFETIME, models::SignedOneSidedTransactionResult},
+    offline_signing::{MAX_PAYLOAD_LIFETIME, models::SignedTransactionResult},
     rpc::MAX_ALLOWED_QUERY_SIZE,
     transaction_components::{
         OutputFeatures,
@@ -1007,8 +1007,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
-        let request = SignedOneSidedTransactionResult::from_json(&message.request)
-            .map_err(|err| Status::internal(err.to_string()))?;
+        let request =
+            SignedTransactionResult::from_json(&message.request).map_err(|err| Status::internal(err.to_string()))?;
         let response = match transaction_service
             .broadcast_signed_one_sided_transaction(request)
             .await
