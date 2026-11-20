@@ -4364,6 +4364,7 @@ dependencies = [
  "tari_script",
  "tari_transaction_components",
  "tari_utilities",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tonic 0.13.1",
