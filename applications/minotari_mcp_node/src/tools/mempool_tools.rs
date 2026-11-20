@@ -26,7 +26,7 @@
 //! and transaction validation status.
 
 use minotari_app_grpc::tari_rpc::{Empty, GetMempoolTransactionsRequest, Signature, TransactionStateRequest};
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
+use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -81,22 +81,7 @@ impl McpTool for GetMempoolStatsTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let response = self
-            .grpc_client
-            .clone()
-            .get_mempool_stats(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "unconfirmed_txs": response.unconfirmed_txs,
-            "reorg_txs": response.reorg_txs,
-            "unconfirmed_weight": response.unconfirmed_weight,
-            "total_transactions": response.unconfirmed_txs.saturating_add(response.reorg_txs),
-        }))
+        node_rpc::get_mempool_stats(self.grpc_client.clone()).await
     }
 }
 
@@ -142,71 +127,7 @@ impl McpTool for GetMempoolTransactionsTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(100); // Default limit to prevent overwhelming responses
-
-        let request = Request::new(GetMempoolTransactionsRequest {});
-
-        let mut response_stream = self
-            .grpc_client
-            .clone()
-            .get_mempool_transactions(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
-            .into_inner();
-
-        let mut transactions = Vec::new();
-        let mut count = 0;
-
-        while let Some(tx_response) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read mempool transaction stream: {e}")))?
-        {
-            if count >= limit {
-                break;
-            }
-
-            if let Some(transaction) = tx_response.transaction {
-                let tx_info = json!({
-                    "offset": hex::encode(&transaction.offset),
-                    "body": {
-                        "inputs": transaction.body.as_ref()
-                            .map(|body| body.inputs.len())
-                            .unwrap_or(0),
-                        "outputs": transaction.body.as_ref()
-                            .map(|body| body.outputs.len())
-                            .unwrap_or(0),
-                        "kernels": transaction.body.as_ref()
-                            .map(|body| body.kernels.len())
-                            .unwrap_or(0),
-                    },
-                    "total_fee": transaction.body.as_ref()
-                        .map(|body| body.kernels.iter()
-                            .map(|k| k.fee)
-                            .sum::<u64>())
-                        .unwrap_or(0),
-                    "total_weight": transaction.body.as_ref()
-                        .map(|body| {
-                            body.inputs.len().saturating_add(body.outputs.len()).saturating_add(body.kernels.len())
-                        })
-                        .unwrap_or(0),
-                });
-
-                transactions.push(tx_info);
-                count = count.saturating_add(1);
-            }
-        }
-
-        Ok(json!({
-            "transactions": transactions,
-            "count": transactions.len(),
-            "limit": limit,
-            "note": if count >= limit {
-                format!("Results limited to {limit} transactions. Use limit parameter to adjust.")
-            } else {
-                "All mempool transactions returned".to_string()
-            }
-        }))
+        node_rpc::get_mempool_transactions(self.grpc_client.clone(), &params).await
     }
 }
 
@@ -268,13 +189,7 @@ impl McpTool for GetTransactionStateTool {
             excess_sig: Some(signature),
         });
 
-        let response = self
-            .grpc_client
-            .clone()
-            .transaction_state(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction state: {e}")))?
-            .into_inner();
+        let response = self.grpc_client.clone().transaction_state(request).await?.into_inner();
 
         let location = match response.result {
             0 => "UNKNOWN",
@@ -317,16 +232,11 @@ impl AnalyzeMempoolTool {
             .grpc_client
             .clone()
             .get_mempool_transactions(tx_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
+            .await?
             .into_inner();
 
         let mut samples = MempoolSamples::default();
-        while let Some(tx_response) = tx_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {e}")))?
-        {
+        while let Some(tx_response) = tx_stream.message().await? {
             if let Some(transaction) = tx_response.transaction &&
                 let Some(body) = transaction.body
             {
@@ -378,8 +288,7 @@ impl McpTool for AnalyzeMempoolTool {
             .grpc_client
             .clone()
             .get_mempool_stats(stats_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {e}")))?
+            .await?
             .into_inner();
 
         // Then get transaction details

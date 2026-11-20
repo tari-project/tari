@@ -122,10 +122,7 @@ impl NodeMcpServer {
         // Create health-aware gRPC executor
         let conversion_registry = ConversionRegistryFactory::create_node_registry();
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let node_client_impl = Arc::new(NodeGrpcClientImpl::new(
-            (*grpc_client).clone(),
-            conversion_registry.clone(),
-        ));
+        let node_client_impl = Arc::new(NodeGrpcClientImpl::new((*grpc_client).clone()));
         let grpc_executor = Arc::new(GrpcExecutor::new_node_with_health(
             node_client_impl,
             error_mapper.clone(),

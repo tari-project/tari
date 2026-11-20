@@ -32,6 +32,25 @@ use tonic::{Code, Status};
 
 use crate::McpError;
 
+/// Longest upstream message, in characters, passed on to a tool result
+const MAX_UPSTREAM_MESSAGE_CHARS: usize = 512;
+
+/// Make text from a gRPC peer safe to show an agent: truncated, control characters and runs of whitespace
+/// collapsed to one space, and quoted so it reads as data rather than instructions.
+pub fn sanitize_upstream_message(message: &str) -> String {
+    let truncated: String = message.chars().take(MAX_UPSTREAM_MESSAGE_CHARS).collect();
+    let mut text = truncated
+        .split(|c: char| c.is_control() || c.is_whitespace())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if message.chars().nth(MAX_UPSTREAM_MESSAGE_CHARS).is_some() {
+        text.push('…');
+    }
+    // Debug formatting escapes embedded quotes, so the text cannot close the quotation early
+    format!("upstream: {text:?}")
+}
+
 /// Enhanced error information with context and recommendations
 #[derive(Debug, Clone)]
 pub struct ErrorContext {
@@ -148,6 +167,7 @@ impl GrpcErrorMapper {
         if let Some(context) = self.custom_mappings.get(status.message()) {
             return context.clone();
         }
+        let upstream = sanitize_upstream_message(status.message());
 
         // Map based on gRPC status code
         match status.code() {
@@ -177,7 +197,7 @@ impl GrpcErrorMapper {
             },
 
             Code::Unknown => ErrorContext {
-                message: format!("Unknown error: {}", status.message()),
+                message: format!("Unknown error: {upstream}"),
                 category: ErrorCategory::Internal,
                 severity: ErrorSeverity::High,
                 user_message: "An unexpected error occurred".to_string(),
@@ -192,7 +212,7 @@ impl GrpcErrorMapper {
             },
 
             Code::InvalidArgument => ErrorContext {
-                message: format!("Invalid argument: {}", status.message()),
+                message: format!("Invalid argument: {upstream}"),
                 category: ErrorCategory::Validation,
                 severity: ErrorSeverity::Medium,
                 user_message: "The provided parameters are invalid".to_string(),
@@ -223,7 +243,7 @@ impl GrpcErrorMapper {
             },
 
             Code::NotFound => ErrorContext {
-                message: format!("Resource not found: {}", status.message()),
+                message: format!("Resource not found: {upstream}"),
                 category: ErrorCategory::Resource,
                 severity: ErrorSeverity::Medium,
                 user_message: "The requested resource could not be found".to_string(),
@@ -285,7 +305,7 @@ impl GrpcErrorMapper {
             },
 
             Code::FailedPrecondition => ErrorContext {
-                message: format!("Failed precondition: {}", status.message()),
+                message: format!("Failed precondition: {upstream}"),
                 category: ErrorCategory::State,
                 severity: ErrorSeverity::High,
                 user_message: "The system is not in the correct state for this operation".to_string(),
@@ -316,7 +336,7 @@ impl GrpcErrorMapper {
             },
 
             Code::OutOfRange => ErrorContext {
-                message: format!("Value out of range: {}", status.message()),
+                message: format!("Value out of range: {upstream}"),
                 category: ErrorCategory::Validation,
                 severity: ErrorSeverity::Medium,
                 user_message: "One or more values are outside the valid range".to_string(),
@@ -433,7 +453,7 @@ impl GrpcErrorMapper {
                 "operation": operation,
                 "details": {
                     "grpc_code": format!("{:?}", status.code()),
-                    "grpc_message": status.message(),
+                    "grpc_message": sanitize_upstream_message(status.message()),
                     "category_description": context.category.description(),
                     "severity_description": context.severity.description(),
                 }
@@ -457,7 +477,10 @@ impl GrpcErrorMapper {
         let mut context = HashMap::new();
 
         context.insert("grpc_code".to_string(), json!(format!("{:?}", status.code())));
-        context.insert("grpc_message".to_string(), json!(status.message()));
+        context.insert(
+            "grpc_message".to_string(),
+            json!(sanitize_upstream_message(status.message())),
+        );
 
         // Extract metadata if available
         if !status.metadata().is_empty() {
@@ -583,6 +606,34 @@ mod tests {
         let error_msg = format!("{mcp_error:?}");
         assert!(error_msg.contains("get_balance"));
         assert!(error_msg.contains("INVALID_PARAMETERS"));
+    }
+
+    #[test]
+    fn sanitize_upstream_message_truncates_strips_and_quotes() {
+        let long = "a".repeat(600);
+        let out = sanitize_upstream_message(&long);
+        assert_eq!(out, format!("upstream: \"{}…\"", "a".repeat(512)));
+        assert_eq!(
+            sanitize_upstream_message(&"b".repeat(512)),
+            format!("upstream: \"{}\"", "b".repeat(512))
+        );
+
+        let out = sanitize_upstream_message("bad\n\r\tinput\x1b[31m  now \"quoted\"");
+        assert!(out.starts_with("upstream: \""));
+        assert_eq!(out, r#"upstream: "bad input [31m now \"quoted\"""#);
+        assert!(!out.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn mapped_status_text_is_sanitized() {
+        let mapper = GrpcErrorMapper::new();
+        let status = Status::new(Code::InvalidArgument, "x\ny");
+        assert_eq!(
+            mapper.map_status(&status).message,
+            r#"Invalid argument: upstream: "x y""#
+        );
+        let response = mapper.create_error_response(&status, "op");
+        assert_eq!(response["error"]["details"]["grpc_message"], r#"upstream: "x y""#);
     }
 
     #[test]

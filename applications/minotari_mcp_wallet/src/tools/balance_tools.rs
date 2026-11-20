@@ -27,8 +27,8 @@
 
 use std::sync::Arc;
 
-use minotari_app_grpc::tari_rpc::{Empty, GetBalanceRequest, UserPaymentId};
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_optional_string_param, security::PermissionLevel};
+use minotari_app_grpc::tari_rpc::{Empty, GetBalanceRequest};
+use minotari_mcp_common::{McpError, McpResult, McpTool, security::PermissionLevel, wallet_rpc};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -73,59 +73,7 @@ impl McpTool for GetBalanceTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = get_optional_string_param(&params, "payment_id").map(|payment_id_str| UserPaymentId {
-            utf8_string: payment_id_str,
-            ..Default::default()
-        });
-
-        let request = Request::new(GetBalanceRequest { payment_id });
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_balance(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
-            .into_inner();
-
-        // Calculate total balance and percentages
-        let total_balance = response
-            .available_balance
-            .saturating_add(response.pending_incoming_balance)
-            .saturating_add(response.timelocked_balance);
-
-        Ok(json!({
-            "balance": {
-                "available_balance": response.available_balance,
-                "pending_incoming_balance": response.pending_incoming_balance,
-                "pending_outgoing_balance": response.pending_outgoing_balance,
-                "timelocked_balance": response.timelocked_balance,
-            },
-            "summary": {
-                "total_balance": total_balance,
-                "spendable_balance": response.available_balance,
-                "locked_balance": response.pending_outgoing_balance.saturating_add(response.timelocked_balance),
-                "incoming_balance": response.pending_incoming_balance,
-            },
-            "percentages": if total_balance > 0 {
-                json!({
-                    "available_percent": (response.available_balance as f64 / total_balance as f64 * 100.0).round(),
-                    "pending_incoming_percent": (response.pending_incoming_balance as f64 / total_balance as f64 * 100.0).round(),
-                    "timelocked_percent": (response.timelocked_balance as f64 / total_balance as f64 * 100.0).round(),
-                })
-            } else {
-                json!({
-                    "available_percent": 0.0,
-                    "pending_incoming_percent": 0.0,
-                    "timelocked_percent": 0.0,
-                })
-            },
-            "status": {
-                "has_funds": total_balance > 0,
-                "can_spend": response.available_balance > 0,
-                "has_pending": response.pending_incoming_balance > 0 || response.pending_outgoing_balance > 0,
-                "has_timelocked": response.timelocked_balance > 0,
-            }
-        }))
+        wallet_rpc::get_balance((*self.grpc_client).clone(), &params).await
     }
 }
 

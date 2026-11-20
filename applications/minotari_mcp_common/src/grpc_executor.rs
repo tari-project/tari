@@ -34,7 +34,8 @@ use crate::{
     McpResult,
     auto_registry::ServerType,
     connection_manager::ConnectionManager,
-    grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo},
+    grpc_client_implementations::{NODE_METHODS, WALLET_METHODS},
+    grpc_discovery::GrpcMethodInfo,
     grpc_error_mapper::GrpcErrorMapper,
     health_checker::HealthResult,
     parameter_converter::ConversionRegistry,
@@ -60,93 +61,15 @@ pub struct GrpcExecutor {
 /// Trait for node gRPC client operations
 #[async_trait::async_trait]
 pub trait NodeGrpcClient: Send + Sync {
-    /// Execute a generic node gRPC method
+    /// Execute a node gRPC method with its JSON tool arguments
     async fn execute_method(&self, method_name: &str, parameters: Value) -> McpResult<Value>;
-
-    /// Get tip information
-    async fn get_tip_info(&self) -> McpResult<Value>;
-
-    /// Get network status
-    async fn get_network_status(&self) -> McpResult<Value>;
-
-    /// Get peers
-    async fn get_peers(&self) -> McpResult<Value>;
-
-    /// Get new block template
-    async fn get_new_block_template(&self, algorithm: Option<String>) -> McpResult<Value>;
-
-    /// Submit block
-    async fn submit_block(&self, block_data: &str) -> McpResult<Value>;
-
-    /// Submit transaction
-    async fn submit_transaction(&self, transaction_data: &str) -> McpResult<Value>;
-
-    /// Get mempool stats
-    async fn get_mempool_stats(&self) -> McpResult<Value>;
-
-    /// Get sync info
-    async fn get_sync_info(&self) -> McpResult<Value>;
-
-    /// List headers
-    async fn list_headers(&self, from_height: Option<u64>, to_height: Option<u64>) -> McpResult<Value>;
-
-    /// Get blocks
-    async fn get_blocks(&self, from_height: u64, to_height: Option<u64>) -> McpResult<Value>;
 }
 
 /// Trait for wallet gRPC client operations
 #[async_trait::async_trait]
 pub trait WalletGrpcClient: Send + Sync {
-    /// Execute a generic wallet gRPC method
+    /// Execute a wallet gRPC method with its JSON tool arguments
     async fn execute_method(&self, method_name: &str, parameters: Value) -> McpResult<Value>;
-
-    /// Get wallet balance
-    async fn get_balance(&self) -> McpResult<Value>;
-
-    /// Transfer funds
-    async fn transfer(
-        &self,
-        recipient: &str,
-        amount: u64,
-        fee_per_gram: Option<u64>,
-        message: Option<&str>,
-    ) -> McpResult<Value>;
-
-    /// Get transaction info
-    async fn get_transaction_info(&self, transaction_id: &str) -> McpResult<Value>;
-
-    /// Cancel transaction
-    async fn cancel_transaction(&self, transaction_id: &str) -> McpResult<Value>;
-
-    /// Create burn transaction
-    async fn create_burn_transaction(
-        &self,
-        amount: u64,
-        fee_per_gram: Option<u64>,
-        message: Option<&str>,
-        claim_public_key: Option<&str>,
-    ) -> McpResult<Value>;
-
-    /// Split coins
-    async fn coin_split(
-        &self,
-        amount: u64,
-        count: u64,
-        fee_per_gram: Option<u64>,
-        message: Option<&str>,
-    ) -> McpResult<Value>;
-
-    /// Import UTXOs
-    async fn import_utxos(&self, outputs: Vec<String>, source_public_keys: Vec<String>) -> McpResult<Value>;
-
-    /// Get addresses
-    async fn get_addresses(&self) -> McpResult<Value>;
-
-    /// Get connected peers
-    async fn get_connected_peers(&self) -> McpResult<Value>;
-
-    /// Get network status
-    async fn get_network_status(&self) -> McpResult<Value>;
 }
 
 impl GrpcExecutor {
@@ -247,166 +170,14 @@ impl GrpcExecutor {
             }
         }
 
-        match self.server_type {
-            ServerType::Node => {
-                if let Some(ref client) = self.node_client {
-                    self.execute_node_method(client, method_info, parameters).await
-                } else {
-                    Err(McpError::server_error("Node client not available"))
-                }
-            },
-            ServerType::Wallet => {
-                if let Some(ref client) = self.wallet_client {
-                    self.execute_wallet_method(client, method_info, parameters).await
-                } else {
-                    Err(McpError::server_error("Wallet client not available"))
-                }
-            },
-            _ => Err(McpError::server_error("Unsupported server type")),
+        if !self.can_execute(method_info) {
+            return Err(McpError::not_implemented(&method_info.name));
         }
-    }
 
-    /// Execute a node-specific gRPC method
-    async fn execute_node_method(
-        &self,
-        client: &Arc<dyn NodeGrpcClient>,
-        method_info: &GrpcMethodInfo,
-        parameters: Value,
-    ) -> McpResult<Value> {
-        let result = match method_info.name.as_str() {
-            "GetTipInfo" => client.get_tip_info().await,
-            "GetNetworkStatus" => client.get_network_status().await,
-            "GetPeers" => client.get_peers().await,
-            "GetNewBlockTemplate" => {
-                let algorithm = parameters
-                    .get("algorithm")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                client.get_new_block_template(algorithm).await
-            },
-            "SubmitBlock" => {
-                let block_data = parameters
-                    .get("block")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'block' parameter"))?;
-                client.submit_block(block_data).await
-            },
-            "SubmitTransaction" => {
-                let transaction_data = parameters
-                    .get("transaction")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'transaction' parameter"))?;
-                client.submit_transaction(transaction_data).await
-            },
-            "GetMempoolStats" => client.get_mempool_stats().await,
-            "GetSyncInfo" => client.get_sync_info().await,
-            "ListHeaders" => {
-                let from_height = parameters.get("from_height").and_then(|v| v.as_u64());
-                let to_height = parameters.get("to_height").and_then(|v| v.as_u64());
-                client.list_headers(from_height, to_height).await
-            },
-            "GetBlocks" => {
-                let from_height = parameters
-                    .get("from_height")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'from_height' parameter"))?;
-                let to_height = parameters.get("to_height").and_then(|v| v.as_u64());
-                client.get_blocks(from_height, to_height).await
-            },
-            _ => {
-                // Fall back to generic method execution
-                client.execute_method(&method_info.name, parameters).await
-            },
-        };
-
-        self.handle_result(result, method_info).await
-    }
-
-    /// Execute a wallet-specific gRPC method
-    async fn execute_wallet_method(
-        &self,
-        client: &Arc<dyn WalletGrpcClient>,
-        method_info: &GrpcMethodInfo,
-        parameters: Value,
-    ) -> McpResult<Value> {
-        let result = match method_info.name.as_str() {
-            "GetBalance" => client.get_balance().await,
-            "Transfer" => {
-                let recipient = parameters
-                    .get("recipient")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'recipient' parameter"))?;
-                let amount = parameters
-                    .get("amount")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'amount' parameter"))?;
-                let fee_per_gram = parameters.get("fee_per_gram").and_then(|v| v.as_u64());
-                let message = parameters.get("message").and_then(|v| v.as_str());
-                client.transfer(recipient, amount, fee_per_gram, message).await
-            },
-            "GetTransactionInfo" => {
-                let transaction_id = parameters
-                    .get("transaction_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'transaction_id' parameter"))?;
-                client.get_transaction_info(transaction_id).await
-            },
-            "CancelTransaction" => {
-                let transaction_id = parameters
-                    .get("transaction_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'transaction_id' parameter"))?;
-                client.cancel_transaction(transaction_id).await
-            },
-            "CreateBurnTransaction" => {
-                let amount = parameters
-                    .get("amount")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'amount' parameter"))?;
-                let fee_per_gram = parameters.get("fee_per_gram").and_then(|v| v.as_u64());
-                let message = parameters.get("message").and_then(|v| v.as_str());
-                let claim_public_key = parameters.get("claim_public_key").and_then(|v| v.as_str());
-                client
-                    .create_burn_transaction(amount, fee_per_gram, message, claim_public_key)
-                    .await
-            },
-            "CoinSplit" => {
-                let amount = parameters
-                    .get("amount")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'amount' parameter"))?;
-                let count = parameters
-                    .get("count")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'count' parameter"))?;
-                let fee_per_gram = parameters.get("fee_per_gram").and_then(|v| v.as_u64());
-                let message = parameters.get("message").and_then(|v| v.as_str());
-                client.coin_split(amount, count, fee_per_gram, message).await
-            },
-            "ImportUtxos" => {
-                let outputs = parameters
-                    .get("outputs")
-                    .and_then(|v| v.as_array())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'outputs' parameter"))?
-                    .iter()
-                    .map(|v| v.as_str().unwrap_or("").to_string())
-                    .collect();
-                let source_public_keys = parameters
-                    .get("source_public_keys")
-                    .and_then(|v| v.as_array())
-                    .ok_or_else(|| McpError::invalid_request("Missing 'source_public_keys' parameter"))?
-                    .iter()
-                    .map(|v| v.as_str().unwrap_or("").to_string())
-                    .collect();
-                client.import_utxos(outputs, source_public_keys).await
-            },
-            "GetAddresses" => client.get_addresses().await,
-            "GetConnectedPeers" => client.get_connected_peers().await,
-            "GetNetworkStatus" => client.get_network_status().await,
-            _ => {
-                // Fall back to generic method execution
-                client.execute_method(&method_info.name, parameters).await
-            },
+        let result = match (self.server_type, &self.node_client, &self.wallet_client) {
+            (ServerType::Node, Some(client), _) => client.execute_method(&method_info.name, parameters).await,
+            (ServerType::Wallet, _, Some(client)) => client.execute_method(&method_info.name, parameters).await,
+            _ => Err(McpError::server_error("Client not available")),
         };
 
         self.handle_result(result, method_info).await
@@ -428,35 +199,12 @@ impl GrpcExecutor {
         }
     }
 
-    /// Check if the executor can handle the given method
+    /// Whether the executor has a real implementation for the given method
     pub fn can_execute(&self, method_info: &GrpcMethodInfo) -> bool {
+        let name = method_info.name.as_str();
         match self.server_type {
-            ServerType::Node => {
-                self.node_client.is_some() &&
-                    matches!(
-                        method_info.category,
-                        GrpcMethodCategory::Blockchain |
-                            GrpcMethodCategory::Mining |
-                            GrpcMethodCategory::Network |
-                            GrpcMethodCategory::Mempool |
-                            GrpcMethodCategory::Validation |
-                            GrpcMethodCategory::Status |
-                            GrpcMethodCategory::System
-                    )
-            },
-            ServerType::Wallet => {
-                self.wallet_client.is_some() &&
-                    matches!(
-                        method_info.category,
-                        GrpcMethodCategory::Balance |
-                            GrpcMethodCategory::Transaction |
-                            GrpcMethodCategory::Address |
-                            GrpcMethodCategory::AtomicSwap |
-                            GrpcMethodCategory::Recovery |
-                            GrpcMethodCategory::Status |
-                            GrpcMethodCategory::System
-                    )
-            },
+            ServerType::Node => self.node_client.is_some() && NODE_METHODS.contains(&name),
+            ServerType::Wallet => self.wallet_client.is_some() && WALLET_METHODS.contains(&name),
             _ => false,
         }
     }
@@ -560,62 +308,35 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::grpc_discovery::{base_node_methods, wallet_methods};
 
     struct MockNodeClient;
 
     #[async_trait::async_trait]
     impl NodeGrpcClient for MockNodeClient {
-        async fn execute_method(&self, _method_name: &str, _parameters: Value) -> McpResult<Value> {
-            Ok(json!({"status": "mock_success"}))
+        async fn execute_method(&self, method_name: &str, _parameters: Value) -> McpResult<Value> {
+            match method_name {
+                "GetTipInfo" => Ok(json!({"height": 12345, "hash": "abc123"})),
+                _ => Err(McpError::not_implemented(method_name)),
+            }
         }
+    }
 
-        async fn get_tip_info(&self) -> McpResult<Value> {
-            Ok(json!({"height": 12345, "hash": "abc123"}))
-        }
+    fn node_executor() -> GrpcExecutor {
+        GrpcExecutor::new_node(
+            Arc::new(MockNodeClient),
+            Arc::new(GrpcErrorMapper::new()),
+            Arc::new(ConversionRegistry::new()),
+        )
+    }
 
-        async fn get_network_status(&self) -> McpResult<Value> {
-            Ok(json!({"connected": true, "peers": 5}))
-        }
-
-        async fn get_peers(&self) -> McpResult<Value> {
-            Ok(json!({"peers": []}))
-        }
-
-        async fn get_new_block_template(&self, _algorithm: Option<String>) -> McpResult<Value> {
-            Ok(json!({"template": "block_template_data"}))
-        }
-
-        async fn submit_block(&self, _block_data: &str) -> McpResult<Value> {
-            Ok(json!({"submitted": true}))
-        }
-
-        async fn submit_transaction(&self, _transaction_data: &str) -> McpResult<Value> {
-            Ok(json!({"submitted": true}))
-        }
-
-        async fn get_mempool_stats(&self) -> McpResult<Value> {
-            Ok(json!({"count": 10, "size": 1024}))
-        }
-
-        async fn get_sync_info(&self) -> McpResult<Value> {
-            Ok(json!({"synced": true}))
-        }
-
-        async fn list_headers(&self, _from_height: Option<u64>, _to_height: Option<u64>) -> McpResult<Value> {
-            Ok(json!({"headers": []}))
-        }
-
-        async fn get_blocks(&self, _from_height: u64, _to_height: Option<u64>) -> McpResult<Value> {
-            Ok(json!({"blocks": []}))
-        }
+    fn method(name: &str) -> GrpcMethodInfo {
+        base_node_methods().into_iter().find(|m| m.name == name).unwrap()
     }
 
     #[tokio::test]
     async fn test_node_executor_creation() {
-        let client = Arc::new(MockNodeClient);
-        let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let conversion_registry = Arc::new(ConversionRegistry::new());
-        let executor = GrpcExecutor::new_node(client, error_mapper, conversion_registry);
+        let executor = node_executor();
 
         assert!(executor.node_client.is_some());
         assert!(executor.wallet_client.is_none());
@@ -624,54 +345,53 @@ mod tests {
 
     #[tokio::test]
     async fn test_executor_status() {
-        let client = Arc::new(MockNodeClient);
-        let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let conversion_registry = Arc::new(ConversionRegistry::new());
-        let executor = GrpcExecutor::new_node(client, error_mapper, conversion_registry);
-        let status = executor.get_status();
+        let status = node_executor().get_status();
 
         assert!(status.is_ready());
         assert!(status.node_client_available);
         assert!(!status.wallet_client_available);
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_parameter_conversion_integration() {
-        use serde_json::json;
-
-        use crate::{
-            ConversionRegistryFactory,
-            grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo},
-        };
-
-        // Create a real conversion registry with node converters
-        let conversion_registry = ConversionRegistryFactory::create_node_registry();
-
-        // Create executor with conversion registry
-        let client = Arc::new(MockNodeClient);
-        let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let executor = GrpcExecutor::new_node(client, error_mapper, conversion_registry);
-
-        // Create a mock method info
-        let method_info = GrpcMethodInfo {
-            name: "GetTipInfo".to_string(),
-            service: "BaseNode".to_string(),
-            full_name: "tari.rpc.BaseNode/GetTipInfo".to_string(),
-            description: "Get tip info".to_string(),
-            category: GrpcMethodCategory::Blockchain,
-            is_control_operation: false,
-            is_streaming: false,
-            input_schema: json!({}),
-            output_schema: json!({}),
-        };
-
-        // Test that parameter conversion is working in the executor
-        let result = executor.execute_method(&method_info, json!({})).await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        // The response comes from MockNodeClient.get_tip_info()
+    #[tokio::test]
+    async fn test_execute_routes_to_client() {
+        let response = node_executor()
+            .execute_method(&method("GetTipInfo"), json!({}))
+            .await
+            .unwrap();
         assert_eq!(response["height"], 12345);
         assert_eq!(response["hash"], "abc123");
+    }
+
+    #[tokio::test]
+    async fn unimplemented_methods_are_unsupported_and_error() {
+        let executor = node_executor();
+        let identify = method("Identify");
+        assert!(!executor.can_execute(&identify));
+        assert!(matches!(
+            executor.execute_method(&identify, json!({})).await,
+            Err(McpError::NotImplemented(_))
+        ));
+        assert!(executor.can_execute(&method("SubmitTransaction")));
+    }
+
+    #[test]
+    fn every_supported_method_is_a_discovered_method() {
+        let node: Vec<String> = base_node_methods().into_iter().map(|m| m.name).collect();
+        let wallet: Vec<String> = wallet_methods().into_iter().map(|m| m.name).collect();
+        assert!(NODE_METHODS.iter().all(|m| node.iter().any(|n| n == m)));
+        assert!(WALLET_METHODS.iter().all(|m| wallet.iter().any(|n| n == m)));
+    }
+
+    #[test]
+    fn no_placeholder_responses_remain() {
+        let needle = concat!("\"place", "holder\"");
+        for source in [
+            include_str!("grpc_client_implementations.rs"),
+            include_str!("node_rpc.rs"),
+            include_str!("wallet_rpc.rs"),
+            include_str!("auto_registry.rs"),
+        ] {
+            assert!(!source.contains(needle));
+        }
     }
 }

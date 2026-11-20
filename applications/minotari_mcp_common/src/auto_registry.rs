@@ -231,6 +231,11 @@ impl AutoDiscoveryRegistry {
                     return false;
                 }
 
+                // Only advertise methods the executor has a real implementation for
+                if !self.grpc_executor.as_ref().is_some_and(|e| e.can_execute(method)) {
+                    return false;
+                }
+
                 // Check tool overrides
                 if let Some(override_config) = self.config.tool_overrides.get(&method.name) &&
                     override_config.disabled
@@ -641,41 +646,15 @@ impl McpTool for DynamicGrpcTool {
             args
         );
 
-        match &self.grpc_executor {
-            Some(executor) => {
-                // Use real gRPC execution
-                if executor.can_execute(&self.method_info) {
-                    let result = executor.execute_method(&self.method_info, args).await;
-
-                    // Record usage statistics
-                    match &result {
-                        Ok(_) => log::debug!("Successfully executed gRPC method: {}", self.method_info.name),
-                        Err(e) => log::warn!("Failed to execute gRPC method {}: {}", self.method_info.name, e),
-                    }
-
-                    result
-                } else {
-                    Err(crate::McpError::server_error(format!(
-                        "Executor cannot handle method: {} (category: {:?})",
-                        self.method_info.name, self.method_info.category
-                    )))
-                }
-            },
-            None => {
-                // Fallback to placeholder response when no executor is available
-                log::warn!(
-                    "No gRPC executor available for tool: {}, returning placeholder",
-                    self.metadata.name
-                );
-                Ok(json!({
-                    "tool": self.metadata.name,
-                    "method": self.method_info.name,
-                    "status": "success",
-                    "note": "This is a dynamically generated tool placeholder - no gRPC executor configured",
-                    "parameters": args,
-                }))
-            },
+        let Some(executor) = &self.grpc_executor else {
+            return Err(crate::McpError::not_implemented(&self.method_info.name));
+        };
+        let result = executor.execute_method(&self.method_info, args).await;
+        match &result {
+            Ok(_) => log::debug!("Successfully executed gRPC method: {}", self.method_info.name),
+            Err(e) => log::warn!("Failed to execute gRPC method {}: {}", self.method_info.name, e),
         }
+        result
     }
 }
 
@@ -694,6 +673,7 @@ impl Default for AutoDiscoveryConfig {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[tokio::test]
@@ -708,6 +688,134 @@ mod tests {
         // Test basic functionality
         let stats = registry.get_statistics().await;
         assert_eq!(stats.total_tools, 0);
+    }
+
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use crate::{McpError, grpc_executor::NodeGrpcClient, parameter_converter::ConversionRegistry};
+
+    /// Node client that records calls and answers like a node would
+    #[derive(Default)]
+    struct RecordingNodeClient {
+        calls: Mutex<Vec<(String, serde_json::Value)>>,
+        submit_count: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl NodeGrpcClient for RecordingNodeClient {
+        async fn execute_method(
+            &self,
+            method_name: &str,
+            parameters: serde_json::Value,
+        ) -> McpResult<serde_json::Value> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((method_name.to_string(), parameters.clone()));
+            match method_name {
+                "SubmitTransaction" => {
+                    self.submit_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(json!({"success": false, "result": "REJECTED"}))
+                },
+                "GetBlocks" => {
+                    let blocks: Vec<_> = parameters["heights"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|h| json!({"height": h}))
+                        .collect();
+                    Ok(json!({"blocks": blocks}))
+                },
+                _ => Err(McpError::not_implemented(method_name)),
+            }
+        }
+    }
+
+    async fn discovered_node_tools(
+        control_enabled: bool,
+    ) -> (Arc<RecordingNodeClient>, HashMap<String, Arc<dyn McpTool>>) {
+        let client = Arc::new(RecordingNodeClient::default());
+        let error_mapper = Arc::new(GrpcErrorMapper::new());
+        let executor = Arc::new(GrpcExecutor::new_node(
+            client.clone(),
+            error_mapper.clone(),
+            Arc::new(ConversionRegistry::new()),
+        ));
+        let service_discovery = Arc::new(ServiceDiscovery::new());
+        let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
+        let registry = AutoDiscoveryRegistry::new_with_executor(
+            AutoDiscoveryConfig {
+                control_enabled,
+                ..Default::default()
+            },
+            service_discovery,
+            schema_generator,
+            error_mapper,
+            executor,
+        );
+        registry.initialize().await.unwrap();
+        (client, registry.get_healthy_tools().await)
+    }
+
+    #[tokio::test]
+    async fn discovery_lists_only_executable_methods() {
+        let (_, tools) = discovered_node_tools(true).await;
+        assert!(!tools.contains_key("Identify"));
+        assert!(!tools.contains_key("GetNewBlock"));
+        assert!(tools.contains_key("GetBlocks"));
+        assert!(tools.contains_key("SubmitTransaction"));
+
+        let (_, tools) = discovered_node_tools(false).await;
+        assert!(!tools.contains_key("SubmitTransaction"));
+        assert!(!tools.contains_key("SubmitBlock"));
+    }
+
+    #[tokio::test]
+    async fn discovered_submit_transaction_reaches_node_once() {
+        let (client, tools) = discovered_node_tools(true).await;
+        let args = json!({"transaction_hex": "0a00"});
+        let response = tools["SubmitTransaction"].execute(args.clone()).await.unwrap();
+
+        assert_eq!(response, json!({"success": false, "result": "REJECTED"}));
+        assert_eq!(client.submit_count.load(Ordering::SeqCst), 1);
+        assert_eq!(*client.calls.lock().unwrap(), vec![(
+            "SubmitTransaction".to_string(),
+            args
+        )]);
+    }
+
+    #[tokio::test]
+    async fn discovered_get_blocks_returns_node_heights() {
+        let (_, tools) = discovered_node_tools(false).await;
+        let response = tools["GetBlocks"].execute(json!({"heights": [7, 9]})).await.unwrap();
+        assert_eq!(response["blocks"][0]["height"], 7);
+        assert_eq!(response["blocks"][1]["height"], 9);
+    }
+
+    #[tokio::test]
+    async fn tool_without_executor_errors() {
+        let service_discovery = Arc::new(ServiceDiscovery::new());
+        let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
+        let error_mapper = Arc::new(GrpcErrorMapper::new());
+        let registry = AutoDiscoveryRegistry::new(
+            AutoDiscoveryConfig::default(),
+            service_discovery,
+            schema_generator,
+            error_mapper.clone(),
+        );
+        registry.initialize().await.unwrap();
+        assert!(registry.get_tools().await.is_empty());
+
+        let method = base_node_methods().into_iter().next().unwrap();
+        let metadata = registry.create_tool_metadata(&method).await.unwrap();
+        let tool = DynamicGrpcTool::new(method, metadata, error_mapper, None);
+        assert!(matches!(
+            tool.execute(json!({})).await,
+            Err(McpError::NotImplemented(_))
+        ));
     }
 
     #[test]

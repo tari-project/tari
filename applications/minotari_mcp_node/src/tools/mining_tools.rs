@@ -33,7 +33,7 @@ use minotari_app_grpc::tari_rpc::{
     PowAlgo,
     pow_algo::PowAlgos,
 };
-use minotari_mcp_common::{McpError, McpResult, McpTool};
+use minotari_mcp_common::{McpError, McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -83,74 +83,7 @@ impl McpTool for GetNewBlockTemplateTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let algo = params.get("algo").and_then(|v| v.as_u64()).ok_or_else(|| {
-            McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string())
-        })?;
-
-        let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500); // Default max weight for blocks
-
-        let pow_algo_val = match algo {
-            0 => PowAlgos::Randomxm.into(), // RANDOMXM
-            1 => PowAlgos::Sha3x.into(),    // SHA3X
-            2 => PowAlgos::Randomxt.into(), // RANDOMXT
-            _ => {
-                return Err(McpError::invalid_request(
-                    "Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string(),
-                ));
-            },
-        };
-
-        let request = Request::new(NewBlockTemplateRequest {
-            algo: Some(PowAlgo { pow_algo: pow_algo_val }),
-            max_weight,
-        });
-
-        let response = self
-            .grpc_client
-            .clone()
-            .get_new_block_template(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template: {e}")))?
-            .into_inner();
-
-        let template = response
-            .new_block_template
-            .as_ref()
-            .ok_or_else(|| McpError::tool_execution_failed("No block template in response".to_string()))?;
-
-        Ok(json!({
-            "block_template": {
-                "header": {
-                    "version": template.header.as_ref().map(|h| h.version).unwrap_or(0),
-                    "height": template.header.as_ref().map(|h| h.height).unwrap_or(0),
-                    "prev_hash": template.header.as_ref()
-                        .map(|h| hex::encode(&h.prev_hash))
-                        .unwrap_or_default(),
-                    "timestamp": 0, // Timestamp not available in NewBlockHeaderTemplate
-                },
-                "body": {
-                    "inputs": template.body.as_ref().map(|b| b.inputs.len()).unwrap_or(0),
-                    "outputs": template.body.as_ref().map(|b| b.outputs.len()).unwrap_or(0),
-                    "kernels": template.body.as_ref().map(|b| b.kernels.len()).unwrap_or(0),
-                }
-            },
-            "initial_sync_achieved": response.initial_sync_achieved,
-            "miner_data": response.miner_data.as_ref().map(|md| json!({
-                "algo": match md.algo.as_ref().map(|a| a.pow_algo) {
-                    Some(0) => "RANDOMX_M",
-                    Some(1) => "SHA3X",
-                    Some(2) => "RANDOMX_T",
-                    _ => "UNKNOWN",
-                },
-                "target_difficulty": md.target_difficulty,
-                "reward": md.reward,
-                "total_fees": md.total_fees,
-            })),
-            "parameters": {
-                "requested_algo": algo,
-                "requested_max_weight": max_weight,
-            }
-        }))
+        node_rpc::get_new_block_template(self.grpc_client.clone(), &params).await
     }
 }
 
@@ -360,8 +293,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             .grpc_client
             .clone()
             .get_new_block_template_with_coinbases(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template with coinbases: {e}")))?
+            .await?
             .into_inner();
 
         Ok(json!({

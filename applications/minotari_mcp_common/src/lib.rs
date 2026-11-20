@@ -39,6 +39,7 @@ pub mod health_checker;
 pub mod health_monitor;
 pub mod input_sanitizer;
 pub mod method_implementations;
+pub mod node_rpc;
 pub mod parameter_converter;
 pub mod process_launcher;
 pub mod process_manager;
@@ -55,6 +56,7 @@ pub mod tool_macros;
 pub mod tool_metadata;
 pub mod tools;
 pub mod transport;
+pub mod wallet_rpc;
 // pub mod protobuf_integration; // Disabled pending API compatibility fixes
 
 pub use auto_registry::{AutoDiscoveryConfig, AutoDiscoveryRegistry, RegistryStatistics, ServerType, ToolOverride};
@@ -80,7 +82,7 @@ pub use error::{McpError, McpResult};
 pub use executable_finder::{ExecutableFinder, TariExecutables};
 pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
 pub use grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery, base_node_methods, wallet_methods};
-pub use grpc_error_mapper::{ErrorCategory, ErrorContext, ErrorSeverity, GrpcErrorMapper};
+pub use grpc_error_mapper::{ErrorCategory, ErrorContext, ErrorSeverity, GrpcErrorMapper, sanitize_upstream_message};
 pub use grpc_executor::{ExecutorStatus, GrpcExecutor, NodeGrpcClient, WalletGrpcClient};
 pub use health_checker::{
     GrpcHealthChecker,

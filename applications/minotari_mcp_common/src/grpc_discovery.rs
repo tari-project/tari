@@ -1026,7 +1026,14 @@ fn get_new_block_result_schema() -> Value {
 fn get_mempool_transactions_request_schema() -> Value {
     serde_json::json!({
         "type": "object",
-        "properties": {},
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of transactions to return (default 100)",
+                "minimum": 1,
+                "maximum": 1000
+            }
+        },
         "additionalProperties": false
     })
 }
@@ -1072,16 +1079,13 @@ fn block_schema() -> Value {
     serde_json::json!({
         "type": "object",
         "properties": {
-            "header": {
-                "type": "object",
-                "description": "Block header"
-            },
-            "body": {
-                "type": "object",
-                "description": "Block body"
+            "block_hex": {
+                "type": "string",
+                "pattern": "^([0-9a-fA-F]{2})+$",
+                "description": "Hex of the protobuf-encoded tari.rpc.Block to submit"
             }
         },
-        "required": ["header", "body"],
+        "required": ["block_hex"],
         "additionalProperties": false
     })
 }
@@ -1104,12 +1108,13 @@ fn submit_transaction_request_schema() -> Value {
     serde_json::json!({
         "type": "object",
         "properties": {
-            "transaction": {
-                "type": "object",
-                "description": "Transaction to submit"
+            "transaction_hex": {
+                "type": "string",
+                "pattern": "^([0-9a-fA-F]{2})+$",
+                "description": "Hex of the protobuf-encoded tari.rpc.Transaction to submit"
             }
         },
-        "required": ["transaction"],
+        "required": ["transaction_hex"],
         "additionalProperties": false
     })
 }
@@ -1331,7 +1336,7 @@ fn get_balance_request_schema() -> Value {
         "type": "object",
         "properties": {
             "payment_id": {
-                "type": "object",
+                "type": "string",
                 "description": "Optional payment ID filter"
             }
         },

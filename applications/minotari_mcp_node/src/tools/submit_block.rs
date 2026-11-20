@@ -23,8 +23,8 @@
 //! Submit block MCP tool
 
 use async_trait::async_trait;
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Block};
+use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param, node_rpc};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
 use tonic::transport::Channel;
 
@@ -59,7 +59,7 @@ impl McpTool for SubmitBlockTool {
             "properties": {
                 "block_hex": {
                     "type": "string",
-                    "description": "Hexadecimal representation of the block to submit"
+                    "description": "Hex of the protobuf-encoded tari.rpc.Block to submit"
                 }
             },
             "required": ["block_hex"]
@@ -86,32 +86,6 @@ impl McpTool for SubmitBlockTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let block_hex = get_required_string_param(&params, "block_hex")?;
-
-        // Convert hex to bytes
-        let _block_bytes = hex::decode(&block_hex)
-            .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {e}")))?;
-
-        // Parse block (this would need proper block parsing)
-        // For now, we'll create a placeholder block structure
-        let block = Block {
-            header: None, // Would be populated from parsed block data
-            body: None,   // Would be populated from parsed block data
-        };
-
-        // Submit block to node
-        let response = self.grpc_client.clone()
-            .submit_block(block)  // Submit the block directly
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit block: {e}")))?;
-
-        let response = response.into_inner();
-
-        // Return result
-        Ok(serde_json::json!({
-            "success": true,
-            "block_hash": response.block_hash,
-            "message": "Block submitted successfully"
-        }))
+        node_rpc::submit_block(self.grpc_client.clone(), &params).await
     }
 }

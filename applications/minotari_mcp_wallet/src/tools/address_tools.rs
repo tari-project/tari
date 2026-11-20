@@ -35,6 +35,7 @@ use minotari_mcp_common::{
     get_optional_string_param,
     get_required_string_param,
     security::PermissionLevel,
+    wallet_rpc,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
@@ -75,26 +76,7 @@ impl McpTool for GetAddressTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_address(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get address: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "addresses": {
-                "interactive_address": hex::encode(&response.interactive_address),
-                "one_sided_address": hex::encode(&response.one_sided_address),
-            },
-            "info": {
-                "interactive_address_info": "Used for interactive Mimblewimble transactions (default)",
-                "one_sided_address_info": "Used for one-sided transactions and stealth payments",
-                "format": "Hexadecimal encoding of the address bytes",
-            }
-        }))
+        wallet_rpc::get_address((*self.grpc_client).clone()).await
     }
 }
 
