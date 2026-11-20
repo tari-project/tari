@@ -47,22 +47,23 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
 
 /// Returns a CommsPublicKey from either a emoji id or a public key
 pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
-    EmojiId::from_str(&key.trim().replace('|', ""))
+    let trimmed = key.trim();
+    EmojiId::from_str(&trimmed.replace('|', ""))
         .map(|emoji_id| CompressedPublicKey::from(&emoji_id))
-        .or_else(|_| CommsPublicKey::from_hex(key))
+        .or_else(|_| CommsPublicKey::from_hex(trimmed))
         .ok()
 }
 
 /// Returns a hash from a hex string
 pub fn parse_hash(hash_string: &str) -> Option<BlockHash> {
-    BlockHash::from_hex(hash_string).ok()
+    BlockHash::from_hex(hash_string.trim()).ok()
 }
 
 /// Returns a CommsPublicKey from either a emoji id, a public key or node id
 pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
     parse_emoji_id_or_public_key(key)
         .map(Either::Left)
-        .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
+        .or_else(|| NodeId::from_hex(key.trim()).ok().map(Either::Right))
 }
 
 pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
@@ -79,9 +80,10 @@ impl FromStr for UniPublicKey {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
+        let trimmed = key.trim();
+        if let Ok(emoji_id) = EmojiId::from_str(&trimmed.replace('|', "")) {
             Ok(Self(CompressedPublicKey::from(&emoji_id)))
-        } else if let Ok(public_key) = CompressedPublicKey::from_hex(key) {
+        } else if let Ok(public_key) = CompressedPublicKey::from_hex(trimmed) {
             Ok(Self(public_key))
         } else {
             Err(UniIdError::UnknownIdType)
@@ -114,13 +116,14 @@ impl FromStr for UniNodeId {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
+        let trimmed = key.trim();
+        if let Ok(emoji_id) = EmojiId::from_str(&trimmed.replace('|', "")) {
             Ok(Self::PublicKey(CompressedPublicKey::from(&emoji_id)))
-        } else if let Ok(public_key) = CompressedPublicKey::from_hex(key) {
+        } else if let Ok(public_key) = CompressedPublicKey::from_hex(trimmed) {
             Ok(Self::PublicKey(public_key))
-        } else if let Ok(node_id) = NodeId::from_hex(key) {
+        } else if let Ok(node_id) = NodeId::from_hex(trimmed) {
             Ok(Self::NodeId(node_id))
-        } else if let Ok(tari_address) = TariAddress::from_str(key) {
+        } else if let Ok(tari_address) = TariAddress::from_str(trimmed) {
             Ok(Self::TariAddress(tari_address))
         } else {
             Err(UniIdError::UnknownIdType)
@@ -148,8 +151,11 @@ impl FromStr for UniSignature {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let data = s.split(',').collect::<Vec<_>>();
-        let signature = PrivateKey::from_hex(data.first().ok_or(HexError::LengthError {})?)?;
-        let public_nonce = CompressedPublicKey::from_hex(data.get(1).ok_or(HexError::LengthError {})?)?;
+        if data.len() != 2 {
+            return Err(HexError::LengthError {});
+        }
+        let signature = PrivateKey::from_hex(data.first().ok_or(HexError::LengthError {})?.trim())?;
+        let public_nonce = CompressedPublicKey::from_hex(data.get(1).ok_or(HexError::LengthError {})?.trim())?;
 
         let signature = CompressedSignature::new(public_nonce, signature);
         Ok(Self(signature))
@@ -169,5 +175,33 @@ impl From<UniNodeId> for NodeId {
             UniNodeId::NodeId(node_id) => node_id,
             UniNodeId::TariAddress(tari_address) => NodeId::from_public_key(tari_address.public_spend_key()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uni_signature_trims_and_rejects_extra_fields() {
+        let sig_hex = PrivateKey::default().to_hex();
+        let nonce_hex = CompressedPublicKey::default().to_hex();
+        let valid = format!(" {sig_hex} , {nonce_hex} ");
+        assert!(UniSignature::from_str(&valid).is_ok());
+
+        let extra = format!("{sig_hex},{nonce_hex},deadbeef");
+        assert!(UniSignature::from_str(&extra).is_err());
+    }
+
+    #[test]
+    fn parse_helpers_trim_hex_inputs() {
+        let pk = CompressedPublicKey::default();
+        let pk_padded = format!("  {}  ", pk.to_hex());
+        assert_eq!(parse_emoji_id_or_public_key(&pk_padded), Some(pk.clone()));
+        assert_eq!(UniPublicKey::from_str(&pk_padded).unwrap().0, pk);
+
+        let hash = BlockHash::default();
+        let hash_padded = format!("  {}  ", hash.to_hex());
+        assert_eq!(parse_hash(&hash_padded), Some(hash));
     }
 }

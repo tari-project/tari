@@ -489,6 +489,7 @@ pub fn serialize_to_json<T: Serialize>(object: &T) -> Result<Zeroizing<String>, 
 pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), IdentityError> {
     let json = serialize_to_json(object)?;
     if let Some(p) = path.as_ref().parent() &&
+        !p.as_os_str().is_empty() &&
         !p.exists()
     {
         fs::create_dir_all(p)?;
