@@ -26,11 +26,11 @@
 //! which uses standard input/output streams for communication. All messages
 //! are JSON-RPC 2.0 formatted and line-delimited. Logs go to stderr only.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use serde_json::Value;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter},
     sync::mpsc,
 };
 
@@ -89,22 +89,39 @@ impl StdioTransport {
             });
         }
 
-        // Setup stdin reader and stdout writer
-        let stdin = tokio::io::stdin();
-        let stdout = tokio::io::stdout();
-        let mut reader = BufReader::new(stdin);
-        let mut writer = BufWriter::new(stdout);
-        let mut line = String::new();
+        self.run(
+            tokio::io::stdin(),
+            tokio::io::stdout(),
+            &mut shutdown_rx,
+            Duration::from_secs(10),
+        )
+        .await;
+
+        log::info!("MCP stdio transport stopped");
+        Ok(())
+    }
+
+    /// Serve line-delimited JSON-RPC from `reader` to `writer` until EOF, a write error or a shutdown signal
+    async fn run<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+        &self,
+        reader: R,
+        writer: W,
+        shutdown_rx: &mut mpsc::UnboundedReceiver<()>,
+        heartbeat: Duration,
+    ) {
+        // `next_line` is cancellation-safe, so a heartbeat tick mid-line keeps the bytes read so far.
+        // shortcut: lines are unbounded here and the input sanitizer limits strings only after parsing; bound the
+        // line length if the transport is ever exposed beyond the local client process.
+        let mut lines = BufReader::new(reader).lines();
+        let mut writer = BufWriter::new(writer);
 
         log::info!("MCP stdio transport started");
 
         // Send a keepalive/heartbeat every 10 seconds to prevent client timeout
-        let mut heartbeat_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+        let mut heartbeat_interval = tokio::time::interval(heartbeat);
         heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
-            line.clear();
-
             tokio::select! {
                 // Handle shutdown signal
                 _ = shutdown_rx.recv() => {
@@ -119,14 +136,14 @@ impl StdioTransport {
                 }
 
                 // Read from stdin
-                result = reader.read_line(&mut line) => {
+                result = lines.next_line() => {
                     match result {
-                        Ok(0) => {
+                        Ok(None) => {
                             // EOF - client disconnected
                             log::info!("Client disconnected (EOF)");
                             break;
                         }
-                        Ok(_) => {
+                        Ok(Some(line)) => {
                             let line_content = line.trim();
                             if line_content.is_empty() {
                                 continue;
@@ -153,7 +170,7 @@ impl StdioTransport {
                                 }
 
                                 log::debug!("Sent response: {response_json}");
-                                 log::info!("Response sent successfully to client");
+                                log::info!("Response sent successfully to client");
                             }
                         }
                         Err(e) => {
@@ -164,9 +181,6 @@ impl StdioTransport {
                 }
             }
         }
-
-        log::info!("MCP stdio transport stopped");
-        Ok(())
     }
 
     /// Extract request ID from JSON line, even if malformed
@@ -356,6 +370,57 @@ mod tests {
                 error: None,
             })
         }
+    }
+
+    /// Records the length of each tools/call `block_hex` argument it receives
+    #[derive(Default)]
+    struct RecordingHandler {
+        block_hex_lens: std::sync::Mutex<Vec<usize>>,
+    }
+
+    #[async_trait]
+    impl MessageHandler for RecordingHandler {
+        async fn handle_message(&self, message: McpMessage) -> McpResult<McpResponse> {
+            if let McpMessage::CallTool { params, .. } = message {
+                let len = params
+                    .arguments
+                    .as_ref()
+                    .and_then(|a| a.get("block_hex"))
+                    .and_then(|v| v.as_str())
+                    .map_or(0, str::len);
+                self.block_hex_lens.lock().unwrap().push(len);
+            }
+            TestMessageHandler
+                .handle_message(McpMessage::ListTools { id: Value::Null })
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn a_line_split_across_heartbeats_arrives_whole() {
+        let handler = Arc::new(RecordingHandler::default());
+        let transport = StdioTransport::new(handler.clone());
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
+
+        let block_hex = "ab".repeat(100_000);
+        let line = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{{"name":"SubmitBlock","arguments":{{"block_hex":"{block_hex}"}}}}}}"#
+        ) + "\n";
+        let writer = async move {
+            for chunk in line.as_bytes().chunks(line.len() / 10 + 1) {
+                client.write_all(chunk).await.unwrap();
+                // Longer than the heartbeat, so ticks fire while the line is part read
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            // Dropping the client end closes the stream, which ends `run`
+        };
+
+        tokio::join!(
+            transport.run(server, tokio::io::sink(), &mut shutdown_rx, Duration::from_millis(5)),
+            writer
+        );
+        assert_eq!(*handler.block_hex_lens.lock().unwrap(), vec![block_hex.len()]);
     }
 
     #[tokio::test]
