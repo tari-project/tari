@@ -247,8 +247,9 @@ impl BasicAuthCredentials {
     /// should not log it.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         use base64::{Engine, prelude::BASE64_STANDARD};
-        let password_str = Zeroizing::new(String::from_utf8(password.to_vec())?);
-        let token_str = Zeroizing::new(format!("{username}:{}", password_str.as_str()));
+        // Borrowed check: FromUtf8Error would own (and Debug-print) a copy of the password bytes.
+        let password_str = std::str::from_utf8(password).map_err(|_| BasicAuthError::InvalidPassword)?;
+        let token_str = Zeroizing::new(format!("{username}:{password_str}"));
         let mut token = BASE64_STANDARD.encode(token_str.deref());
         let header = Zeroizing::new(format!("Basic {token}"));
         token.zeroize();
@@ -624,7 +625,8 @@ mod tests {
         #[test]
         fn it_rejects_non_utf8_password_in_generate_header() {
             let err = BasicAuthCredentials::generate_header("admin", &[0xff, 0xfe]).unwrap_err();
-            assert!(matches!(err, BasicAuthError::InvalidUtf8Value(_)));
+            assert!(matches!(err, BasicAuthError::InvalidPassword));
+            assert!(!format!("{err:?}").contains("255"));
         }
 
         #[test]
