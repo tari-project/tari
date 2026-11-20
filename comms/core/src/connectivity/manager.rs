@@ -498,6 +498,9 @@ impl ConnectivityManagerActor {
             );
             return;
         }
+        if let Some(stats) = self.connection_stats.get_mut(&node_id) {
+            stats.try_half_open(self.config.circuit_breaker_retry_interval);
+        }
 
         match self.pool.get(&node_id) {
             // The connection pool may temporarily contain a connection that is not connected so we need to check this.

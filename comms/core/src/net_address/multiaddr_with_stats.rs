@@ -218,8 +218,9 @@ impl MultiaddrWithStats {
             // whether we can reach it. Taking its empty stats would let anyone holding an old claim clear our record
             // of a failed dial, so only the claim itself is merged.
             if other.has_dial_results() {
+                let self_latest = cmp::max(self.last_seen, self.last_attempted);
+                let other_latest = cmp::max(other.last_seen, other.last_attempted);
                 self.last_seen = cmp::max(other.last_seen, self.last_seen);
-                self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
                 match self.latency_sample_count.cmp(&other.latency_sample_count) {
                     Ordering::Less => {
                         self.avg_latency = other.avg_latency;
@@ -238,7 +239,17 @@ impl MultiaddrWithStats {
                     Ordering::Equal | Ordering::Greater => {},
                 }
                 self.last_attempted = cmp::max(self.last_attempted, other.last_attempted);
-                self.last_failed_reason = other.last_failed_reason.clone();
+                if other_latest > self_latest || (other_latest == self_latest && other.last_failed_reason.is_none()) {
+                    self.last_failed_reason = other.last_failed_reason.clone();
+                    if self.last_failed_reason.is_none() {
+                        self.connection_attempts = 0;
+                    } else {
+                        self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
+                    }
+                } else if self.last_failed_reason.is_some() && other.last_failed_reason.is_some() {
+                    self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
+                }
+                self.update_quality_score();
             }
             self.update_source_if_better(&other.source);
         }
@@ -359,6 +370,7 @@ impl MultiaddrWithStats {
     pub fn reset_connection_attempts(&mut self) {
         self.connection_attempts = 0;
         self.last_failed_reason = None;
+        self.update_quality_score();
     }
 
     #[cfg(test)]
@@ -722,11 +734,16 @@ mod test {
     fn test_reseting_connection_attempts() {
         let net_address = "/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_address_with_stats = MultiaddrWithStats::new(net_address, PeerAddressSource::Config);
+        net_address_with_stats.mark_last_seen_now();
+        assert!(net_address_with_stats.quality_score().unwrap() > 0);
         net_address_with_stats.mark_failed_connection_attempt("asdf".to_string());
         net_address_with_stats.mark_failed_connection_attempt("asdf".to_string());
         assert_eq!(net_address_with_stats.connection_attempts, 2);
+        assert_eq!(net_address_with_stats.quality_score(), Some(0));
         net_address_with_stats.reset_connection_attempts();
         assert_eq!(net_address_with_stats.connection_attempts, 0);
+        assert_eq!(net_address_with_stats.last_failed_reason(), None);
+        assert!(net_address_with_stats.quality_score().unwrap() > 0);
     }
 
     #[test]

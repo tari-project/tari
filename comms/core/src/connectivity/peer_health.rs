@@ -99,7 +99,7 @@ impl PeerHealthMetrics {
         }
 
         // Transition circuit breaker state on successful connection
-        if self.circuit_breaker_state == CircuitBreakerState::HalfOpen {
+        if !self.circuit_breaker_state.is_closed() {
             self.circuit_breaker_state = CircuitBreakerState::Closed;
         }
     }
@@ -110,8 +110,10 @@ impl PeerHealthMetrics {
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
         self.add_attempt(ConnectionAttemptResult::Failure);
 
-        // Transition to open state if threshold exceeded
-        if self.consecutive_failures >= failure_threshold && !self.circuit_breaker_state.is_open() {
+        // Transition to open state if threshold exceeded or a half-open probe failed
+        if self.circuit_breaker_state.is_half_open() ||
+            (self.consecutive_failures >= failure_threshold && !self.circuit_breaker_state.is_open())
+        {
             self.circuit_breaker_state = CircuitBreakerState::Open {
                 opened_at: Instant::now(),
             };
@@ -423,5 +425,57 @@ mod tests {
         metrics.record_failure(5);
         metrics.record_failure(5);
         assert_eq!(metrics.health_score(window), 0.0);
+    }
+
+    #[test]
+    fn test_record_success_closes_open_circuit_breaker_and_restores_health_score() {
+        let mut metrics = PeerHealthMetrics::new();
+        let window = Duration::from_secs(60);
+
+        for _ in 0..3 {
+            metrics.record_failure(3);
+        }
+        assert!(metrics.circuit_breaker_state().is_open());
+        assert_eq!(metrics.health_score(window), 0.0);
+
+        // A direct connection success (e.g., explicit dial or inbound connection without prior try_half_open)
+        // must close the circuit breaker and restore a non-zero health score.
+        metrics.record_success(Some(Duration::from_millis(50)));
+        assert!(metrics.circuit_breaker_state().is_closed());
+        assert_eq!(metrics.consecutive_failures(), 0);
+        assert!(metrics.health_score(window) > 0.0);
+
+        // Subsequent failures reaching the threshold must be able to re-open the circuit breaker.
+        for _ in 0..3 {
+            metrics.record_failure(3);
+        }
+        assert!(metrics.circuit_breaker_state().is_open());
+    }
+
+    #[test]
+    fn test_half_open_failure_reopens_circuit_breaker_with_fresh_cooldown() {
+        let mut metrics = PeerHealthMetrics::new();
+        let retry_interval = Duration::from_millis(10);
+
+        for _ in 0..3 {
+            metrics.record_failure(3);
+        }
+        let first_opened_at = match metrics.circuit_breaker_state() {
+            CircuitBreakerState::Open { opened_at } => *opened_at,
+            other => panic!("expected Open state, got {other:?}"),
+        };
+
+        std::thread::sleep(Duration::from_millis(20));
+        assert!(metrics.try_half_open(retry_interval));
+        assert!(metrics.circuit_breaker_state().is_half_open());
+
+        // Even if failure_threshold is higher on the retry call, failing in HalfOpen must re-open immediately.
+        metrics.record_failure(10);
+        match metrics.circuit_breaker_state() {
+            CircuitBreakerState::Open { opened_at } => {
+                assert!(*opened_at > first_opened_at);
+            },
+            other => panic!("expected Open state after HalfOpen failure, got {other:?}"),
+        }
     }
 }

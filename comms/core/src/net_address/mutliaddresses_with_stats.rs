@@ -866,5 +866,18 @@ mod test {
         dialled.mark_last_seen_now(&address);
         stored.merge(&dialled);
         assert_eq!(stored.addresses()[0].last_failed_reason(), None);
+        assert_eq!(stored.addresses()[0].connection_attempts(), 0);
+        assert!(stored.addresses()[0].quality_score().unwrap() > 0);
+
+        // Merging an older failed record into a newer successful record must not re-apply the stale failure
+        let mut stale_failed = stored.clone();
+        stale_failed.mark_failed_connection_attempt(&address, "Stale error".to_string());
+        std::thread::sleep(Duration::from_millis(20));
+        let mut newer_succeeded = stale_failed.clone();
+        newer_succeeded.mark_last_seen_now(&address);
+        newer_succeeded.merge(&stale_failed);
+        assert_eq!(newer_succeeded.addresses()[0].last_failed_reason(), None);
+        assert_eq!(newer_succeeded.addresses()[0].connection_attempts(), 0);
+        assert!(newer_succeeded.addresses()[0].quality_score().unwrap() > 0);
     }
 }
