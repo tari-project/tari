@@ -43,6 +43,8 @@ pub use blockchain_database::{
     BlockchainDatabase,
     BlockchainDatabaseConfig,
     CandidateVmKey,
+    CommittedOutputsMinedInfo,
+    CommittedQueryDeletedResult,
     MmrRoots,
     NotServed,
     PendingChainRewind,

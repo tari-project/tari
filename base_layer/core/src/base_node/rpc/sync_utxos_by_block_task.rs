@@ -5,24 +5,26 @@ use std::{convert::TryInto, sync::Arc, time::Instant};
 
 use log::*;
 use prost::Message;
-use tari_common_types::types::FixedHash;
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcStatus, RpcStatusResultExt},
     utils::mpsc::ChannelByteBudget,
 };
 use tari_node_components::blocks::BlockHeader;
-use tari_transaction_components::transaction_components::TransactionOutput;
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb, is_on_requested_chain},
+    chain_storage::{BlockchainBackend, ChainStorageError, NotServed, async_db::AsyncBlockchainDb},
     proto,
     proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_by_block_task";
+const REORG_DETECTED: &str = "Reorg detected: the requested end block is no longer on the chain";
+pub(super) const END_BODY_NOT_STORED: &str = "The requested end block's body is not stored on this node";
+pub(super) const OUTPUT_REBUILD_CONFLICT_MSG: &str =
+    "Committed output state is unavailable while horizon sync rebuilds outputs";
 
 pub(crate) struct SyncUtxosByBlockTask<B> {
     db: AsyncBlockchainDb<B>,
@@ -41,28 +43,31 @@ where B: BlockchainBackend + 'static
         &self,
         request: &SyncUtxosByBlockRequest,
     ) -> Result<(BlockHeader, BlockHeader), RpcStatus> {
-        let hash = request
+        let start_hash = request
             .start_header_hash
             .clone()
             .try_into()
             .map_err(|_| RpcStatus::bad_request("Malformed start header hash received"))?;
-        let start_header = self
-            .db
-            .fetch_header_by_block_hash(hash)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found("Start header hash was not found"))?;
-        let hash = request
+        let end_hash = request
             .end_header_hash
             .clone()
             .try_into()
             .map_err(|_| RpcStatus::bad_request("Malformed end header hash received"))?;
-        let end_header = self
+
+        let (start_header, end_header) = match self
             .db
-            .fetch_header_by_block_hash(hash)
+            .validate_sync_utxos_by_block_range(start_hash, end_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found("End header hash was not found"))?;
+        {
+            Ok(pair) => pair,
+            Err(NotServed::BodyNotStored) => return Err(RpcStatus::conflict(END_BODY_NOT_STORED)),
+            Err(NotServed::OutputRebuild) => return Err(RpcStatus::conflict(OUTPUT_REBUILD_CONFLICT_MSG)),
+            Err(NotServed::NotOnChain) => return Err(RpcStatus::conflict(REORG_DETECTED)),
+        };
+
+        let start_header = start_header.ok_or_else(|| RpcStatus::not_found("Start header hash was not found"))?;
+        let end_header = end_header.ok_or_else(|| RpcStatus::not_found("End header hash was not found"))?;
 
         if start_header.height > end_header.height {
             return Err(RpcStatus::bad_request(&format!(
@@ -112,20 +117,45 @@ where B: BlockchainBackend + 'static
                 return Ok(());
             }
 
-            let (header, outputs) = match self
-                .fetch_block_on_requested_chain(height, &start_header, end_header.height, &end_hash)
+            let header = if height == start_header.height {
+                start_header.clone()
+            } else {
+                match self.db.fetch_header(height).await {
+                    Ok(Some(header)) => header,
+                    Ok(None) => return Err(reorg_conflict(height)),
+                    Err(err) if err.is_value_not_found() || matches!(err, ChainStorageError::InvalidQuery(_)) => {
+                        return Err(reorg_conflict(height));
+                    },
+                    Err(err) => return Err(RpcStatus::log_internal_error(LOG_TARGET)(err)),
+                }
+            };
+            let header_hash = header.hash();
+            let outputs = match self
+                .db
+                .fetch_outputs_in_block_on_chain(height, header_hash, end_header.height, end_hash)
                 .await
             {
-                Ok(Some(block)) => block,
-                // Every height was at or below the end block when the stream started, so a missing value means the
-                // chain was rewound
-                Ok(None) => return Err(reorg_conflict(height)),
+                Ok(Ok(outputs)) => outputs,
+                Ok(Err(NotServed::NotOnChain)) => return Err(reorg_conflict(height)),
+                Ok(Err(NotServed::BodyNotStored)) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Ending UTXO sync by block at #{height}: requested end block body is not stored"
+                    );
+                    return Err(RpcStatus::conflict(END_BODY_NOT_STORED));
+                },
+                Ok(Err(NotServed::OutputRebuild)) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Aborting UTXO sync by block at #{height}: committed output state is being rebuilt by horizon sync"
+                    );
+                    return Err(RpcStatus::conflict(OUTPUT_REBUILD_CONFLICT_MSG));
+                },
                 Err(err) if err.is_value_not_found() || matches!(err, ChainStorageError::InvalidQuery(_)) => {
                     return Err(reorg_conflict(height));
                 },
                 Err(err) => return Err(RpcStatus::log_internal_error(LOG_TARGET)(err)),
             };
-            let header_hash = header.hash();
             let outputs = outputs
                 .into_iter()
                 .map(TryInto::try_into)
@@ -179,35 +209,6 @@ where B: BlockchainBackend + 'static
 
         Ok(())
     }
-
-    /// Returns the header and outputs of the block at `height`, or None if it is no longer an ancestor of the requested
-    /// end block. The outputs and the headers at `height` and `end_height` are read under one read lock, so the check
-    /// holds for the chain state the outputs were read from, whatever reorgs happened before.
-    async fn fetch_block_on_requested_chain(
-        &self,
-        height: u64,
-        start_header: &BlockHeader,
-        end_height: u64,
-        end_hash: &FixedHash,
-    ) -> Result<Option<(BlockHeader, Vec<TransactionOutput>)>, ChainStorageError> {
-        let header = if height == start_header.height {
-            start_header.clone()
-        } else {
-            match self.db.fetch_header(height).await? {
-                Some(header) => header,
-                None => return Ok(None),
-            }
-        };
-        let hash = header.hash();
-        let (outputs, header_at_height, end_header) = self
-            .db
-            .fetch_outputs_in_block_and_header_pair(hash, height, end_height)
-            .await?;
-        if !is_on_requested_chain(&hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) {
-            return Ok(None);
-        }
-        Ok(Some((header, outputs)))
-    }
 }
 
 fn reorg_conflict(height: u64) -> RpcStatus {
@@ -215,5 +216,5 @@ fn reorg_conflict(height: u64) -> RpcStatus {
         target: LOG_TARGET,
         "Block #{height} is no longer an ancestor of the requested end block during UTXO sync by block"
     );
-    RpcStatus::conflict("Reorg detected: the requested end block is no longer on the chain")
+    RpcStatus::conflict(REORG_DETECTED)
 }
