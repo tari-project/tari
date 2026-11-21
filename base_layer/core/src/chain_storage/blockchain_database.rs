@@ -1690,11 +1690,12 @@ where B: BlockchainBackend
         header_hash: HashOutput,
         first_height: u64,
         second_height: u64,
-    ) -> Result<(Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>), ChainStorageError> {
+    ) -> Result<(Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>, u64), ChainStorageError> {
         let db = self.db_read_access()?;
         let outputs = db.fetch_outputs_in_block(&header_hash)?;
         let (first, second) = fetch_header_pair(&*db, first_height, second_height)?;
-        Ok((outputs, first, second))
+        let best_block_height = db.fetch_chain_metadata()?.best_block_height();
+        Ok((outputs, first, second, best_block_height))
     }
 
     /// Returns the block header at the given block height.
