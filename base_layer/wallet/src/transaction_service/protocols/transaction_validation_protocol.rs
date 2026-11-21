@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+    sync::{Arc, Mutex},
+};
 
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
@@ -59,6 +63,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
     output_manager: OutputManagerHandle<TKeyManagerInterface>,
+    in_flight_burn_proofs: Arc<Mutex<HashSet<FixedHash>>>,
     /// Handed to background work spawned by this protocol so it counts towards, and stops on, wallet shutdown.
     shutdown_signal: ShutdownSignal,
 }
@@ -78,6 +83,7 @@ where
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
         output_manager: OutputManagerHandle<TKeyManagerInterface>,
+        in_flight_burn_proofs: Arc<Mutex<HashSet<FixedHash>>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
@@ -87,6 +93,7 @@ where
             config,
             event_publisher,
             output_manager,
+            in_flight_burn_proofs,
             shutdown_signal,
         }
     }
@@ -118,7 +125,7 @@ where
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
         );
         // Fetch completed but unconfirmed transactions that were not imported
-        let (state_changed, tip, confirmed_burnt) = self.check_unconfirmed(base_node_wallet_client).await?;
+        let (state_changed, tip, mut confirmed_burnt) = self.check_unconfirmed(base_node_wallet_client).await?;
         debug!(target: LOG_TARGET, "Using tip height {tip} for validation");
         check_detected_transactions(
             self.output_manager.clone(),
@@ -129,12 +136,24 @@ where
         )
         .await;
 
-        if !confirmed_burnt.is_empty() {
+        match self.db.fetch_confirmed_burns_without_output_proof() {
+            Ok(unproved) => confirmed_burnt.extend(unproved),
+            Err(err) => warn!(
+                target: LOG_TARGET,
+                "Failed to query confirmed burns without output proof (Operation ID: {}): {}",
+                self.operation_id,
+                err
+            ),
+        }
+
+        if let Some(in_flight_guard) =
+            fetch_claim_burn_merkle_proofs::InFlightBurnProofsGuard::try_acquire(&self.in_flight_burn_proofs, confirmed_burnt)
+        {
             tokio::spawn(fetch_claim_burn_merkle_proofs::execute(
                 self.db.clone(),
                 self.connectivity.clone(),
                 self.event_publisher.clone(),
-                confirmed_burnt,
+                in_flight_guard,
                 self.shutdown_signal.clone(),
             ));
         }

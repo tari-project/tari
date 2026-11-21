@@ -1596,11 +1596,17 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     ) -> Result<(), TransactionStorageError> {
         use crate::schema::burn_proofs;
 
+        let mined_in_height = i64::try_from(proof.block_height).map_err(|_| {
+            TransactionStorageError::ConversionError(format!(
+                "Burn output proof block_height {} exceeds i64::MAX",
+                proof.block_height
+            ))
+        })?;
         let mut conn = self.database_connection.get_pooled_connection()?;
         let num_updated = diesel::update(burn_proofs::table)
             .set((
                 burn_proofs::burn_output_proof.eq(Some(serializers::bincode_encode(proof)?)),
-                burn_proofs::mined_in_height.eq(Some(proof.block_height as i64)),
+                burn_proofs::mined_in_height.eq(Some(mined_in_height)),
                 burn_proofs::updated_at.eq(now()),
             ))
             .filter(burn_proofs::output_hash.eq(output_hash.as_bytes()))
@@ -1633,6 +1639,46 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .map_err(TransactionStorageError::AeadError)?;
         let proof = decrypted.map(DbBurnProof::try_from).transpose()?;
         Ok(proof)
+    }
+
+    fn fetch_confirmed_burns_without_output_proof(&self) -> Result<Vec<FixedHash>, TransactionStorageError> {
+        use std::collections::HashSet;
+
+        use crate::schema::burn_proofs;
+
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let unproved_raw = burn_proofs::table
+            .select(burn_proofs::output_hash)
+            .filter(burn_proofs::burn_output_proof.is_null())
+            .load::<Vec<u8>>(&mut conn)?;
+        if unproved_raw.is_empty() {
+            return Ok(Vec::new());
+        }
+        let unproved: HashSet<FixedHash> = unproved_raw
+            .into_iter()
+            .filter_map(|bytes| FixedHash::try_from(bytes.as_slice()).ok())
+            .collect();
+        if unproved.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let confirmed_sent_blobs = completed_transactions::table
+            .select(completed_transactions::sent_output_hashes)
+            .filter(completed_transactions::status.eq(LegacyTransactionStatus::MinedConfirmed as i32))
+            .filter(completed_transactions::cancelled.is_null())
+            .filter(completed_transactions::sent_output_hashes.is_not_null())
+            .load::<Option<Vec<u8>>>(&mut conn)?;
+
+        let mut result = Vec::new();
+        let mut seen = HashSet::new();
+        for blob in confirmed_sent_blobs.into_iter().flatten() {
+            for hash in bytes_to_fixedhash_vec(&blob) {
+                if unproved.contains(&hash) && seen.insert(hash) {
+                    result.push(hash);
+                }
+            }
+        }
+        Ok(result)
     }
 
     fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError> {

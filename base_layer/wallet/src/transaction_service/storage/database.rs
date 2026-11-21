@@ -224,6 +224,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
 
     fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
 
+    /// Returns the output hashes of burn outputs owned by non-cancelled `MinedConfirmed` transactions that still have
+    /// `burn_output_proof IS NULL`.
+    fn fetch_confirmed_burns_without_output_proof(&self) -> Result<Vec<FixedHash>, TransactionStorageError>;
+
     fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError>;
 
     /// Check confirmed transactions whose lock_height has not been reached yet and
@@ -989,6 +993,10 @@ where T: TransactionBackend + 'static
 
     pub fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError> {
         self.db.fetch_burn_proof(output_hash)
+    }
+
+    pub fn fetch_confirmed_burns_without_output_proof(&self) -> Result<Vec<FixedHash>, TransactionStorageError> {
+        self.db.fetch_confirmed_burns_without_output_proof()
     }
 
     pub fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError> {

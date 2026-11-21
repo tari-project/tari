@@ -187,6 +187,7 @@ pub struct TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterfac
     timeout_update_watch: Watch<Duration>,
     base_node_service: BaseNodeServiceHandle,
     validation_in_progress: Arc<Mutex<()>>,
+    in_flight_burn_proofs: Arc<std::sync::Mutex<HashSet<FixedHash>>>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -257,6 +258,7 @@ where
             timeout_update_watch,
             base_node_service,
             validation_in_progress: Arc::new(Mutex::new(())),
+            in_flight_burn_proofs: Arc::new(std::sync::Mutex::new(HashSet::new())),
         })
     }
 
@@ -3979,6 +3981,7 @@ where
             self.resources.config.clone(),
             self.event_publisher.clone(),
             self.resources.output_manager_service.clone(),
+            self.in_flight_burn_proofs.clone(),
             self.resources.shutdown_signal.clone(),
         );
 
