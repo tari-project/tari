@@ -174,22 +174,59 @@ mod get_tx_state_by_excess_sig {
 }
 
 mod submit_transaction {
-    use tari_comms::protocol::rpc::RpcStatusCode;
+    use std::{convert::TryFrom, sync::Arc, time::Duration};
+
+    use tari_comms::{
+        peer_manager::PeerFeatures,
+        protocol::rpc::RpcStatusCode,
+        test_utils::node_identity::build_node_identity,
+    };
     use tari_crypto::ristretto::RistrettoSecretKey;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
     use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
-        mempool::{MempoolService, TxStorageResponse},
+        mempool::{
+            MempoolService,
+            TxStorageResponse,
+            rpc::service::MAX_CONCURRENT_RPC_SUBMISSIONS,
+            test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
+        },
         proto::types::{AggregateBody, PrivateKey, Transaction},
     };
 
+    fn valid_proto_tx() -> Transaction {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .expect("Failed to create test tx")
+            .0;
+        Transaction::try_from(tx).unwrap()
+    }
+
     #[tokio::test]
-    async fn it_submits_transaction() {
+    async fn it_submits_transaction_and_forwards_peer_node_id() {
         let (service, mempool, req_mock) = setup();
         let expected = TxStorageResponse::UnconfirmedPool;
         mempool.set_submit_transaction_response(expected.clone()).await;
+        let peer_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let peer_node_id = peer_identity.node_id().clone();
+        let txn = valid_proto_tx();
+
+        let resp = service
+            .submit_transaction(req_mock.request_with_context(peer_node_id.clone(), txn))
+            .await
+            .unwrap();
+        let resp = resp.into_message();
+        assert_eq!(resp, expected.into());
+        assert_eq!(mempool.get_call_count(), 1);
+        assert_eq!(mempool.submitted_transaction_peers().await, vec![Some(peer_node_id)]);
+    }
+
+    #[tokio::test]
+    async fn it_rejects_transaction_with_no_kernels_as_bad_request() {
+        let (service, mempool, req_mock) = setup();
         let txn = Transaction {
             offset: Some(PrivateKey {
                 data: RistrettoSecretKey::default().to_vec(),
@@ -203,13 +240,172 @@ mod submit_transaction {
                 data: RistrettoSecretKey::default().to_vec(),
             }),
         };
-        let resp = service
+        let status = service
             .submit_transaction(req_mock.request_with_context(Default::default(), txn))
             .await
+            .unwrap_err();
+
+        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
+        assert_eq!(mempool.get_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn it_rejects_covenant_over_token_limit_as_bad_request() {
+        let (service, mempool, req_mock) = setup();
+        let over_limit = transaction_proto_with_covenant(&covenant_over_token_limit());
+        let status = service
+            .submit_transaction(req_mock.request_with_context(Default::default(), over_limit))
+            .await
+            .unwrap_err();
+        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
+        assert_eq!(mempool.get_call_count(), 0);
+
+        mempool
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let at_limit = transaction_proto_with_covenant(&[0x20; 128]);
+        service
+            .submit_transaction(req_mock.request_with_context(Default::default(), at_limit))
+            .await
             .unwrap();
-        let resp = resp.into_message();
-        assert_eq!(resp, expected.into());
         assert_eq!(mempool.get_call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn it_bounds_concurrent_submissions_and_drops_cancelled_waiters() {
+        let (service, mempool, req_mock) = setup();
+        let service = Arc::new(service);
+        mempool
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+
+        let held = service
+            .submission_permits()
+            .acquire_many_owned(u32::try_from(MAX_CONCURRENT_RPC_SUBMISSIONS).unwrap())
+            .await
+            .unwrap();
+
+        let cancelled_req = req_mock.request_with_context(Default::default(), valid_proto_tx());
+        let cancelled = tokio::spawn({
+            let service = service.clone();
+            async move { service.submit_transaction(cancelled_req).await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!cancelled.is_finished());
+        cancelled.abort();
+        let _aborted = cancelled.await;
+
+        drop(held);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(mempool.get_call_count(), 0);
+        assert_eq!(
+            service.submission_permits().available_permits(),
+            MAX_CONCURRENT_RPC_SUBMISSIONS
+        );
+
+        service
+            .submit_transaction(req_mock.request_with_context(Default::default(), valid_proto_tx()))
+            .await
+            .unwrap();
+        assert_eq!(mempool.get_call_count(), 1);
+        assert_eq!(
+            service.submission_permits().available_permits(),
+            MAX_CONCURRENT_RPC_SUBMISSIONS
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelling_during_conversion_keeps_its_slot_until_conversion_finishes() {
+        use std::sync::{
+            Condvar,
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        #[derive(Default)]
+        struct ConversionGate {
+            entered: AtomicUsize,
+            closed: Mutex<bool>,
+            cv: Condvar,
+        }
+
+        impl ConversionGate {
+            fn set_closed(&self, is_closed: bool) {
+                *self.closed.lock().unwrap() = is_closed;
+                self.cv.notify_all();
+            }
+        }
+
+        struct OpenOnDrop(Arc<ConversionGate>);
+        impl Drop for OpenOnDrop {
+            fn drop(&mut self) {
+                self.0.set_closed(false);
+            }
+        }
+
+        let gate = Arc::new(ConversionGate::default());
+        gate.set_closed(true);
+        let _open_on_drop = OpenOnDrop(gate.clone());
+
+        let (service, mempool, req_mock) = setup();
+        mempool
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let hook_gate = gate.clone();
+        let service = Arc::new(service.with_conversion_hook(Arc::new(move || {
+            hook_gate.entered.fetch_add(1, Ordering::SeqCst);
+            let mut closed = hook_gate.closed.lock().unwrap();
+            while *closed {
+                closed = hook_gate.cv.wait(closed).unwrap();
+            }
+        })));
+
+        // Hold all but one slot so the gated conversion occupies the final free slot.
+        let held = service
+            .submission_permits()
+            .acquire_many_owned(u32::try_from(MAX_CONCURRENT_RPC_SUBMISSIONS.saturating_sub(1)).unwrap())
+            .await
+            .unwrap();
+
+        let in_flight_req = req_mock.request_with_context(Default::default(), valid_proto_tx());
+        let in_flight = tokio::spawn({
+            let service = service.clone();
+            async move { service.submit_transaction(in_flight_req).await }
+        });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while gate.entered.load(Ordering::SeqCst) < 1 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("conversion did not start");
+
+        // Cancel the RPC call while conversion is still running on the blocking thread.
+        in_flight.abort();
+        let _aborted = in_flight.await;
+
+        // Its permit remains occupied while the blocking conversion has not finished, blocking a newcomer.
+        assert_eq!(service.submission_permits().available_permits(), 0);
+        let next_req = req_mock.request_with_context(Default::default(), valid_proto_tx());
+        let next = tokio::spawn({
+            let service = service.clone();
+            async move { service.submit_transaction(next_req).await }
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(gate.entered.load(Ordering::SeqCst), 1);
+        assert!(!next.is_finished());
+
+        // Once conversion finishes, the cancelled request never submits to the mempool, frees its slot, and `next`
+        // completes normally.
+        gate.set_closed(false);
+        next.await.unwrap().unwrap();
+        assert_eq!(gate.entered.load(Ordering::SeqCst), 2);
+        assert_eq!(mempool.get_call_count(), 1);
+        drop(held);
+        assert_eq!(
+            service.submission_permits().available_permits(),
+            MAX_CONCURRENT_RPC_SUBMISSIONS
+        );
     }
 
     #[tokio::test]
