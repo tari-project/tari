@@ -20,36 +20,75 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 
 use log::*;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_transaction_components::transaction_components::Transaction;
+use tokio::{sync::Semaphore, task};
 
 use crate::{
-    mempool::{rpc::MempoolService, service::MempoolHandle},
+    mempool::{MempoolError, MempoolServiceError, rpc::MempoolService, service::MempoolHandle},
     proto,
 };
 const LOG_TARGET: &str = "c::mempool::rpc";
 
+/// Maximum number of inbound P2P `submit_transaction` RPC requests being converted or submitted at once.
+pub(super) const MAX_CONCURRENT_RPC_SUBMISSIONS: usize = 2;
+
+#[cfg(test)]
+type ConversionHook = Arc<dyn Fn() + Send + Sync>;
+
 pub struct MempoolRpcService {
     mempool: MempoolHandle,
+    submission_permits: Arc<Semaphore>,
+    #[cfg(test)]
+    conversion_hook: Option<ConversionHook>,
 }
 
 impl MempoolRpcService {
     pub fn new(mempool: MempoolHandle) -> Self {
-        Self { mempool }
+        Self {
+            mempool,
+            submission_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_RPC_SUBMISSIONS)),
+            #[cfg(test)]
+            conversion_hook: None,
+        }
     }
 
     #[inline]
     pub fn mempool(&self) -> MempoolHandle {
         self.mempool.clone()
     }
+
+    #[cfg(test)]
+    pub(super) fn submission_permits(&self) -> Arc<Semaphore> {
+        self.submission_permits.clone()
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_conversion_hook(mut self, hook: ConversionHook) -> Self {
+        self.conversion_hook = Some(hook);
+        self
+    }
 }
 
 fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
     error!(target: LOG_TARGET, "Internal error: {err}");
     RpcStatus::general_default()
+}
+
+fn to_submit_error(err: MempoolServiceError) -> RpcStatus {
+    match err {
+        MempoolServiceError::TransactionNoKernels |
+        MempoolServiceError::MempoolError(MempoolError::TransactionNoKernels) => {
+            RpcStatus::bad_request("Malformed transaction: Transaction has no kernels")
+        },
+        other => to_internal_error(other),
+    }
 }
 
 #[tari_comms::async_trait]
@@ -80,20 +119,50 @@ impl MempoolService for MempoolRpcService {
         request: Request<proto::types::Transaction>,
     ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
         let (context, message) = request.into_parts();
-        let tx = match Transaction::try_from(message) {
+        let peer_node_id = context.peer_node_id().clone();
+        if message.body.as_ref().is_some_and(|body| body.kernels.is_empty()) {
+            debug!(
+                target: LOG_TARGET,
+                "Received transaction with no kernels from peer `{peer_node_id}`"
+            );
+            return Err(RpcStatus::bad_request(
+                "Malformed transaction: Transaction has no kernels",
+            ));
+        }
+        let permit = self
+            .submission_permits
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(to_internal_error)?;
+        #[cfg(test)]
+        let conversion_hook = self.conversion_hook.clone();
+        let (_permit, conversion) = task::spawn_blocking(move || {
+            #[cfg(test)]
+            if let Some(hook) = conversion_hook {
+                hook();
+            }
+            let result = Transaction::try_from(message);
+            (permit, result)
+        })
+        .await
+        .map_err(to_internal_error)?;
+        let tx = match conversion {
             Ok(tx) => tx,
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Received invalid message from peer `{}`: {}",
-                    context.peer_node_id(),
-                    err
+                    "Received invalid message from peer `{peer_node_id}`: {err}"
                 );
                 // These error messages are safe to send back to the requester
                 return Err(RpcStatus::bad_request(&format!("Malformed transaction: {err}")));
             },
         };
-        let tx_storage = self.mempool().submit_transaction(tx).await.map_err(to_internal_error)?;
+        let tx_storage = self
+            .mempool()
+            .submit_transaction_from_peer(tx, peer_node_id)
+            .await
+            .map_err(to_submit_error)?;
         Ok(Response::new(tx_storage.into()))
     }
 }

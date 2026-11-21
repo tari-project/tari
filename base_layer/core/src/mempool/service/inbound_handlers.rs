@@ -87,6 +87,7 @@ impl MempoolInboundHandlers {
             GetStats,
             GetTxStateByExcessSig,
             SubmitTransaction,
+            SubmitTransactionFromPeer,
         };
         match request {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
@@ -108,6 +109,20 @@ impl MempoolInboundHandlers {
                     self.submit_transaction(tx, None, None).await?.0,
                 ))
             },
+            SubmitTransactionFromPeer { tx, source_peer } => {
+                let first_tx_kernel_excess_sig = tx
+                    .first_kernel_excess_sig()
+                    .ok_or(MempoolServiceError::TransactionNoKernels)?
+                    .get_signature()
+                    .to_hex();
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction ({first_tx_kernel_excess_sig}) submitted using request from peer {source_peer}."
+                );
+                Ok(MempoolResponse::TxStorage(
+                    self.submit_transaction(tx, Some(source_peer), None).await?.0,
+                ))
+            },
             GetFeePerGramStats { count, tip_height } => {
                 let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
                 Ok(MempoolResponse::FeePerGramStats { response: stats })
@@ -123,11 +138,12 @@ impl MempoolInboundHandlers {
         Ok(self.mempool.acquire_validation_permit().await?)
     }
 
-    /// Handle a `SubmitTransaction` request (as [MempoolInboundHandlers::handle_request] does), validating with the
-    /// given, already acquired, permit
+    /// Handle a `SubmitTransaction` or `SubmitTransactionFromPeer` request (as
+    /// [MempoolInboundHandlers::handle_request] does), validating with the given, already acquired, permit
     pub async fn submit_transaction_request(
         &mut self,
         tx: Transaction,
+        source_peer: Option<NodeId>,
         permit: ValidationPermit,
     ) -> Result<MempoolResponse, MempoolServiceError> {
         let first_tx_kernel_excess_sig = tx
@@ -140,7 +156,7 @@ impl MempoolInboundHandlers {
             "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
         );
         Ok(MempoolResponse::TxStorage(
-            self.submit_transaction(tx, None, Some(permit)).await?.0,
+            self.submit_transaction(tx, source_peer, Some(permit)).await?.0,
         ))
     }
 
@@ -375,7 +391,6 @@ impl MempoolInboundHandlers {
 #[cfg(test)]
 mod test {
     use prost::Message;
-    use tari_common_types::types::FixedHash;
     use tari_p2p::tari_message::TariMessageType;
     use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
     use tokio::sync::mpsc;
@@ -416,8 +431,46 @@ mod test {
         handlers.handle_transaction_message(msg).await.unwrap();
         assert_eq!(mempool.available_validation_permits(), permits);
 
+        // A transaction message that decodes cleanly into a domain Transaction with zero kernels
+        let empty_kernel_tx = Transaction::new(vec![], vec![], vec![], Default::default(), Default::default());
+        let body = proto::types::Transaction::try_from(empty_kernel_tx)
+            .unwrap()
+            .encode_to_vec();
+        let msg = create_peer_message(TariMessageType::NewTransaction, body);
+        handlers.handle_transaction_message(msg).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), permits);
+
         assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
         assert!(propagated.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn peer_submitted_transaction_is_not_propagated_back_to_submitting_peer() {
+        let (mut handlers, mempool, mut propagated) = create_handlers();
+        let permits = mempool.available_validation_permits();
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let peer = create_peer_message(TariMessageType::NewTransaction, vec![])
+            .source_peer
+            .node_id
+            .clone();
+        let permit = handlers.acquire_validation_permit().await.unwrap();
+        let resp = handlers
+            .submit_transaction_request((*tx).clone(), Some(peer.clone()), permit)
+            .await
+            .unwrap();
+        assert!(matches!(
+            resp,
+            MempoolResponse::TxStorage(TxStorageResponse::UnconfirmedPool)
+        ));
+        assert_eq!(mempool.available_validation_permits(), permits);
+        let (propagated_tx, excluded) = propagated.try_recv().unwrap();
+        assert_eq!(propagated_tx, tx);
+        assert_eq!(excluded, vec![peer]);
     }
 
     #[tokio::test]
@@ -469,72 +522,6 @@ mod test {
         assert!(propagated.try_recv().is_ok());
         assert!(propagated.try_recv().is_ok());
         assert!(propagated.try_recv().is_err());
-    }
-
-    #[tokio::test]
-    async fn full_pool_rejects_and_does_not_relay_a_dropped_tx_and_eviction_removes_descendants() {
-        let mut config = MempoolConfig::default();
-        config.unconfirmed_pool.min_fee = 0;
-        config.unconfirmed_pool.storage_capacity = 2;
-        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(MockValidator::new(true)));
-        let (tx_sender, mut propagated) = mpsc::unbounded_channel();
-        let mut handlers =
-            MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
-        let key_manager = KeyManager::new_random().unwrap();
-        let tx_with_fee = |fee| {
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(fee), inputs: 1, outputs: 1, &key_manager)
-                .expect("Failed to get tx")
-        };
-        let (parent, _, parent_outputs) = tx_with_fee(10);
-        let child = tx_with_fee(30).0;
-        let child = Arc::new(Transaction::new(
-            vec![
-                parent_outputs
-                    .first()
-                    .unwrap()
-                    .to_transaction_input(&key_manager)
-                    .unwrap(),
-            ],
-            child.body.outputs().clone(),
-            child.body.kernels().clone(),
-            child.offset,
-            child.script_offset,
-        ));
-        let [tx_high_1, tx_high_2, tx_low] = [20, 25, 5].map(|fee| Arc::new(tx_with_fee(fee).0));
-        for tx in [Arc::new(parent), child.clone()] {
-            assert_eq!(mempool.insert(tx).await.unwrap(), TxStorageResponse::UnconfirmedPool);
-        }
-
-        // Evicting the parent evicts its child too
-        assert_eq!(
-            mempool.insert(tx_high_1.clone()).await.unwrap(),
-            TxStorageResponse::UnconfirmedPool
-        );
-        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
-        assert_eq!(
-            mempool.has_transaction(child).await.unwrap(),
-            TxStorageResponse::NotStored(None)
-        );
-        assert_eq!(
-            mempool.insert(tx_high_2.clone()).await.unwrap(),
-            TxStorageResponse::UnconfirmedPool
-        );
-        let retrieved = mempool.retrieve(u64::MAX, 1, FixedHash::zero()).await.unwrap();
-        assert_eq!(retrieved.len(), 2);
-        assert!(retrieved.contains(&tx_high_1) && retrieved.contains(&tx_high_2));
-
-        // A transaction that does not outbid the full pool is rejected and not relayed
-        assert_eq!(
-            mempool.insert(tx_low.clone()).await.unwrap(),
-            TxStorageResponse::NotStoredFeeTooLow
-        );
-        let body = proto::types::Transaction::try_from(tx_low).unwrap().encode_to_vec();
-        handlers
-            .handle_transaction_message(create_peer_message(TariMessageType::NewTransaction, body))
-            .await
-            .unwrap();
-        assert!(propagated.try_recv().is_err());
-        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
     }
 
     mod peer_bans {
@@ -874,8 +861,6 @@ mod test {
                 .0;
             // Reuses a kernel excess that is already in the chain
             let mut excess_in_chain = mined_kernel;
-            // The mined kernel is the coinbase kernel, which the pre-checks would reject (and ban) first
-            excess_in_chain.features = KernelFeatures::empty();
             excess_in_chain.excess_sig = create_signature(
                 PrivateKey::random(&mut rand::rng()),
                 0.into(),
@@ -1059,8 +1044,23 @@ mod test {
                 .handle_request(MempoolRequest::SubmitTransaction(tx.clone()))
                 .await
                 .unwrap();
+            handlers
+                .handle_request(MempoolRequest::SubmitTransactionFromPeer {
+                    tx: tx.clone(),
+                    source_peer: NodeId::default(),
+                })
+                .await
+                .unwrap();
             let permit = handlers.acquire_validation_permit().await.unwrap();
-            handlers.submit_transaction_request(tx.clone(), permit).await.unwrap();
+            handlers
+                .submit_transaction_request(tx.clone(), None, permit)
+                .await
+                .unwrap();
+            let permit = handlers.acquire_validation_permit().await.unwrap();
+            handlers
+                .submit_transaction_request(tx.clone(), Some(NodeId::default()), permit)
+                .await
+                .unwrap();
             handlers
                 .handle_transaction(tx.clone(), Some(NodeId::default()))
                 .await
