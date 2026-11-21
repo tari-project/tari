@@ -56,6 +56,7 @@ use crate::{
                 SyncStatus,
                 Waiting,
                 events_and_states,
+                sync_decide::{can_sync_blocks_from, can_sync_horizon_from},
             },
         },
         sync::SyncPeer,
@@ -715,9 +716,10 @@ impl From<Waiting> for Listening {
 }
 
 impl From<HeaderSyncState> for Listening {
-    fn from(sync: HeaderSyncState) -> Self {
+    fn from(_: HeaderSyncState) -> Self {
+        debug!(target: LOG_TARGET, "Initial sync set to 'false' (from HeaderSyncState)");
         Self {
-            is_synced: sync.is_synced(),
+            is_synced: false,
             initial_delay_count: 0,
             network_silence: false,
         }
@@ -735,9 +737,10 @@ impl From<BlockSync> for Listening {
 }
 
 impl From<DecideNextSync> for Listening {
-    fn from(sync: DecideNextSync) -> Self {
+    fn from(_: DecideNextSync) -> Self {
+        debug!(target: LOG_TARGET, "Initial sync set to 'false' (from DecideNextSync)");
         Self {
-            is_synced: sync.is_synced(),
+            is_synced: false,
             initial_delay_count: 0,
             network_silence: false,
         }
@@ -759,11 +762,12 @@ fn determine_sync_mode(
     local: &ChainMetadata,
     network: &PeerChainMetadata,
 ) -> SyncStatus {
-    let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_difficulty();
+    let remote_metadata = network.claimed_chain_metadata();
+    let network_tip_accum_difficulty = remote_metadata.accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {
         let local_tip_height = local.best_block_height();
-        let network_tip_height = network.claimed_chain_metadata().best_block_height();
+        let network_tip_height = remote_metadata.best_block_height();
         trace!(
             target: LOG_TARGET,
             "Our local blockchain accumulated difficulty is a little behind that of the network. We're at block #{local_tip_height} \
@@ -771,37 +775,25 @@ fn determine_sync_mode(
              of {network_tip_accum_difficulty}"
         );
 
-        // If both the local and remote are pruned mode, we need to ensure that the remote pruning horizon is
-        // greater_equal to ours so that we can sync all the data from it. If the remote is a pruned mode, and
-        // we only require some data from it, we need to ensure that they can supply the data we need, as in their
-        // effective pruned horizon is greater than our local current chain tip.
-        let pruned_mode = local.pruning_horizon() > 0;
-        let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0 &&
-            network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
-        let pruning_height_check = network.claimed_chain_metadata().pruned_height() > local.best_block_height();
-        let sync_able_peer = match (pruned_mode, pruning_horizon_check, pruning_height_check) {
-            (true, true, _) => {
-                info!(
-                    target: LOG_TARGET,
-                    "The remote peer is a pruned node, and it's pruning_horizon is less than ours. Remote pruning horizon # {}, current local pruning horizon #{}",
-                    network.claimed_chain_metadata(),
-                    local.pruning_horizon(),
-                );
-                false
-            },
-            (false, _, true) => {
-                info!(
-                    target: LOG_TARGET,
-                    "The remote peer is a pruned node, and it cannot supply the blocks we need. Remote pruned height # {}, current local tip #{}",
-                    network.claimed_chain_metadata().pruned_height(),
-                    local.best_block_height(),
-                );
-                false
-            },
-            _ => true,
-        };
+        // Ensure the remote peer can supply either sequential full blocks from our current local tip or a complete
+        // horizon state window for our pruning horizon, while also rejecting a pruned remote with a smaller configured
+        // pruning horizon than our pruned local node (since header sync can rewind our tip below its pruned height).
+        let tighter_horizon = local.pruning_horizon() > 0 &&
+            remote_metadata.pruning_horizon() > 0 &&
+            remote_metadata.pruning_horizon() < local.pruning_horizon();
+        let sync_able_peer = !tighter_horizon &&
+            (can_sync_blocks_from(local, remote_metadata) || can_sync_horizon_from(local, remote_metadata));
 
         if !sync_able_peer {
+            info!(
+                target: LOG_TARGET,
+                "The remote peer cannot supply the blocks or horizon state we need. Remote tip #{}, pruned height #{}, pruning horizon #{}; current local tip #{}, pruning horizon #{}",
+                remote_metadata.best_block_height(),
+                remote_metadata.pruned_height(),
+                remote_metadata.pruning_horizon(),
+                local.best_block_height(),
+                local.pruning_horizon(),
+            );
             return SyncStatus::SyncNotPossible {
                 peers: vec![network.clone().into()],
             };
@@ -1460,5 +1452,117 @@ mod test {
         let message = chain_status_log.summary_message().unwrap();
         assert!(message.contains("We are behind the network"));
         assert!(message.contains(&ahead_peer_id));
+    }
+
+    #[tokio::test]
+    async fn aborted_sync_from_decide_next_sync_does_not_mark_unbootstrapped_node_synced() {
+        let (mut state_machine, metadata_tx) = idle_state_machine();
+        assert!(!state_machine.is_bootstrapped());
+
+        let local = state_machine.db.inner().get_chain_metadata().unwrap();
+        let peer_metadata = PeerChainMetadata::new(
+            random_node_id(),
+            ChainMetadata::new(100, test_block_hash(), 20, 80, U512::from(2000), 0).unwrap(),
+            None,
+        );
+        let sync_peer = SyncPeer::from(peer_metadata);
+
+        let header_sync = HeaderSyncState::new(vec![sync_peer.clone()], local);
+
+        let synchronized = StateEvent::HeadersSynchronized(sync_peer, AttemptSyncResult {
+            headers_returned: 100,
+            peer_fork_hash_index: 0,
+            header_sync_status: HeaderSyncStatus::InSyncOrAhead,
+        });
+        let decide_state = state_machine.transition(BaseNodeState::HeaderSync(header_sync), synchronized);
+        assert!(matches!(decide_state, BaseNodeState::DecideNextSync(_)));
+
+        let listening_state = state_machine.transition(decide_state, StateEvent::Continue);
+        let mut listening = match listening_state {
+            BaseNodeState::Listening(listening, network_silence) => {
+                assert!(!network_silence);
+                listening
+            },
+            other => panic!("Expected Listening state, got {other}"),
+        };
+        assert!(!listening.is_synced);
+
+        drop(metadata_tx);
+        let event = listening.next_event(&mut state_machine, false).await;
+        assert!(matches!(event, StateEvent::UserQuit));
+        assert!(!listening.is_synced);
+        assert!(!state_machine.is_bootstrapped());
+        assert!(!state_machine.info.is_synced());
+    }
+
+    #[tokio::test]
+    async fn aborted_sync_from_decide_next_sync_restores_synced_for_bootstrapped_node() {
+        let (mut state_machine, metadata_tx) = idle_state_machine();
+        Listening {
+            is_synced: true,
+            ..Default::default()
+        }
+        .publish_status_info(&mut state_machine);
+        assert!(state_machine.is_bootstrapped());
+
+        let local = state_machine.db.inner().get_chain_metadata().unwrap();
+        let sync_peer = SyncPeer::from(stronger_peer());
+        let header_sync = HeaderSyncState::new(vec![sync_peer], local);
+
+        let decide = DecideNextSync::from(header_sync);
+        let mut listening = Listening::from(decide);
+        assert!(!listening.is_synced);
+
+        drop(metadata_tx);
+        let event = listening.next_event(&mut state_machine, false).await;
+        assert!(matches!(event, StateEvent::UserQuit));
+        assert!(listening.is_synced);
+        assert!(state_machine.info.is_synced());
+    }
+
+    #[test]
+    fn determine_sync_mode_rejects_pruned_peer_even_if_pruning_horizon_was_disabled_or_widened() {
+        let local_pruned = ChainMetadata::new(10, test_block_hash(), 50, 0, U512::from(100), 0).unwrap();
+
+        // Peer previously pruned up to height 80 (retaining only 20 blocks at tip 100), then disabled pruning (0)
+        let disabled_pruning_peer = PeerChainMetadata::new(
+            random_node_id(),
+            ChainMetadata::new(100, test_block_hash(), 0, 80, U512::from(1000), 0).unwrap(),
+            None,
+        );
+        let sync_mode = determine_sync_mode(0, &local_pruned, &disabled_pruning_peer);
+        assert!(sync_mode.is_sync_not_possible());
+
+        // Same insufficient block retention (20 < 50), but advertising a wider configured pruning_horizon (100 >= 50)
+        let widened_pruning_peer = PeerChainMetadata::new(
+            random_node_id(),
+            ChainMetadata::new(100, test_block_hash(), 100, 80, U512::from(1000), 0).unwrap(),
+            None,
+        );
+        let sync_mode = determine_sync_mode(0, &local_pruned, &widened_pruning_peer);
+        assert!(sync_mode.is_sync_not_possible());
+    }
+
+    #[test]
+    fn determine_sync_mode_rejects_tighter_horizon_peer_even_when_retaining_blocks_from_local_tip() {
+        let local_pruned = ChainMetadata::new(90, test_block_hash(), 50, 40, U512::from(900), 0).unwrap();
+
+        // Remote has a smaller pruning_horizon (20 < 50); even though pruned_height (80) <= local tip (90),
+        // header sync could rewind local tip below 80 and leave DecideNextSync unable to block-sync or horizon-sync.
+        let tighter_horizon_peer = PeerChainMetadata::new(
+            random_node_id(),
+            ChainMetadata::new(100, test_block_hash(), 20, 80, U512::from(1000), 0).unwrap(),
+            None,
+        );
+        let sync_mode = determine_sync_mode(0, &local_pruned, &tighter_horizon_peer);
+        assert!(sync_mode.is_sync_not_possible());
+
+        let one_ahead_tighter_peer = PeerChainMetadata::new(
+            random_node_id(),
+            ChainMetadata::new(91, test_block_hash(), 20, 71, U512::from(910), 0).unwrap(),
+            None,
+        );
+        let sync_mode = determine_sync_mode(1, &local_pruned, &one_ahead_tighter_peer);
+        assert!(sync_mode.is_sync_not_possible());
     }
 }

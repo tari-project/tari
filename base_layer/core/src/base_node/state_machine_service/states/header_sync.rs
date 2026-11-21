@@ -42,7 +42,6 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 #[derive(Clone, Debug)]
 pub struct HeaderSyncState {
     sync_peers: Vec<SyncPeer>,
-    is_synced: bool,
     local_metadata: ChainMetadata,
 }
 
@@ -65,13 +64,8 @@ impl HeaderSyncState {
         });
         Self {
             sync_peers,
-            is_synced: false,
             local_metadata,
         }
-    }
-
-    pub fn is_synced(&self) -> bool {
-        self.is_synced
     }
 
     pub fn into_sync_peers(self) -> Vec<SyncPeer> {
@@ -184,7 +178,6 @@ impl HeaderSyncState {
                     let sync_peer = self.sync_peers.remove(pos);
                     self.sync_peers.insert(0, sync_peer);
                 }
-                self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer, sync_result)
             },
             Err(err) => {
