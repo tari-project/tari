@@ -39,7 +39,7 @@ use tari_comms::{
 use tari_utilities::{ByteArray, hex::Hex};
 use tower::{Service, ServiceExt};
 
-use super::join_gate::{JoinAdmission, JoinCooldown};
+use super::join_gate::{DiscoveryCooldown, JoinAdmission, JoinCooldown};
 use crate::{
     DhtConfig,
     DhtRequester,
@@ -126,6 +126,7 @@ pub struct ProcessDhtMessage<S> {
     discovery_requester: DhtDiscoveryRequester,
     config: Arc<DhtConfig>,
     join_cooldown: Arc<Mutex<JoinCooldown>>,
+    discovery_cooldown: Arc<Mutex<DiscoveryCooldown>>,
     source_budget: SharedSourceBudget,
     accepted_joins: SharedAcceptedJoins,
 }
@@ -143,6 +144,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         message: DecryptedDhtMessage,
         config: Arc<DhtConfig>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
+        discovery_cooldown: Arc<Mutex<DiscoveryCooldown>>,
         source_budget: SharedSourceBudget,
         accepted_joins: SharedAcceptedJoins,
     ) -> Self {
@@ -156,6 +158,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message: Some(message),
             config,
             join_cooldown,
+            discovery_cooldown,
             source_budget,
             accepted_joins,
         }
@@ -639,10 +642,36 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             discovery_received("invalid");
             return Ok(());
         }
+        let cooldown_interval = self.config.discovery_cooldown_interval;
+        let Some(discovery_lease) = DiscoveryCooldown::try_begin(
+            &self.discovery_cooldown,
+            authenticated_pk,
+            Instant::now(),
+            cooldown_interval,
+        ) else {
+            debug!(
+                target: LOG_TARGET,
+                "A Discovery from '{authenticated_pk}' is already in progress or was answered within the last \
+                 {cooldown_interval:.0?}. Dropping it."
+            );
+            discovery_received("cooldown");
+            return Ok(());
+        };
+
         let node_id = NodeId::from_public_key(&new_peer.public_key);
 
         let peer_validator = PeerValidator::new(&self.config);
         let maybe_existing_peer = self.peer_manager.find_by_public_key(&new_peer.public_key).await?;
+        // Reject banned origins before signature verification and DB writes so an active ban also prevents repeated
+        // claim checks and peer-DB updates from relayed Discoveries, without consuming a cooldown slot.
+        if maybe_existing_peer.as_ref().is_some_and(|peer| peer.is_banned()) {
+            debug!(
+                target: LOG_TARGET,
+                "Dropping Discovery from banned peer '{node_id}'."
+            );
+            discovery_received("banned_origin");
+            return Ok(());
+        }
         let is_new_peer = maybe_existing_peer.is_none();
         // Discovery shares the gossip budget of new peers per direct source; a capped source costs no signature check
         if is_new_peer &&
@@ -696,6 +725,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             discovery_received("banned_origin");
             return Ok(());
         }
+
+        discovery_lease.commit(Instant::now(), self.config.discovery_cooldown_capacity);
 
         // Send the origin the current nodes latest contact info
         self.send_discovery_response(origin_peer.public_key, nonce).await?;
@@ -822,12 +853,13 @@ mod test {
         peer_manager: Arc<PeerManager>,
     }
 
-    /// A node's DHT handler, keeping its peer DB, Join cooldown and source budget across messages
+    /// A node's DHT handler, keeping its peer DB, Join/Discovery cooldowns and source budget across messages
     struct Handler {
         config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
+        discovery_cooldown: Arc<Mutex<DiscoveryCooldown>>,
         source_budget: SharedSourceBudget,
         accepted_joins: SharedAcceptedJoins,
     }
@@ -839,6 +871,7 @@ mod test {
                 node_identity: make_node_identity(),
                 peer_manager: build_peer_manager(),
                 join_cooldown: Default::default(),
+                discovery_cooldown: Default::default(),
                 source_budget: Default::default(),
                 accepted_joins: Default::default(),
             }
@@ -860,6 +893,7 @@ mod test {
                 message,
                 self.config.clone(),
                 self.join_cooldown.clone(),
+                self.discovery_cooldown.clone(),
                 self.source_budget.clone(),
                 self.accepted_joins.clone(),
             );
@@ -1336,6 +1370,7 @@ mod test {
     async fn a_discovery_from_a_known_peer_is_not_capped() {
         let mut config = DhtConfig::default_local_test();
         config.network_discovery.max_stored_per_source = 1;
+        config.discovery_cooldown_interval = Duration::ZERO;
         let handler = Handler::new(config);
         let relay = make_node_identity();
         let known = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
@@ -1395,6 +1430,142 @@ mod test {
         let valid = identity_with_addresses(&["/ip4/23.23.23.3/tcp/18189"]);
         assert_eq!(
             handler.process(relayed_discovery(&relay, &valid)).await.outbound_sends,
+            1
+        );
+    }
+
+    /// A known peer's Discovery is answered at most once per cooldown (dropping repeats before claim validation), and
+    /// is answered again when the cooldown has expired even when its identity claim is unchanged.
+    #[tokio::test]
+    async fn a_known_peers_discovery_is_answered_once_per_cooldown_even_with_unchanged_claim() {
+        let mut config = DhtConfig::default_local_test();
+        config.discovery_cooldown_interval = Duration::from_secs(60);
+        let handler = Handler::new(config);
+        let relay = make_node_identity();
+        let known = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+
+        assert_eq!(
+            handler.process(relayed_discovery(&relay, &known)).await.outbound_sends,
+            1
+        );
+
+        // Repeat within the 60s cooldown is dropped before validation (even a modified claim signature costs no check/ban)
+        let mut altered = discovery_from(&known);
+        altered.addresses = vec!["/ip4/23.23.23.9/tcp/18189".parse::<Multiaddr>().unwrap().to_vec()];
+        let in_cooldown = handler
+            .process(make_message(&relay, &known, DhtMessageType::Discovery, altered))
+            .await;
+        assert!(in_cooldown.result.is_ok());
+        assert!(in_cooldown.bans.is_empty());
+        assert_eq!(in_cooldown.outbound_sends, 0);
+
+        // With a zero-duration cooldown interval, the same unchanged claim (no re-signing) is answered again
+        let mut zero_cooldown_config = DhtConfig::default_local_test();
+        zero_cooldown_config.discovery_cooldown_interval = Duration::ZERO;
+        let expired_handler = Handler::new(zero_cooldown_config);
+        assert_eq!(
+            expired_handler
+                .process(relayed_discovery(&relay, &known))
+                .await
+                .outbound_sends,
+            1
+        );
+        let after_expiry = expired_handler.process(relayed_discovery(&relay, &known)).await;
+        assert!(after_expiry.result.is_ok());
+        assert!(after_expiry.bans.is_empty());
+        assert_eq!(after_expiry.outbound_sends, 1);
+    }
+
+    /// Concurrent Discoveries from the same origin reserve the origin before the first DB lookup, dropping duplicates
+    /// before claim validation and emitting only a single DiscoveryResponse.
+    #[tokio::test]
+    async fn concurrent_discoveries_from_the_same_origin_answer_at_most_once() {
+        let handler = Handler::new(DhtConfig::default_local_test());
+        let relay = make_node_identity();
+        let signer = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        handler.peer_manager.add_or_update_peer(signer.to_peer()).await.unwrap();
+
+        let results = futures::future::join_all((0..8u64).map(|nonce| {
+            let mut msg = discovery_from(&signer);
+            msg.nonce = nonce.saturating_add(1);
+            if nonce > 0 {
+                // Duplicates arriving while request 0 is in flight must drop before validate_peer (otherwise `signer`
+                // would be banned for the mismatched claim signature).
+                msg.addresses = vec!["/ip4/23.23.23.9/tcp/18189".parse::<Multiaddr>().unwrap().to_vec()];
+            }
+            handler.process(make_message(&relay, &signer, DhtMessageType::Discovery, msg))
+        }))
+        .await;
+
+        let total_sends: usize = results.iter().map(|r| r.outbound_sends).sum();
+        assert_eq!(total_sends, 1);
+        assert!(results.iter().all(|r| r.result.is_ok() && r.bans.is_empty()));
+    }
+
+    /// Dropped Discoveries (capped relay, over-limit claim, or banned origin) do not start a cooldown or evict honest
+    /// origins from the cooldown table.
+    #[tokio::test]
+    async fn a_capped_or_invalid_or_banned_discovery_does_not_pollute_the_cooldown() {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 1;
+        config.discovery_cooldown_capacity = 1;
+        config.peer_validator_config.max_permitted_peer_addresses_per_claim = 1;
+        let handler = Handler::new(config);
+        let capped_relay = make_node_identity();
+        let honest_relay = make_node_identity();
+        let first = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        let target = identity_with_addresses(&["/ip4/23.23.23.2/tcp/18189"]);
+
+        // Exhaust capped_relay's budget with `first`; `first` now holds the sole cooldown slot
+        assert_eq!(
+            handler
+                .process(relayed_discovery(&capped_relay, &first))
+                .await
+                .outbound_sends,
+            1
+        );
+        // Capped copy of `target` is dropped without putting `target` into cooldown
+        assert_eq!(
+            handler
+                .process(relayed_discovery(&capped_relay, &target))
+                .await
+                .outbound_sends,
+            0
+        );
+        // Over-limit claim (2 addresses > max 1) is dropped by validation without starting cooldown or evicting `first`
+        let multi_addr_peer = identity_with_addresses(&["/ip4/23.23.23.4/tcp/18189", "/ip4/23.23.23.5/tcp/18189"]);
+        assert_eq!(
+            handler
+                .process(relayed_discovery(&honest_relay, &multi_addr_peer))
+                .await
+                .outbound_sends,
+            0
+        );
+
+        // A banned origin is rejected before validation and does not evict `first` from the 1-slot cooldown
+        let banned = identity_with_addresses(&["/ip4/23.23.23.6/tcp/18189"]);
+        let mut banned_peer = banned.to_peer();
+        banned_peer.ban_for(Duration::from_secs(600), "test ban".to_string());
+        handler.peer_manager.add_or_update_peer(banned_peer).await.unwrap();
+        let banned_res = handler.process(relayed_discovery(&honest_relay, &banned)).await;
+        assert!(banned_res.result.is_ok());
+        assert!(banned_res.bans.is_empty());
+        assert_eq!(banned_res.outbound_sends, 0);
+        // `first` is still remembered in the 1-slot cooldown
+        assert_eq!(
+            handler
+                .process(relayed_discovery(&honest_relay, &first))
+                .await
+                .outbound_sends,
+            0
+        );
+
+        // Uncapped relay immediately delivers `target` and gets answered
+        assert_eq!(
+            handler
+                .process(relayed_discovery(&honest_relay, &target))
+                .await
+                .outbound_sends,
             1
         );
     }
