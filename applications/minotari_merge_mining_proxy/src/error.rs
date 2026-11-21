@@ -122,6 +122,12 @@ pub enum MmProxyError {
     MonerodTimeout(String),
     #[error("Monerod request could not be parsed: {0}")]
     InvalidMonerodRequest(String),
+    #[error("Request body exceeds maximum allowed size of {max_bytes} bytes")]
+    RequestBodyTooLarge { max_bytes: usize },
+    #[error("Timed out reading request body")]
+    RequestBodyReadTimedOut,
+    #[error("Request body budget exhausted")]
+    RequestBodyBudgetExhausted,
 }
 
 impl From<tonic::Status> for MmProxyError {
