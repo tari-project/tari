@@ -43,6 +43,7 @@ pub use cli::{
     CoinSplitArgs,
     ExportUtxosArgs,
     ExportViewKeyAndSpendKeyArgs,
+    ImportPayloadKeyArgs,
     MakeItRainArgs,
     SendMinotariArgs,
     SetBaseNodeArgs,

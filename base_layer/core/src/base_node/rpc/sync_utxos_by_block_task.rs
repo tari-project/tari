@@ -17,8 +17,7 @@ use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    base_node::sync::rpc::is_on_requested_chain,
-    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb, is_on_requested_chain},
     proto,
     proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
 };

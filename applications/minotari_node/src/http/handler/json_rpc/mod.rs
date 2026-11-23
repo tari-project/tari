@@ -753,9 +753,6 @@ mod tests {
     async fn submit_transaction_distinguishes_double_spend_from_already_mined() {
         let shutdown = Shutdown::new();
         let (mempool, mempool_state) = create_mempool_service_mock();
-        mempool_state
-            .set_submit_transaction_response(TxStorageResponse::NotStoredAlreadySpent)
-            .await;
 
         let raw_db = create_new_blockchain_with_network(Network::LocalNet);
         let (_names, chain) = create_main_chain(&raw_db, block_specs!(["A->GB"]));
@@ -771,14 +768,6 @@ mod tests {
         let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
         let state_machine = StateMachineHandle::new(state_tx, status_rx, shutdown.to_signal());
         let query_service = Arc::new(query_service::Service::new(db, state_machine, mempool.clone()));
-
-        // 1. Kernel not in chain DB -> DoubleSpend
-        let response = submit(query_service.clone(), mempool.clone(), request(transaction_json(None))).await;
-        assert!(response.error.is_none(), "{:?}", response.error);
-        assert_eq!(response.result["accepted"], false);
-        assert_eq!(response.result["rejection_reason"], "DoubleSpend");
-
-        // 2. Kernel present in chain DB -> AlreadyMined
         let mined_tx = Transaction::new(
             vec![],
             vec![TransactionOutput::default()],
@@ -787,10 +776,25 @@ mod tests {
             PrivateKey::default(),
         );
         let mined_json = serde_json::to_value(&mined_tx).unwrap();
-        let response = submit(query_service, mempool, request(mined_json)).await;
-        assert!(response.error.is_none(), "{:?}", response.error);
-        assert_eq!(response.result["accepted"], false);
-        assert_eq!(response.result["rejection_reason"], "AlreadyMined");
+
+        for storage_response in [
+            TxStorageResponse::NotStoredAlreadySpent,
+            TxStorageResponse::ReorgPool,
+            TxStorageResponse::NotStoredAlreadyMined,
+        ] {
+            mempool_state
+                .set_submit_transaction_response(storage_response.clone())
+                .await;
+            for (tx, expected) in [
+                (transaction_json(None), "DoubleSpend"),
+                (mined_json.clone(), "AlreadyMined"),
+            ] {
+                let response = submit(query_service.clone(), mempool.clone(), request(tx)).await;
+                assert!(response.error.is_none(), "{:?}", response.error);
+                assert_eq!(response.result["accepted"], false, "{storage_response:?}");
+                assert_eq!(response.result["rejection_reason"], expected, "{storage_response:?}");
+            }
+        }
     }
 
     /// Counts the heap the current thread holds while tracking is on

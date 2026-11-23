@@ -58,6 +58,7 @@ use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
         AddBlockOutcome,
+        BlockTxos,
         BlockchainBackend,
         BlockchainDatabase,
         CandidateVmKey,
@@ -69,6 +70,7 @@ use crate::{
         HorizonStateTreeUpdate,
         HorizonSyncOutputCheckpoint,
         MmrTree,
+        NotServed,
         PendingChainRewind,
         ResetPermission,
         TargetDifficulties,
@@ -215,8 +217,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        fetch_outputs_spent_in_block(hashes: Vec<HashOutput>, header_hash: HashOutput) -> Vec<Option<OutputMinedInfo>>,
-        "fetch_outputs_spent_in_block"
+        fetch_txos_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Result<BlockTxos, NotServed>,
+        "fetch_txos_in_block_on_chain"
     );
 
     make_async_fn!(
@@ -248,6 +250,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(
         fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>,
         "fetch_kernels_in_block"
+    );
+
+    make_async_fn!(
+        fetch_kernels_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Result<Vec<TransactionKernel>, NotServed>,
+        "fetch_kernels_in_block_on_chain"
     );
 
     make_async_fn!(
