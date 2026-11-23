@@ -36,7 +36,7 @@ use tokio::{
 
 use crate::{
     error::{McpError, McpResult},
-    transport::{McpMessage, McpResponse, MessageHandler},
+    transport::{McpMessage, McpResponse, MessageHandler, check_duplicate_keys},
 };
 
 /// Stdio transport implementation for MCP
@@ -238,16 +238,19 @@ impl StdioTransport {
         // Try to extract ID from JSON even if parsing fails
         let request_id = self.extract_request_id(line);
         // First try to parse the JSON as-is
-        let message_result = match serde_json::from_str::<McpMessage>(line) {
-            Ok(message) => Ok(message),
-            Err(_) => {
+        let message_result = match check_duplicate_keys(line).map(|()| serde_json::from_str::<McpMessage>(line)) {
+            Err(duplicate_key) => Err(duplicate_key),
+            Ok(Ok(message)) => Ok(message),
+            Ok(Err(_)) => {
                 // If parsing fails, try to repair the JSON
                 log::debug!("Initial JSON parse failed, attempting repair");
                 match self.repair_and_parse_json(line) {
                     Some(repaired) => {
                         log::debug!("JSON repair successful: {repaired}");
-                        serde_json::from_str::<McpMessage>(&repaired)
-                            .map_err(|e| McpError::invalid_request(format!("JSON repair failed: {e}")))
+                        check_duplicate_keys(&repaired).and_then(|()| {
+                            serde_json::from_str::<McpMessage>(&repaired)
+                                .map_err(|e| McpError::invalid_request(format!("JSON repair failed: {e}")))
+                        })
                     },
                     None => Err(McpError::invalid_request("Unable to repair malformed JSON")),
                 }
@@ -394,6 +397,23 @@ mod tests {
                 .handle_message(McpMessage::ListTools { id: Value::Null })
                 .await
         }
+    }
+
+    #[tokio::test]
+    async fn a_line_with_a_repeated_key_is_refused_before_the_handler() {
+        let handler = Arc::new(RecordingHandler::default());
+        let transport = StdioTransport::new(handler.clone());
+
+        let repeated = r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"Transfer","arguments":{"recipients":[{"address":"A","address":"B","amount":1}]}}}"#;
+        let response = transport.handle_json_message(repeated).await.unwrap();
+        assert!(response.contains(r#"duplicate key \"address\""#), "{response}");
+        assert!(response.contains(r#""id":7"#), "{response}");
+        assert!(handler.block_hex_lens.lock().unwrap().is_empty());
+
+        // The same key in two sibling objects is fine
+        let siblings = r#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"Transfer","arguments":{"recipients":[{"address":"A","amount":1},{"address":"B","amount":2}]}}}"#;
+        transport.handle_json_message(siblings).await.unwrap();
+        assert_eq!(handler.block_hex_lens.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

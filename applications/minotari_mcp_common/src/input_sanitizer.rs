@@ -219,8 +219,6 @@ impl InputSanitizer {
             )));
         }
 
-        // shortcut: a key repeated in the raw JSON is collapsed by serde_json (last one wins) before it gets here;
-        // rejecting that needs a duplicate-aware deserializer in the transport.
         let mut sanitized_obj = serde_json::Map::new();
         for (key, value) in obj {
             // Sanitize the key (treat as string)
