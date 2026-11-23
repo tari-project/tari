@@ -22,17 +22,16 @@
 
 use std::sync::Arc;
 
-use log::{debug, error, warn};
+use log::{debug, error};
 use tari_core::{
     base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
     mempool::{TxStorageResponse, service::MempoolHandle},
 };
 use tari_transaction_components::{
-    rpc::models::{Signature, TxLocation, TxSubmissionRejectionReason, TxSubmissionResponse},
+    rpc::models::{TxSubmissionRejectionReason, TxSubmissionResponse},
     transaction_components::Transaction,
 };
-use tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc::submit_transaction";
 
@@ -102,32 +101,16 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                 TxStorageResponse::NotStoredAlreadySpent |
                 TxStorageResponse::ReorgPool |
                 TxStorageResponse::NotStoredAlreadyMined => {
-                    let is_mined = match first_kernel_sig {
-                        Some(sig) => match query_service
-                            .transaction_query(Signature {
-                                public_nonce: sig.get_compressed_public_nonce().as_bytes().to_vec(),
-                                signature: sig.get_signature().as_bytes().to_vec(),
-                            })
-                            .await
-                        {
-                            Ok(resp) => matches!(resp.location, TxLocation::Mined),
-                            Err(e) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Failed to query chain for rejected transaction kernel, falling back to AlreadyMined: {e}"
-                                );
-                                true
-                            },
-                        },
-                        None => false,
-                    };
+                    let rejection_reason = query_service
+                        .classify_spent_rejection(first_kernel_sig.as_ref())
+                        .await
+                        .map_err(|e| {
+                            error!(target: LOG_TARGET, "Failed to look up the rejected transaction's kernel: {e}");
+                            anyhow::anyhow!("Failed to look up the rejected transaction's kernel: {e}")
+                        })?;
                     TxSubmissionResponse {
                         accepted: false,
-                        rejection_reason: if is_mined {
-                            TxSubmissionRejectionReason::AlreadyMined
-                        } else {
-                            TxSubmissionRejectionReason::DoubleSpend
-                        },
+                        rejection_reason,
                         is_synced,
                         details: None,
                     }
