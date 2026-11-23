@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
+
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tonic::{
     Request,
@@ -31,9 +33,20 @@ use tonic::{
 
 use crate::authentication::{BasicAuthCredentials, BasicAuthError};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ClientAuthenticationInterceptor {
     authorization_header: Option<MetadataValue<Ascii>>,
+}
+
+impl fmt::Debug for ClientAuthenticationInterceptor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClientAuthenticationInterceptor")
+            .field(
+                "authorization_header",
+                &self.authorization_header.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl ClientAuthenticationInterceptor {
@@ -162,5 +175,24 @@ mod test {
 
         // Process the request through the server interceptor; this mismatch is not allowed
         assert!(server_interceptor.call(client_request).is_err());
+    }
+
+    #[test]
+    fn test_debug_redacts_authorization_header() {
+        let auth = GrpcAuthentication::Basic {
+            username: "foo".to_string(),
+            password: SafePassword::from("bar"),
+        };
+        let debug = format!("{:?}", ClientAuthenticationInterceptor::create(&auth).unwrap());
+        // base64("foo:bar")
+        assert!(!debug.contains("Zm9vOmJhcg=="), "{debug}");
+        assert!(!debug.contains("Basic "), "{debug}");
+        assert!(debug.contains("<redacted>"), "{debug}");
+
+        let debug = format!(
+            "{:?}",
+            ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap()
+        );
+        assert!(debug.contains("authorization_header: None"), "{debug}");
     }
 }
