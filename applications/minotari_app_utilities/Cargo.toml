@@ -52,5 +52,8 @@ miner_input = [
     "tari_transaction_components",
 ]
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
-tempfile = "3.1.0"
+serde_json = { workspace = true }
