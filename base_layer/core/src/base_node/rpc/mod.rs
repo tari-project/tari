@@ -11,12 +11,15 @@ pub mod query_service;
 
 use std::error::Error;
 
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::types::{CompressedCommitment, CompressedSignature};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 pub use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
 use tari_transaction_components::{
-    rpc::{models, models::GenerateBurnOutputProofResponse},
+    rpc::{
+        models,
+        models::{GenerateBurnOutputProofResponse, TxSubmissionRejectionReason},
+    },
     transaction_components::TransactionOutput,
 };
 use url::Url;
@@ -86,6 +89,21 @@ pub(crate) async fn height_at_time<B: BlockchainBackend + 'static>(
         }
     }
     Ok(low.saturating_sub(1))
+}
+
+/// Reason for a submission the mempool rejected as already spent, mined or in the reorg pool: `AlreadyMined` if the
+/// transaction's first kernel is in the chain, otherwise `DoubleSpend` (also when it has no kernel)
+pub async fn classify_spent_rejection<B: BlockchainBackend + 'static>(
+    db: &AsyncBlockchainDb<B>,
+    first_kernel_sig: Option<&CompressedSignature>,
+) -> Result<TxSubmissionRejectionReason, ChainStorageError> {
+    let Some(sig) = first_kernel_sig else {
+        return Ok(TxSubmissionRejectionReason::DoubleSpend);
+    };
+    Ok(match db.fetch_kernel_by_excess_sig(sig.clone()).await? {
+        Some(_) => TxSubmissionRejectionReason::AlreadyMined,
+        None => TxSubmissionRejectionReason::DoubleSpend,
+    })
 }
 
 /// Trait that a base node wallet query service must implement.
@@ -319,5 +337,29 @@ mod test {
         }
         assert_eq!(height_at_time(&db, ts[3]).await.unwrap(), 3);
         assert_eq!(height_at_time(&db, ts[ts.len() - 1]).await.unwrap(), tip);
+    }
+
+    #[tokio::test]
+    async fn classify_spent_rejection_checks_the_first_kernel_against_the_chain() {
+        let mut blockchain = blockchain();
+        append(&mut blockchain, &NAMES[..1]);
+        let block = blockchain.get_block_and_smt_by_name("1").unwrap();
+        let mined_sig = block.block().body.kernels()[0].excess_sig.clone();
+        let (db, _) = timestamps(&blockchain);
+
+        assert_eq!(
+            classify_spent_rejection(&db, Some(&mined_sig)).await.unwrap(),
+            TxSubmissionRejectionReason::AlreadyMined
+        );
+        assert_eq!(
+            classify_spent_rejection(&db, Some(&CompressedSignature::default()))
+                .await
+                .unwrap(),
+            TxSubmissionRejectionReason::DoubleSpend
+        );
+        assert_eq!(
+            classify_spent_rejection(&db, None).await.unwrap(),
+            TxSubmissionRejectionReason::DoubleSpend
+        );
     }
 }

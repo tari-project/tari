@@ -4480,6 +4480,22 @@ impl BlockchainBackend for LMDBDatabase {
         })
     }
 
+    fn fetch_parents_of_unlinked_orphans(&self) -> Result<Vec<HashOutput>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let mut parents = Vec::new();
+        for (parent, hash) in lmdb_all::<HashOutput>(&txn, &self.orphan_parent_map_index)? {
+            if lmdb_exists_typed(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())? ||
+                lmdb_exists_typed(&txn, &self.orphan_header_accumulated_data_v2_db, hash.as_slice())?
+            {
+                continue;
+            }
+            parents.push(HashOutput::try_from(parent).map_err(|e| ChainStorageError::ConversionError(e.to_string()))?);
+        }
+        // The index is sorted by parent, so the children of a parent are adjacent
+        parents.dedup();
+        Ok(parents)
+    }
+
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         let txn = self.read_transaction()?;
         match lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? {

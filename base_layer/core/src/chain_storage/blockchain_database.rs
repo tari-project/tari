@@ -2508,14 +2508,15 @@ where B: BlockchainBackend
     /// chain to the highest pow chain
     /// This is typically used after a sync, which commits blocks without linking the orphans held on them, and when
     /// an attempted sync failed to sync to the expected height and we are not sure if the new chain is higher than
-    /// the old one. Orphans that build on the main chain tip are linked first, so that they are among the tips.
+    /// the old one. Orphans that build on any main chain block with a body at or above the pruned height are linked
+    /// first, so that they are among the tips.
     ///
     /// Returns the net change to the main chain, and the blocks that failed on the way, for the caller to publish.
     pub fn swap_to_highest_pow_chain(&self) -> Result<AddBlockOutcome, ChainStorageError> {
         let mut db = self.db_write_access()?;
         // Failing to link them only delays them to the next sync, so the swap still runs
-        if let Err(e) = link_orphans_on_tip(&mut *db, &*self.validators.header, &self.consensus_manager) {
-            warn!(target: LOG_TARGET, "Failed to link the orphans held on the main chain tip: {e}");
+        if let Err(e) = link_held_orphans(&mut *db, &*self.validators.header, &self.consensus_manager) {
+            warn!(target: LOG_TARGET, "Failed to link the orphans held on main chain blocks: {e}");
         }
         // No block is being added, so a block that fails here is nobody's fault that we could act on. Each failure is
         // logged where it happens.
@@ -5320,7 +5321,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     txn.insert_orphan_chain_tip(hash, chain_block.accumulated_data().total_accumulated_difficulty);
     db.write(txn)?;
     let vm_key_height = tari_rx_vm_key_height(chain_header.height());
-    let tips = find_orphan_descendant_tips_of(
+    find_orphan_descendant_tips_of(
         db,
         chain_header,
         prev_timestamps,
@@ -5328,62 +5329,68 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         rules,
         (vm_key_height, vm_key),
         fork_height,
+        false,
     )?;
-    debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
-    let mut txn = DbTransaction::new();
-    if !tips.iter().any(|tip| *tip.hash() == hash) {
-        txn.remove_orphan_chain_tip(hash);
-    }
-    for new_tip in tips.iter().filter(|tip| *tip.hash() != hash) {
-        txn.insert_orphan_chain_tip(*new_tip.hash(), new_tip.accumulated_data().total_accumulated_difficulty);
-    }
-    db.write(txn)?;
     Ok(true)
 }
 
-/// Links the orphans held on the main chain tip and makes their descendants orphan chain tips, as
-/// `insert_orphan_and_find_new_tips` does for a new orphan. Blocks committed by block sync never walk their children.
-fn link_orphans_on_tip<T: BlockchainBackend>(
+/// Links the orphans held on main chain blocks with a body at or above the pruned height, and makes their descendants
+/// orphan chain tips, as `insert_orphan_and_find_new_tips` does for a new orphan. Blocks committed by block sync never
+/// walk their children.
+fn link_held_orphans<T: BlockchainBackend>(
     db: &mut T,
     validator: &dyn HeaderChainLinkedValidator<T>,
     rules: &BaseNodeConsensusManager,
 ) -> Result<(), ChainStorageError> {
-    let tip = db.fetch_tip_header()?;
-    let children = db.fetch_orphan_children_of(*tip.hash())?;
-    // The walk fails on a child that is linked already, such as a rewound block. The children of a block are linked
-    // together, so they are walked only when none is linked.
-    // shortcut: a tip with both linked and unlinked children keeps the unlinked ones held, upgrade if a path ever links
-    // only some of them.
-    let mut all_unlinked = !children.is_empty();
-    for child in &children {
-        all_unlinked &= db.fetch_orphan_chain_block(child.hash())?.is_none();
+    let metadata = db.fetch_chain_metadata()?;
+    let mut anchor_heights = Vec::new();
+    for parent in db.fetch_parents_of_unlinked_orphans()? {
+        // A reorg that forks below the pruned height cannot be applied, and orphans and headers above the best block
+        // have no body on the main chain
+        if let Some(header) = fetch_header_by_block_hash(db, parent)? &&
+            header.height >= metadata.pruned_height() &&
+            header.height <= metadata.best_block_height()
+        {
+            anchor_heights.push(header.height);
+        }
     }
-    if !all_unlinked {
-        return Ok(());
+    anchor_heights.sort_unstable();
+    for height in anchor_heights {
+        let anchor = db.fetch_chain_header_by_height(height)?;
+        let hash = *anchor.hash();
+        if let Err(e) = link_held_orphans_on(db, anchor, validator, rules) {
+            warn!(target: LOG_TARGET, "Failed to link the orphans held on #{height} ({hash}): {e}");
+        }
     }
-    let mut prev_timestamps = get_previous_timestamps(db, tip.header(), rules)?;
-    prev_timestamps.push(tip.header().timestamp);
-    let vm_key_height = tari_rx_vm_key_height(tip.height());
+    Ok(())
+}
+
+fn link_held_orphans_on<T: BlockchainBackend>(
+    db: &mut T,
+    anchor: ChainHeader,
+    validator: &dyn HeaderChainLinkedValidator<T>,
+    rules: &BaseNodeConsensusManager,
+) -> Result<(), ChainStorageError> {
+    let mut prev_timestamps = get_previous_timestamps(db, anchor.header(), rules)?;
+    prev_timestamps.push(anchor.header().timestamp);
+    let vm_key_height = tari_rx_vm_key_height(anchor.height());
     let vm_key = *db.fetch_chain_header_by_height(vm_key_height)?.hash();
-    let (tip_hash, tip_height) = (*tip.hash(), tip.height());
-    let tips = find_orphan_descendant_tips_of(
+    let anchor_height = anchor.height();
+    find_orphan_descendant_tips_of(
         db,
-        tip,
+        anchor,
         prev_timestamps,
         validator,
         rules,
         (vm_key_height, vm_key),
-        tip_height,
-    )?;
-    let mut txn = DbTransaction::new();
-    // The walk returns the main chain tip itself when no child links
-    for new_tip in tips.iter().filter(|tip| *tip.hash() != tip_hash) {
-        txn.insert_orphan_chain_tip(*new_tip.hash(), new_tip.accumulated_data().total_accumulated_difficulty);
-    }
-    db.write(txn)
+        anchor_height,
+        true,
+    )
 }
 
-// Find the tip set of any orphans that have hash as an ancestor
+// Link the orphans that have `prev_chain_header` as an ancestor. Each child that links becomes an orphan chain tip in
+// place of its parent as it is linked, so a walk that stops early leaves a consistent tip set behind.
+#[allow(clippy::too_many_lines)]
 fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     db: &mut T,
     prev_chain_header: ChainHeader,
@@ -5395,7 +5402,9 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     // The highest height at which this orphan chain and the chain in the database are the same chain. Every
     // descendant found here is on the same orphan chain, so they all share it.
     fork_height: u64,
-) -> Result<Vec<ChainHeader>, ChainStorageError> {
+    // Linking a linked child fails, and only a main chain block can have one: an orphan's children link together
+    skip_linked_children: bool,
+) -> Result<(), ChainStorageError> {
     let children = db.fetch_orphan_children_of(*prev_chain_header.hash())?;
     debug!(
         target: LOG_TARGET,
@@ -5405,8 +5414,12 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         prev_chain_header.hash()
     );
 
-    let mut res = vec![];
     for child in children {
+        // A child whose accumulated data cannot be read, such as one with an unknown version, is treated as unlinked
+        // so that header validation rejects it rather than every walk failing on it
+        if skip_linked_children && matches!(db.fetch_orphan_chain_block(child.hash()), Ok(Some(_))) {
+            continue;
+        }
         debug!(
             target: LOG_TARGET,
             "Validating header #{} ({}), descendant of #{} ({})",
@@ -5460,9 +5473,12 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 txn.set_accumulated_data_for_orphan(
                     chain_header.header().version,
                     chain_header.accumulated_data().clone(),
-                );
+                )
+                // A main chain parent is not a tip
+                .remove_orphan_chain_tip_if_exists(*prev_chain_header.hash())
+                .insert_orphan_chain_tip(child_hash, chain_header.accumulated_data().total_accumulated_difficulty);
                 db.write(txn)?;
-                let children = find_orphan_descendant_tips_of(
+                find_orphan_descendant_tips_of(
                     db,
                     chain_header,
                     prev_timestamps_for_children,
@@ -5470,8 +5486,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                     rules,
                     child_vm_key,
                     fork_height,
+                    false,
                 )?;
-                res.extend(children);
             },
             Err(e) => {
                 let failure = classify_header_failure(&e);
@@ -5496,17 +5512,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
             },
         };
     }
-    // No child extends this orphan, so it is a tip itself
-    if res.is_empty() {
-        debug!(
-            target: LOG_TARGET,
-            "Found new orphan tip {} ({})",
-            prev_chain_header.height(),
-            prev_chain_header.hash(),
-        );
-        return Ok(vec![prev_chain_header]);
-    }
-    Ok(res)
+    Ok(())
 }
 fn get_previous_timestamps<T: BlockchainBackend>(
     db: &T,
@@ -10768,6 +10774,242 @@ mod test {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    /// Holds `blocks` as orphans with no accumulated data, the way blocks are held on a header with no body yet
+    fn hold_unlinked(db: &BlockchainDatabase<TempDatabase>, blocks: &[&Arc<ChainBlock>]) {
+        let mut txn = DbTransaction::new();
+        for block in blocks {
+            txn.insert_orphan(block.to_arc_block());
+        }
+        db.write(txn).unwrap();
+    }
+
+    fn is_linked(db: &BlockchainDatabase<TempDatabase>, block: &ChainBlock) -> bool {
+        db.db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_block(*block.hash())
+            .unwrap()
+            .is_some()
+    }
+
+    fn is_orphan_tip(db: &BlockchainDatabase<TempDatabase>, block: &ChainBlock) -> bool {
+        db.db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_tip_by_hash(block.hash())
+            .unwrap()
+            .is_some()
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_on_a_main_chain_block_with_a_linked_child() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(&test.db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"], ["A4->A3"]));
+        let a1 = main_chain.get("A1").unwrap().clone();
+        let (_, linked) = create_chained_blocks(&test.db, block_specs!(["L2->GB"]), a1.clone());
+        let l2 = linked.get("L2").unwrap().clone();
+        test.db.add_block(l2.to_arc_block()).unwrap().result.assert_orphaned();
+        let l2_linked = test
+            .db
+            .db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_block(*l2.hash())
+            .unwrap()
+            .unwrap();
+        let (_, held) = create_chained_blocks(&test.db, block_specs!(["U2->GB"], ["U3->U2"]), a1);
+        let (u2, u3) = (held.get("U2").unwrap(), held.get("U3").unwrap());
+        hold_unlinked(&test.db, &[u2, u3]);
+
+        let outcome = test.db.swap_to_highest_pow_chain().unwrap();
+
+        assert!(!outcome.result.was_chain_modified());
+        assert!(is_linked(&test.db, u2));
+        assert!(!is_orphan_tip(&test.db, u2));
+        assert!(is_orphan_tip(&test.db, u3));
+        let l2_after = test
+            .db
+            .db_read_access()
+            .unwrap()
+            .fetch_orphan_chain_block(*l2.hash())
+            .unwrap()
+            .unwrap();
+        assert_eq!(l2_after.accumulated_data(), l2_linked.accumulated_data());
+        assert!(is_orphan_tip(&test.db, &l2));
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_on_a_block_at_but_not_below_the_pruned_height() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(&test.db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"]));
+        let (a1, a2) = (
+            main_chain.get("A1").unwrap().clone(),
+            main_chain.get("A2").unwrap().clone(),
+        );
+        let mut txn = DbTransaction::new();
+        txn.set_pruned_height(a2.height());
+        test.db.write(txn).unwrap();
+        let (_, below) = create_chained_blocks(&test.db, block_specs!(["U2->GB"]), a1);
+        let u2 = below.get("U2").unwrap();
+        let (_, at) = create_chained_blocks(&test.db, block_specs!(["V3->GB"], ["V4->V3"]), a2);
+        let (v3, v4) = (at.get("V3").unwrap(), at.get("V4").unwrap());
+        hold_unlinked(&test.db, &[u2, v3, v4]);
+
+        test.db.swap_to_highest_pow_chain().unwrap();
+
+        assert_eq!(*test.db.get_chain_metadata().unwrap().best_block_hash(), *v4.hash());
+        assert!(!is_linked(&test.db, u2));
+        assert!(!is_orphan_tip(&test.db, u2));
+    }
+
+    #[tokio::test]
+    async fn held_orphans_on_a_header_above_the_best_block_are_not_linked() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(
+            &test.db,
+            block_specs!(["B1->GB"], ["B2->B1"], ["B3->B2"], ["H4->B3"], ["H5->H4"]),
+        );
+        let b3 = main_chain.get("B3").unwrap().clone();
+        let h5 = main_chain.get("H5").unwrap().clone();
+        test.db.rewind_to_height(b3.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        test.db
+            .insert_valid_headers(vec![main_chain.get("H4").unwrap().to_chain_header()])
+            .unwrap();
+        test.db.add_block(h5.to_arc_block()).unwrap().result.assert_orphaned();
+
+        let outcome = test.db.swap_to_highest_pow_chain().unwrap();
+
+        assert!(!outcome.result.was_chain_modified());
+        assert_eq!(*test.db.get_chain_metadata().unwrap().best_block_hash(), *b3.hash());
+        assert!(test.db.fetch_orphan(*h5.hash()).is_ok());
+        assert!(!is_linked(&test.db, &h5));
+        assert!(!is_orphan_tip(&test.db, &h5));
+    }
+
+    /// The real header validator, except that the header named in `fault` fails with a storage error, a local fault
+    struct FaultingHeaderValidator {
+        inner: HeaderFullValidator,
+        fault: Arc<sync::Mutex<Option<HashOutput>>>,
+    }
+
+    impl HeaderChainLinkedValidator<TempDatabase> for FaultingHeaderValidator {
+        fn validate(
+            &self,
+            db: &TempDatabase,
+            header: &BlockHeader,
+            prev_header: &BlockHeader,
+            prev_timestamps: &[EpochTime],
+            target_difficulty: Option<AdjustedTarget>,
+            chain_context: HeaderChainContext<'_>,
+        ) -> Result<ValidatedHeader, ValidationError> {
+            if *self.fault.lock().unwrap() == Some(header.hash()) {
+                return Err(ValidationError::FatalStorageError("test fault".to_string()));
+            }
+            HeaderChainLinkedValidator::validate(
+                &self.inner,
+                db,
+                header,
+                prev_header,
+                prev_timestamps,
+                target_difficulty,
+                chain_context,
+            )
+        }
+    }
+
+    /// A store with mock body validators and a `FaultingHeaderValidator`, with a handle to set its fault
+    fn create_store_with_faulting_header_validator()
+    -> (BlockchainDatabase<TempDatabase>, Arc<sync::Mutex<Option<HashOutput>>>) {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let fault = Arc::new(sync::Mutex::new(None));
+        let validators = Validators::new(
+            MockValidator::new(true),
+            FaultingHeaderValidator {
+                inner: HeaderFullValidator::new(
+                    rules.clone(),
+                    DifficultyCalculator::new(rules.clone(), Default::default()),
+                ),
+                fault: fault.clone(),
+            },
+            MockValidator::new(true),
+        );
+        let db = crate::test_helpers::blockchain::create_store_with_consensus_and_validators(rules, validators);
+        (db, fault)
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_on_one_main_chain_block_when_another_fails_to_link() {
+        let (db, fault) = create_store_with_faulting_header_validator();
+        let (_, main_chain) = create_main_chain(&db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"]));
+        let (a1, a2) = (
+            main_chain.get("A1").unwrap().clone(),
+            main_chain.get("A2").unwrap().clone(),
+        );
+        // A1 is walked first and stops on X2 with a local fault
+        let (_, faulting) = create_chained_blocks(&db, block_specs!(["X2->GB"]), a1);
+        let x2 = faulting.get("X2").unwrap();
+        *fault.lock().unwrap() = Some(*x2.hash());
+        let (_, bad_fork) = create_chained_blocks(&db, block_specs!(["Y3->GB"]), a2.clone());
+        let mut y3 = bad_fork.get("Y3").unwrap().block().clone();
+        // Below the median of the previous timestamps
+        y3.header.timestamp = EpochTime::from(0);
+        let y3_hash = y3.hash();
+        let (_, good_fork) = create_chained_blocks(&db, block_specs!(["G3->GB"], ["G4->G3"]), a2);
+        let (g3, g4) = (good_fork.get("G3").unwrap(), good_fork.get("G4").unwrap());
+        hold_unlinked(&db, &[x2, g3, g4]);
+        let mut txn = DbTransaction::new();
+        txn.insert_orphan(Arc::new(y3));
+        db.write(txn).unwrap();
+
+        let outcome = db.swap_to_highest_pow_chain().unwrap();
+
+        let added: Vec<_> = outcome.result.added_blocks().iter().map(|b| *b.hash()).collect();
+        assert_eq!(added, vec![*g3.hash(), *g4.hash()]);
+        assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), *g4.hash());
+        assert!(db.fetch_orphan(*x2.hash()).is_ok());
+        assert!(!is_linked(&db, x2));
+        assert!(db.fetch_orphan(y3_hash).is_err());
+    }
+
+    #[tokio::test]
+    async fn orphans_linked_before_a_walk_stops_are_tips() {
+        let (db, fault) = create_store_with_faulting_header_validator();
+        let (_, main_chain) = create_main_chain(&db, block_specs!(["A1->GB"], ["A2->A1"], ["A3->A2"]));
+        let a1 = main_chain.get("A1").unwrap().clone();
+        let (_, held) = create_chained_blocks(&db, block_specs!(["P2->GB"], ["P3->P2"], ["P4->P3"], ["P5->P4"]), a1);
+        let [p2, p3, p4, p5] = ["P2", "P3", "P4", "P5"].map(|name| held.get(name).unwrap());
+        *fault.lock().unwrap() = Some(*p5.hash());
+        hold_unlinked(&db, &[p2, p3, p4, p5]);
+
+        let outcome = db.swap_to_highest_pow_chain().unwrap();
+
+        let added: Vec<_> = outcome.result.added_blocks().iter().map(|b| *b.hash()).collect();
+        assert_eq!(added, vec![*p2.hash(), *p3.hash(), *p4.hash()]);
+        assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), *p4.hash());
+        assert!(db.fetch_orphan(*p5.hash()).is_ok());
+        assert!(!is_linked(&db, p5));
+    }
+
+    #[tokio::test]
+    async fn held_orphans_link_next_to_a_sibling_with_an_unknown_version() {
+        let (db, _) = create_store_with_faulting_header_validator();
+        let (_, main_chain) = create_main_chain(&db, block_specs!(["A1->GB"], ["A2->A1"]));
+        let a2 = main_chain.get("A2").unwrap().clone();
+        let (_, bad_fork) = create_chained_blocks(&db, block_specs!(["B3->GB"]), a2.clone());
+        let mut b3 = bad_fork.get("B3").unwrap().block().clone();
+        b3.header.version = u16::MAX;
+        let b3_hash = b3.hash();
+        let mut txn = DbTransaction::new();
+        txn.insert_orphan(Arc::new(b3));
+        db.write(txn).unwrap();
+        let (_, good_fork) = create_chained_blocks(&db, block_specs!(["G3->GB"]), a2);
+        let g3 = good_fork.get("G3").unwrap();
+        hold_unlinked(&db, &[g3]);
+
+        db.swap_to_highest_pow_chain().unwrap();
+
+        assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), *g3.hash());
+        assert!(db.fetch_orphan(b3_hash).is_err());
     }
 
     #[ignore]
