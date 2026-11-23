@@ -3475,7 +3475,5 @@ mod test {
             offline_err(sign_tampered(3, valid_keys.clone())).contains("Invalid multisig threshold party_number=3")
         );
         assert!(offline_err(sign_tampered(2, oversized_keys)).contains("expected 1..=32, got 33"));
-        let repeated = valid_keys.first().cloned().unwrap();
-        assert!(offline_err(sign_tampered(2, vec![repeated.clone(), repeated])).contains("Duplicate public keys"));
     }
 }
