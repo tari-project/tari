@@ -390,11 +390,34 @@ pub struct SignedTransaction {
     pub tx_id: TxId,
 }
 
+/// How the signing of a payload was approved. Mirrors [`crate::offline_signing::ConfirmationMode`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ConfirmationKind {
+    /// An operator approved the summary at a prompt.
+    Prompt,
+    /// The summary was written out and signed without asking anyone.
+    NoPrompt,
+}
+
+/// A record of what the offline signer approved and signed. Not signed itself.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SigningReceipt {
+    pub tx_id: TxId,
+    /// Domain-separated Blake2b-256 of the canonical payload bytes, the bytes the payload signature covers.
+    pub payload_hash: FixedHash,
+    pub confirmation: ConfirmationKind,
+    /// Unix time in seconds, by the signer's clock.
+    pub signed_at: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedOneSidedTransactionResult {
     pub version: Version,
     pub request: PrepareOneSidedTransactionForSigningResult,
     pub signed_transaction: SignedTransaction,
+    /// Absent from results written by signers that predate it.
+    #[serde(default)]
+    pub receipt: Option<SigningReceipt>,
 }
 
 impl TransactionResult for SignedOneSidedTransactionResult {}
@@ -410,6 +433,9 @@ pub struct SignedOneSidedDepositMultisigTransactionResult {
     pub version: Version,
     pub request: PrepareDepositMultisigTransactionResult,
     pub signed_transaction: SignedTransaction,
+    /// Absent from results written by signers that predate it.
+    #[serde(default)]
+    pub receipt: Option<SigningReceipt>,
 }
 
 impl TransactionResult for SignedOneSidedDepositMultisigTransactionResult {}
@@ -425,6 +451,9 @@ pub struct SignedOneSidedWithdrawMultisigTransactionResult {
     pub version: Version,
     pub request: PrepareWithdrawMultisigTransactionResult,
     pub signed_transaction: SignedTransaction,
+    /// Absent from results written by signers that predate it.
+    #[serde(default)]
+    pub receipt: Option<SigningReceipt>,
 }
 
 impl TransactionResult for SignedOneSidedWithdrawMultisigTransactionResult {}

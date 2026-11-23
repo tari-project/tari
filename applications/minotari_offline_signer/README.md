@@ -73,6 +73,10 @@ features, any other outputs, the fee, total spend and change, then any memo text
 escaped), and finally a recap. When run from a terminal it then asks `Sign this transaction? [y/N]` and signs only on
 `y` or `yes`. When stdin is not a terminal it prints the summary and signs without a prompt.
 
+The signed file carries a `receipt`: the transaction id, a hash of the payload that was approved, whether it was
+approved at a prompt (`Prompt`) or signed without one (`NoPrompt`), and when it was signed (unix seconds). The receipt
+is not signed. Files written by older signers have no receipt.
+
 The signer only signs transactions that leave a change output. A payload where what is left after the outputs and
 the fee is no more than a change output would cost, such as a send-all or sweep, is refused, because with no change
 output the script offset of the signed transaction, together
