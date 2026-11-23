@@ -111,7 +111,8 @@ impl WalletGrpcClientBuilder {
         self
     }
 
-    /// Per-request timeout. None by default, since it would also cut server-streaming RPCs.
+    /// Per-request timeout, bounding the time until the wallet starts responding; it does not cut an open stream.
+    /// None by default: prefer `Request::set_timeout` on each unary call, or use this if the client never streams.
     pub fn timeout(mut self, d: Duration) -> Self {
         self.timeout = Some(d);
         self

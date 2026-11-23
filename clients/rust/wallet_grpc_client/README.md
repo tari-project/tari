@@ -37,6 +37,9 @@ does not fall back to an unverified connection.
 call `.allow_insecure_credentials(true)` if the network path is protected some other way (for example an SSH tunnel or
 VPN). Connections without credentials are never refused, and `from_channel` does not apply the check.
 
+`localhost` is trusted by name, not resolved: on a host whose resolver forwards `localhost` to DNS, a spoofed answer
+could receive the credentials. Use `127.0.0.1` or `[::1]` to avoid relying on the resolver.
+
 ## Transport defaults
 
 | Setting                                  | Default |
@@ -46,5 +49,6 @@ VPN). Connections without credentials are never refused, and `from_channel` does
 | `tcp_keepalive`                          | 60s     |
 | `timeout` (per request)                  | none    |
 
-There is no per-request timeout by default because it would also cut long-lived server-streaming calls such as the
-transaction event stream. Messages up to `MAX_GRPC_MESSAGE_SIZE` are accepted in both directions.
+`timeout` only bounds the time until the wallet starts responding, so it does not cut an open stream. It is off by
+default because a deadline that suits unary calls is a per-call decision: set one with `Request::set_timeout` on each
+unary call, or use `.timeout()` if the client never streams. Messages up to `MAX_GRPC_MESSAGE_SIZE` are accepted in both directions.
