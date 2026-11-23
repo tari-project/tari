@@ -94,6 +94,7 @@ pub struct WalletGrpcClientBuilder {
 }
 
 impl WalletGrpcClientBuilder {
+    /// Verify the wallet against `cfg`. Requires an `https://` address; `connect` fails otherwise.
     pub fn tls(mut self, cfg: ClientTlsConfig) -> Self {
         self.tls = Some(cfg);
         self
@@ -143,10 +144,15 @@ impl WalletGrpcClientBuilder {
             .keep_alive_timeout(self.http2_keepalive_timeout)
             .keep_alive_while_idle(true)
             .tcp_keepalive(self.tcp_keepalive);
-        // Only an `https` URI is encrypted by tonic, whether or not a TLS config is set.
+        // tonic only uses TLS for an `https` URI, whether or not a TLS config is set. A unix socket's URI is a
+        // `http://` placeholder, so it never counts as https.
+        let is_https = endpoint.uri().scheme_str() == Some("https");
+        if self.tls.is_some() && !is_https {
+            return Err(WalletClientError::TlsRequiresHttps);
+        }
         if matches!(self.auth, GrpcAuthentication::Basic { .. }) &&
             !is_unix_socket &&
-            endpoint.uri().scheme_str() != Some("https") &&
+            !is_https &&
             !self.allow_insecure_credentials
         {
             let host = endpoint.uri().host().unwrap_or_default();
@@ -201,6 +207,9 @@ pub enum WalletClientError {
          allow_insecure_credentials(true)"
     )]
     InsecureCredentialTransport { host: String },
+    /// A TLS config was given for an address that tonic would connect to without TLS.
+    #[error("a TLS config requires an https:// address")]
+    TlsRequiresHttps,
 }
 
 #[cfg(test)]
@@ -241,7 +250,8 @@ mod test {
 
     #[tokio::test]
     async fn allow_insecure_credentials_proceeds_to_transport() {
-        let err = WalletGrpcClient::builder("http://10.0.0.1:18143")
+        // 192.0.2.1 is TEST-NET-1 (RFC 5737), never a real host, so the dial fails on any network.
+        let err = WalletGrpcClient::builder("http://192.0.2.1:18143")
             .auth(&basic())
             .allow_insecure_credentials(true)
             .connect_timeout(Duration::from_millis(200))
@@ -253,11 +263,24 @@ mod test {
 
     #[tokio::test]
     async fn no_auth_over_remote_http_is_not_refused() {
-        let err = WalletGrpcClient::builder("http://10.0.0.1:18143")
+        // 192.0.2.1 is TEST-NET-1 (RFC 5737), never a real host, so the dial fails on any network.
+        let err = WalletGrpcClient::builder("http://192.0.2.1:18143")
             .connect_timeout(Duration::from_millis(200))
             .connect()
             .await
             .unwrap_err();
         assert!(matches!(err, WalletClientError::TransportError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn tls_requires_https() {
+        for addr in ["http://127.0.0.1:1", "unix:///tmp/wallet.sock"] {
+            let err = WalletGrpcClient::builder(addr)
+                .tls(ClientTlsConfig::new())
+                .connect()
+                .await
+                .unwrap_err();
+            assert!(matches!(err, WalletClientError::TlsRequiresHttps), "{addr}: {err:?}");
+        }
     }
 }

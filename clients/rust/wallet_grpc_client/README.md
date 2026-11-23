@@ -25,7 +25,9 @@ certificate is self-signed by default, so pin the wallet's own CA (`wallet_ca.pe
 directory); no public root store is used. The default certificate only names `localhost`, `127.0.0.1` and `0.0.0.0`,
 so for a remote wallet set `.domain_name("localhost")` or issue the wallet a certificate for its real name.
 
-An `https://` address without `.tls()` fails to connect. The client has no roots to verify the wallet against, and it
+`.tls()` requires an `https://` address; with any other address `connect` returns
+`WalletClientError::TlsRequiresHttps` instead of silently connecting without TLS. An `https://` address without
+`.tls()` fails to connect. The client has no roots to verify the wallet against, and it
 does not fall back to an unverified connection.
 
 ## Credentials over plaintext
