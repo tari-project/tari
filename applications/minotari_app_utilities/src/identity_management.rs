@@ -570,7 +570,9 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
 }
 
 /// Writes the identity file by writing and syncing `<name>.tmp` and renaming it over `path`, so a crash at any point
-/// leaves either the old or the new file, never a partial one.
+/// leaves either the old or the new file, never a partial one. Only mode 0600 and the owner carry over to the new
+/// inode: SELinux/AppArmor labels, POSIX ACLs and other xattrs on the old file are lost, and an immutable
+/// (`chattr +i`) file makes the rename fail.
 #[cfg(target_family = "unix")]
 fn write_identity_file<P: AsRef<Path>>(path: P, header: &[u8], contents: &[u8]) -> io::Result<()> {
     // Writers in this process (e.g. the node's Tor callback and bootstrap) share the fixed temp name, so take turns.
