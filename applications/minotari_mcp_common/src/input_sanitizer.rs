@@ -44,6 +44,10 @@ pub const MAX_ENCODED_BLOCK_HEX_LEN: usize = 8 * 1024 * 1024;
 /// instead of the general string limit
 const ENCODED_BLOCK_HEX_FIELDS: [&str; 3] = ["block_hex", "transaction_hex", "new_block_template_hex"];
 
+/// Fields that reach the chain or a wallet query as written, so they are checked but never rewritten: a payment id
+/// that would be changed is refused instead of being silently altered
+const VERBATIM_FIELDS: [&str; 1] = ["payment_id"];
+
 /// Input sanitizer for MCP operations
 pub struct InputSanitizer {
     max_string_length: usize,
@@ -136,6 +140,23 @@ impl InputSanitizer {
         self.sanitize_string_with_limit(s, self.max_string_length)
     }
 
+    /// Accept `s` unchanged, or refuse it if sanitizing would change it
+    fn check_verbatim(&self, key: &str, s: &str) -> McpResult<Value> {
+        if s.len() > self.max_string_length {
+            return Err(McpError::invalid_request(format!(
+                "{key} too long ({} chars, max {})",
+                s.len(),
+                self.max_string_length
+            )));
+        }
+        if s.chars().any(char::is_control) || !s.nfc().eq(s.chars()) {
+            return Err(McpError::invalid_request(format!(
+                "{key} must not contain control characters and must be NFC-normalized Unicode"
+            )));
+        }
+        Ok(Value::String(s.to_string()))
+    }
+
     fn sanitize_string_with_limit(&self, s: &str, max_len: usize) -> McpResult<Value> {
         // Check length limit
         if s.len() > max_len {
@@ -220,6 +241,7 @@ impl InputSanitizer {
                 Value::String(s) if ENCODED_BLOCK_HEX_FIELDS.contains(&trimmed_key) => {
                     self.sanitize_string_with_limit(s, MAX_ENCODED_BLOCK_HEX_LEN)?
                 },
+                Value::String(s) if VERBATIM_FIELDS.contains(&trimmed_key) => self.check_verbatim(trimmed_key, s)?,
                 _ => self.sanitize_value(value, depth.saturating_add(1))?,
             };
             sanitized_obj.insert(trimmed_key.to_string(), sanitized_value);
@@ -364,9 +386,23 @@ impl ValidationPatterns {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn payment_id_is_kept_verbatim_or_refused() {
+        let kept = sanitize_tool_input(&json!({ "recipients": [{ "payment_id": "inv &amp; <7> é" }] })).unwrap();
+        assert_eq!(kept["recipients"][0]["payment_id"], "inv &amp; <7> é");
+        assert!(sanitize_tool_input(&json!({ "payment_id": "line\nbreak" })).is_err());
+        assert!(
+            sanitize_tool_input(&json!({ "payment_id": "e\u{301}" })).is_err(),
+            "not NFC"
+        );
+        // Other fields are still decoded
+        assert_eq!(sanitize_tool_input(&json!({ "memo": "&amp;" })).unwrap()["memo"], "&");
+    }
 
     #[test]
     fn encoded_block_hex_fields_get_their_own_limit() {

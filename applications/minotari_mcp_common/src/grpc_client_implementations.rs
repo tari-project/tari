@@ -25,6 +25,8 @@
 //! This module provides real implementations of the NodeGrpcClient and WalletGrpcClient
 //! traits that wrap the actual Tari gRPC clients and provide JSON-based interfaces.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use minotari_wallet_grpc_client::WalletGrpcClient as TariWalletGrpcClient;
@@ -37,7 +39,7 @@ use crate::{
     grpc_error_mapper::sanitize_upstream_message,
     grpc_executor::{NodeGrpcClient, WalletGrpcClient},
     node_rpc,
-    wallet_rpc,
+    wallet_rpc::{self, SpendLimits},
 };
 
 /// Add conversion from tonic::Status to McpError
@@ -137,11 +139,12 @@ impl NodeGrpcClient for NodeGrpcClientImpl {
 /// Real wallet gRPC client implementation
 pub struct WalletGrpcClientImpl {
     client: TariWalletGrpcClient<Channel>,
+    limits: Arc<SpendLimits>,
 }
 
 impl WalletGrpcClientImpl {
-    pub fn new(client: TariWalletGrpcClient<Channel>) -> Self {
-        Self { client }
+    pub fn new(client: TariWalletGrpcClient<Channel>, limits: Arc<SpendLimits>) -> Self {
+        Self { client, limits }
     }
 }
 
@@ -158,12 +161,12 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
             "GetPaymentIdAddress" => wallet_rpc::get_payment_id_address(client, params).await,
             "GetTransactionInfo" => wallet_rpc::get_transaction_info(client, params).await,
             "GetCompletedTransactions" => wallet_rpc::get_completed_transactions(client, params).await,
-            "Transfer" => wallet_rpc::transfer(client, params).await,
-            "CoinSplit" => wallet_rpc::coin_split(client, params).await,
+            "Transfer" => wallet_rpc::transfer(client, params, &self.limits).await,
+            "CoinSplit" => wallet_rpc::coin_split(client, params, &self.limits).await,
             "CancelTransaction" => wallet_rpc::cancel_transaction(client, params).await,
-            "SendShaAtomicSwapTransaction" => wallet_rpc::send_sha_atomic_swap(client, params).await,
-            "ClaimShaAtomicSwapTransaction" => wallet_rpc::claim_sha_atomic_swap(client, params).await,
-            "ClaimHtlcRefundTransaction" => wallet_rpc::claim_htlc_refund(client, params).await,
+            "SendShaAtomicSwapTransaction" => wallet_rpc::send_sha_atomic_swap(client, params, &self.limits).await,
+            "ClaimShaAtomicSwapTransaction" => wallet_rpc::claim_sha_atomic_swap(client, params, &self.limits).await,
+            "ClaimHtlcRefundTransaction" => wallet_rpc::claim_htlc_refund(client, params, &self.limits).await,
             _ => Err(McpError::not_implemented(method_name)),
         }
     }
@@ -197,16 +200,13 @@ mod tests {
 
     #[tokio::test]
     async fn wallet_dispatch_matches_supported_list() {
-        // The wallet client has no lazy constructor, so serve a gRPC endpoint with no services: every call that
-        // reaches it fails with Unimplemented, which is not McpError::NotImplemented
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(
-            tonic::transport::Server::builder()
-                .add_routes(tonic::service::Routes::default())
-                .serve_with_incoming(tonic::transport::server::TcpIncoming::from(listener)),
+        let client = WalletGrpcClientImpl::new(
+            wallet_rpc::tests::unimplemented_wallet_client().await,
+            Arc::new(SpendLimits::new(
+                wallet_rpc::DEFAULT_SPEND_BUDGET,
+                wallet_rpc::DEFAULT_MAX_FEE_PER_GRAM,
+            )),
         );
-        let client = WalletGrpcClientImpl::new(TariWalletGrpcClient::connect(&format!("http://{addr}")).await.unwrap());
 
         for method in wallet_methods() {
             let result = client.execute_method(&method.name, json!({})).await;

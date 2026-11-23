@@ -28,7 +28,12 @@
 use std::sync::Arc;
 
 use minotari_app_grpc::tari_rpc::GetCompletedTransactionsRequest;
-use minotari_mcp_common::{McpResult, McpTool, node_rpc, wallet_rpc};
+use minotari_mcp_common::{
+    McpResult,
+    McpTool,
+    node_rpc,
+    wallet_rpc::{self, SpendLimits},
+};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -141,11 +146,12 @@ impl McpTool for GetCompletedTransactionsTool {
 #[derive(Clone)]
 pub struct TransferTool {
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    limits: Arc<SpendLimits>,
 }
 
 impl TransferTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, limits: Arc<SpendLimits>) -> Self {
+        Self { grpc_client, limits }
     }
 }
 
@@ -211,7 +217,7 @@ impl McpTool for TransferTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        wallet_rpc::transfer((*self.grpc_client).clone(), &params).await
+        wallet_rpc::transfer((*self.grpc_client).clone(), &params, &self.limits).await
     }
 }
 
@@ -219,11 +225,12 @@ impl McpTool for TransferTool {
 #[derive(Clone)]
 pub struct CoinSplitTool {
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    limits: Arc<SpendLimits>,
 }
 
 impl CoinSplitTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, limits: Arc<SpendLimits>) -> Self {
+        Self { grpc_client, limits }
     }
 }
 
@@ -268,7 +275,7 @@ impl McpTool for CoinSplitTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        wallet_rpc::coin_split((*self.grpc_client).clone(), &params).await
+        wallet_rpc::coin_split((*self.grpc_client).clone(), &params, &self.limits).await
     }
 }
 

@@ -639,6 +639,15 @@ impl McpTool for DynamicGrpcTool {
         self.method_info.input_schema.clone()
     }
 
+    /// Enforce the advertised input schema, so arguments the method does not accept are refused, not ignored
+    fn validate_params(&self, params: &serde_json::Value) -> McpResult<()> {
+        // A call without arguments arrives as null
+        let empty = json!({});
+        let params = if params.is_null() { &empty } else { params };
+        SchemaGenerator::validate_value(params, &self.method_info.input_schema, "arguments")
+            .map_err(|e| crate::McpError::invalid_request(e.to_string()))
+    }
+
     async fn execute(&self, args: serde_json::Value) -> McpResult<serde_json::Value> {
         log::debug!(
             "Executing dynamic gRPC tool: {} with args: {}",
@@ -822,6 +831,29 @@ mod tests {
             "SubmitTransaction".to_string(),
             args
         )]);
+    }
+
+    #[tokio::test]
+    async fn discovered_tools_enforce_their_schema() {
+        let (client, tools) = discovered_node_tools(true).await;
+        let submit = &tools["SubmitTransaction"];
+        assert!(submit.validate_params(&json!({"transaction_hex": "0a00"})).is_ok());
+        assert!(submit.validate_params(&json!({})).is_err(), "missing required key");
+        assert!(
+            submit.validate_params(&json!({"transaction_hex": "0a0"})).is_err(),
+            "pattern"
+        );
+        assert!(tools["GetTipInfo"].validate_params(&serde_json::Value::Null).is_ok());
+        let too_many = json!({"heights": vec![1; 513]});
+        assert!(tools["GetBlocks"].validate_params(&too_many).is_err(), "maxItems");
+
+        // Through the registry the node server uses, a stale dry_run is refused and the node is never called
+        let mut registry = crate::ToolRegistry::new();
+        registry.register(Box::new(crate::ArcToolWrapper::new(submit.clone())));
+        let stale = json!({"transaction_hex": "0a00", "dry_run": true});
+        assert!(registry.execute_tool("SubmitTransaction", stale).await.is_err());
+        assert_eq!(client.submit_count.load(Ordering::SeqCst), 0);
+        assert!(client.calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

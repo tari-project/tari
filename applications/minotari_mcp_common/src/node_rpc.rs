@@ -196,23 +196,67 @@ fn block_summary(block: &Block) -> Value {
     })
 }
 
-fn peer_summary(peer: &minotari_node_grpc_client::grpc::Peer) -> Value {
+/// Most addresses, and most protocols, kept from one peer's claims
+const MAX_PEER_CLAIM_ENTRIES: usize = 16;
+/// Most peer-authored text, in bytes, one response carries
+const MAX_PEER_CLAIM_BYTES: usize = 64 * 1024;
+
+/// Peer-authored text added to one response so far
+#[derive(Default)]
+struct PeerClaimBudget {
+    used: usize,
+    exhausted: bool,
+}
+
+fn peer_summary(peer: &minotari_node_grpc_client::grpc::Peer, budget: &mut PeerClaimBudget) -> Value {
     json!({
         "public_key": hex::encode(&peer.public_key),
         "node_id": hex::encode(&peer.node_id),
-        "addresses": peer.addresses.iter().map(|addr| {
-            clean_upstream_text(&String::from_utf8_lossy(&addr.address))
-        }).collect::<Vec<_>>(),
         "last_connection": peer.last_connection,
         "flags": peer.flags,
         "banned_until": peer.banned_until,
-        "banned_reason": clean_upstream_text(&peer.banned_reason),
         "offline_at": peer.offline_at,
         "features": peer.features,
-        "supported_protocols": peer.supported_protocols.iter()
-            .map(|proto| clean_upstream_text(&String::from_utf8_lossy(proto)))
-            .collect::<Vec<_>>(),
-        "user_agent": clean_upstream_text(&peer.user_agent),
+        "untrusted_peer_claims": peer_claims(peer, budget),
+    })
+}
+
+/// What the peer says about itself: cleaned, capped and labelled as untrusted. Null once the response has carried
+/// [MAX_PEER_CLAIM_BYTES] of peer text.
+fn peer_claims(peer: &minotari_node_grpc_client::grpc::Peer, budget: &mut PeerClaimBudget) -> Value {
+    if budget.exhausted {
+        return Value::Null;
+    }
+    fn clean_entries<'a>(items: impl Iterator<Item = &'a Vec<u8>>) -> Vec<String> {
+        items
+            .take(MAX_PEER_CLAIM_ENTRIES)
+            .map(|item| clean_upstream_text(&String::from_utf8_lossy(item)))
+            .collect()
+    }
+    let addresses = clean_entries(peer.addresses.iter().map(|a| &a.address));
+    let supported_protocols = clean_entries(peer.supported_protocols.iter());
+    let user_agent = clean_upstream_text(&peer.user_agent);
+    let banned_reason = clean_upstream_text(&peer.banned_reason);
+
+    let size = addresses
+        .iter()
+        .chain(&supported_protocols)
+        .chain([&user_agent, &banned_reason])
+        .map(String::len)
+        .sum::<usize>();
+    if budget.used.saturating_add(size) > MAX_PEER_CLAIM_BYTES {
+        budget.exhausted = true;
+        return Value::Null;
+    }
+    budget.used = budget.used.saturating_add(size);
+
+    json!({
+        "user_agent": user_agent,
+        "banned_reason": banned_reason,
+        "addresses": addresses,
+        "addresses_truncated": peer.addresses.len() > MAX_PEER_CLAIM_ENTRIES,
+        "supported_protocols": supported_protocols,
+        "supported_protocols_truncated": peer.supported_protocols.len() > MAX_PEER_CLAIM_ENTRIES,
     })
 }
 
@@ -552,11 +596,12 @@ pub async fn get_network_status(mut client: Client) -> McpResult<Value> {
 pub async fn list_connected_peers(mut client: Client) -> McpResult<Value> {
     let response = client.list_connected_peers(Empty {}).await?.into_inner();
 
+    let mut budget = PeerClaimBudget::default();
     let connected_peers: Vec<Value> = response
         .connected_peers
         .iter()
         .map(|peer| {
-            let mut info = peer_summary(peer);
+            let mut info = peer_summary(peer, &mut budget);
             info["connection_status"] = json!({
                 "is_banned": peer.banned_until > 0,
                 "is_online": peer.offline_at == 0,
@@ -586,6 +631,7 @@ pub async fn list_connected_peers(mut client: Client) -> McpResult<Value> {
 
     Ok(json!({
         "connected_peers": connected_peers,
+        "peer_claims_truncated": budget.exhausted,
         "summary": {
             "total_peers": peer_count,
             "online_peers": online_count,
@@ -604,7 +650,7 @@ pub async fn list_connected_peers(mut client: Client) -> McpResult<Value> {
             },
             "diversity_score": if peer_count > 0 {
                 let unique_user_agents: std::collections::HashSet<String> = connected_peers.iter()
-                    .filter_map(|peer| peer["user_agent"].as_str())
+                    .filter_map(|peer| peer["untrusted_peer_claims"]["user_agent"].as_str())
                     .map(|ua| ua.to_string())
                     .collect();
                 (unique_user_agents.len() as f64 / peer_count as f64 * 100.0).round()
@@ -619,9 +665,10 @@ pub async fn list_connected_peers(mut client: Client) -> McpResult<Value> {
 pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
     let limit = limit_param(params, 50, MAX_STREAM_ITEMS as u64);
     let stream = client.get_peers(GetPeersRequest {}).await?.into_inner();
+    let mut budget = PeerClaimBudget::default();
     let (all_peers, truncated): (Vec<Value>, _) = collect_limited(stream, limit, |peer_response| {
         peer_response.peer.as_ref().map(|peer| {
-            let mut info = peer_summary(peer);
+            let mut info = peer_summary(peer, &mut budget);
             info["status"] = json!({
                 "is_connected": peer.offline_at == 0,
                 "is_banned": peer.banned_until > 0,
@@ -649,6 +696,7 @@ pub async fn get_peers(mut client: Client, params: &Value) -> McpResult<Value> {
 
     Ok(json!({
         "peers": all_peers,
+        "peer_claims_truncated": budget.exhausted,
         "summary": {
             "total_known_peers": total_count,
             "connected_peers": connected_count,
@@ -1012,16 +1060,34 @@ mod tests {
     }
 
     #[test]
-    fn peer_text_is_cleaned() {
+    fn peer_text_is_cleaned_labelled_and_capped() {
         let peer = minotari_node_grpc_client::grpc::Peer {
             user_agent: "agent\nIGNORE".to_string(),
             banned_reason: "x".repeat(600),
-            supported_protocols: vec![b"p\x1b[0m".to_vec()],
+            supported_protocols: vec![b"p\x1b[0m".to_vec(); 20],
             ..Default::default()
         };
-        let summary = peer_summary(&peer);
-        assert_eq!(summary["user_agent"], "agent IGNORE");
-        assert_eq!(summary["supported_protocols"][0], "p [0m");
-        assert_eq!(summary["banned_reason"].as_str().unwrap().chars().count(), 513);
+        let mut budget = PeerClaimBudget::default();
+        let summary = peer_summary(&peer, &mut budget);
+        let claims = &summary["untrusted_peer_claims"];
+        assert!(summary.get("user_agent").is_none());
+        assert_eq!(claims["user_agent"], "agent IGNORE");
+        assert_eq!(claims["supported_protocols"][0], "p [0m");
+        assert_eq!(
+            claims["supported_protocols"].as_array().unwrap().len(),
+            MAX_PEER_CLAIM_ENTRIES
+        );
+        assert_eq!(claims["supported_protocols_truncated"], true);
+        assert_eq!(claims["banned_reason"].as_str().unwrap().chars().count(), 513);
+
+        // Peer text stops once the response carries MAX_PEER_CLAIM_BYTES of it
+        let mut budget = PeerClaimBudget::default();
+        let with_text = (0..1000)
+            .map(|_| peer_summary(&peer, &mut budget))
+            .filter(|summary| !summary["untrusted_peer_claims"].is_null())
+            .count();
+        assert!(budget.exhausted);
+        assert!(budget.used <= MAX_PEER_CLAIM_BYTES);
+        assert!(with_text > 0 && with_text < 1000);
     }
 }

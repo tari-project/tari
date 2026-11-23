@@ -141,6 +141,7 @@ pub use tool_metadata::{
     ToolRiskLevel,
 };
 pub use tools::{
+    ArcToolWrapper,
     McpTool,
     ToolRegistry,
     get_optional_string_param,

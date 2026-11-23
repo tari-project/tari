@@ -54,17 +54,38 @@ pub fn clean_upstream_text(message: &str) -> String {
     text
 }
 
-/// Zero-width, bidi-override, invisible-operator, BOM and tag characters, which can hide text from a reader
+/// Every character of Unicode general category Cf (format) as of Unicode 16.0 (DerivedGeneralCategory.txt), plus the
+/// variation selectors. These render as nothing or reorder text, so they can hide instructions from a reader.
+const INVISIBLE_FORMAT_CHARS: [(char, char); 23] = [
+    ('\u{00AD}', '\u{00AD}'),
+    ('\u{0600}', '\u{0605}'),
+    ('\u{061C}', '\u{061C}'),
+    ('\u{06DD}', '\u{06DD}'),
+    ('\u{070F}', '\u{070F}'),
+    ('\u{0890}', '\u{0891}'),
+    ('\u{08E2}', '\u{08E2}'),
+    ('\u{180E}', '\u{180E}'),
+    ('\u{200B}', '\u{200F}'),
+    ('\u{202A}', '\u{202E}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{206F}'),
+    ('\u{FE00}', '\u{FE0F}'),
+    ('\u{FEFF}', '\u{FEFF}'),
+    ('\u{FFF9}', '\u{FFFB}'),
+    ('\u{110BD}', '\u{110BD}'),
+    ('\u{110CD}', '\u{110CD}'),
+    ('\u{13430}', '\u{1343F}'),
+    ('\u{1BCA0}', '\u{1BCA3}'),
+    ('\u{1D173}', '\u{1D17A}'),
+    ('\u{E0001}', '\u{E0001}'),
+    ('\u{E0020}', '\u{E007F}'),
+    ('\u{E0100}', '\u{E01EF}'),
+];
+
 fn is_invisible_format_char(c: char) -> bool {
-    matches!(
-        c,
-        '\u{200B}'..='\u{200F}' |
-            '\u{202A}'..='\u{202E}' |
-            '\u{2060}'..='\u{2064}' |
-            '\u{2066}'..='\u{2069}' |
-            '\u{FEFF}' |
-            '\u{E0000}'..='\u{E007F}'
-    )
+    INVISIBLE_FORMAT_CHARS
+        .iter()
+        .any(|(start, end)| (*start..=*end).contains(&c))
 }
 
 /// [clean_upstream_text], quoted as `upstream: "..."` so an error message reads as data rather than instructions
@@ -697,6 +718,8 @@ mod tests {
         let bidi = "user\u{202E}gnp.exe\u{202C} agent\u{200B}\u{FEFF}\u{2066}x\u{2069}\u{2061}";
         assert_eq!(clean_upstream_text(bidi), "usergnp.exe agentx");
         assert_eq!(sanitize_upstream_message(tagged), r#"upstream: "ok""#);
+        let others = "a\u{061C}b\u{00AD}c\u{FFF9}d\u{180E}e\u{206A}f\u{1BCA0}g\u{1D173}h\u{FE0F}i\u{E0100}j";
+        assert_eq!(clean_upstream_text(others), "abcdefghij");
     }
 
     #[test]

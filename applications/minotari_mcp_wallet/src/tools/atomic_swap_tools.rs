@@ -27,7 +27,12 @@
 
 use std::sync::Arc;
 
-use minotari_mcp_common::{McpResult, McpTool, PermissionLevel, wallet_rpc};
+use minotari_mcp_common::{
+    McpResult,
+    McpTool,
+    PermissionLevel,
+    wallet_rpc::{self, SpendLimits},
+};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::transport::Channel;
@@ -36,11 +41,12 @@ use tonic::transport::Channel;
 #[derive(Clone)]
 pub struct SendShaAtomicSwapTool {
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    limits: Arc<SpendLimits>,
 }
 
 impl SendShaAtomicSwapTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, limits: Arc<SpendLimits>) -> Self {
+        Self { grpc_client, limits }
     }
 }
 
@@ -87,7 +93,7 @@ impl McpTool for SendShaAtomicSwapTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        wallet_rpc::send_sha_atomic_swap((*self.grpc_client).clone(), &params).await
+        wallet_rpc::send_sha_atomic_swap((*self.grpc_client).clone(), &params, &self.limits).await
     }
 }
 
@@ -95,11 +101,12 @@ impl McpTool for SendShaAtomicSwapTool {
 #[derive(Clone)]
 pub struct ClaimShaAtomicSwapTool {
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    limits: Arc<SpendLimits>,
 }
 
 impl ClaimShaAtomicSwapTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, limits: Arc<SpendLimits>) -> Self {
+        Self { grpc_client, limits }
     }
 }
 
@@ -139,7 +146,7 @@ impl McpTool for ClaimShaAtomicSwapTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        wallet_rpc::claim_sha_atomic_swap((*self.grpc_client).clone(), &params).await
+        wallet_rpc::claim_sha_atomic_swap((*self.grpc_client).clone(), &params, &self.limits).await
     }
 }
 
@@ -147,11 +154,12 @@ impl McpTool for ClaimShaAtomicSwapTool {
 #[derive(Clone)]
 pub struct ClaimHtlcRefundTool {
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    limits: Arc<SpendLimits>,
 }
 
 impl ClaimHtlcRefundTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, limits: Arc<SpendLimits>) -> Self {
+        Self { grpc_client, limits }
     }
 }
 
@@ -187,7 +195,7 @@ impl McpTool for ClaimHtlcRefundTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        wallet_rpc::claim_htlc_refund((*self.grpc_client).clone(), &params).await
+        wallet_rpc::claim_htlc_refund((*self.grpc_client).clone(), &params, &self.limits).await
     }
 }
 

@@ -40,6 +40,53 @@ use crate::{
 
 type Client = WalletGrpcClient<Channel>;
 
+/// Default total the MCP server may move out of the wallet per process: 1,000,000 Tari, in µT
+pub const DEFAULT_SPEND_BUDGET: u64 = 1_000_000 * 1_000_000;
+/// Default highest fee_per_gram, in µT/g, any fund-moving call may use
+pub const DEFAULT_MAX_FEE_PER_GRAM: u64 = 10_000;
+
+/// Limits on the wallet calls that move funds, shared by every tool of one server process. The budget is in memory
+/// and resets when the server restarts.
+pub struct SpendLimits {
+    /// µT still allowed to leave the wallet through this server
+    remaining: tokio::sync::Mutex<u64>,
+    max_fee_per_gram: u64,
+}
+
+impl SpendLimits {
+    pub fn new(budget: u64, max_fee_per_gram: u64) -> Self {
+        Self {
+            remaining: tokio::sync::Mutex::new(budget),
+            max_fee_per_gram,
+        }
+    }
+
+    fn check_fee(&self, fee_per_gram: u64) -> McpResult<()> {
+        if fee_per_gram > self.max_fee_per_gram {
+            return Err(McpError::invalid_request(format!(
+                "fee_per_gram {fee_per_gram} is above this server's limit of {} µT/g",
+                self.max_fee_per_gram
+            )));
+        }
+        Ok(())
+    }
+
+    /// Run `call`, which moves `amount` µT, only if the budget still covers it, and charge the budget once it
+    /// succeeds. The lock is held across the call so concurrent calls cannot both pass the check.
+    async fn spend<T>(&self, amount: u64, call: impl Future<Output = McpResult<T>>) -> McpResult<T> {
+        let mut remaining = self.remaining.lock().await;
+        if amount > *remaining {
+            return Err(McpError::invalid_request(format!(
+                "This would move {amount} µT but only {} µT of this server's spend budget remains",
+                *remaining
+            )));
+        }
+        let result = call.await?;
+        *remaining = remaining.saturating_sub(amount);
+        Ok(result)
+    }
+}
+
 /// A wallet transaction status as its proto name without the `TRANSACTION_STATUS_` prefix, e.g. `MINED_CONFIRMED`
 fn transaction_status_name(status: i32) -> &'static str {
     TransactionStatus::try_from(status)
@@ -257,7 +304,7 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
 }
 
 #[allow(clippy::indexing_slicing)]
-pub async fn transfer(mut client: Client, params: &Value) -> McpResult<Value> {
+pub async fn transfer(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
     let recipients_array = params
         .get("recipients")
         .and_then(|v| v.as_array())
@@ -272,23 +319,23 @@ pub async fn transfer(mut client: Client, params: &Value) -> McpResult<Value> {
 
     for (i, recipient_data) in recipients_array.iter().enumerate() {
         let recipient = parse_payment_recipient(i, recipient_data)?;
+        limits.check_fee(recipient.fee_per_gram)?;
         total_amount = total_amount.saturating_add(recipient.amount);
         recipients.push(recipient);
     }
 
-    // 1 million Tari
-    if total_amount > 1_000_000_000_000 {
-        return Err(McpError::invalid_request("Total transfer amount exceeds safety limit"));
-    }
-
-    let response = client
-        .transfer(TransferRequest {
-            recipients,
-            single_tx: false,
-            excluded_commitments: vec![],
+    let response = limits
+        .spend(total_amount, async {
+            Ok(client
+                .transfer(TransferRequest {
+                    recipients,
+                    single_tx: false,
+                    excluded_commitments: vec![],
+                })
+                .await?
+                .into_inner())
         })
-        .await?
-        .into_inner();
+        .await?;
 
     let results: Vec<Value> = response
         .results
@@ -377,13 +424,18 @@ fn coin_split_request(params: &Value) -> McpResult<CoinSplitRequest> {
     })
 }
 
-pub async fn coin_split(mut client: Client, params: &Value) -> McpResult<Value> {
+pub async fn coin_split(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
     let request = coin_split_request(params)?;
     let (amount_per_split, split_count, fee_per_gram) =
         (request.amount_per_split, request.split_count, request.fee_per_gram);
+    limits.check_fee(fee_per_gram)?;
     let total_amount = amount_per_split.saturating_mul(split_count);
 
-    let response = client.coin_split(request).await?.into_inner();
+    let response = limits
+        .spend(total_amount, async {
+            Ok(client.coin_split(request).await?.into_inner())
+        })
+        .await?;
 
     Ok(json!({
         "transaction_id": response.tx_id,
@@ -654,7 +706,7 @@ pub async fn get_completed_transactions(mut client: Client, params: &Value) -> M
     }))
 }
 
-pub async fn send_sha_atomic_swap(mut client: Client, params: &Value) -> McpResult<Value> {
+pub async fn send_sha_atomic_swap(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
     let recipient_data = params
         .get("recipient")
         .ok_or_else(|| McpError::invalid_request("recipient object is required"))?;
@@ -681,6 +733,7 @@ pub async fn send_sha_atomic_swap(mut client: Client, params: &Value) -> McpResu
     if fee_per_gram == 0 {
         return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
     }
+    limits.check_fee(fee_per_gram)?;
 
     let recipient = PaymentRecipient {
         address: address.to_string(),
@@ -691,12 +744,16 @@ pub async fn send_sha_atomic_swap(mut client: Client, params: &Value) -> McpResu
         user_payment_id: None,
     };
 
-    let response = client
-        .send_sha_atomic_swap_transaction(SendShaAtomicSwapRequest {
-            recipient: Some(recipient),
+    let response = limits
+        .spend(amount, async {
+            Ok(client
+                .send_sha_atomic_swap_transaction(SendShaAtomicSwapRequest {
+                    recipient: Some(recipient),
+                })
+                .await?
+                .into_inner())
         })
-        .await?
-        .into_inner();
+        .await?;
     let failure_message = clean_upstream_text(&response.failure_message);
 
     Ok(json!({
@@ -747,18 +804,19 @@ fn output_hash_param(params: &Value) -> McpResult<String> {
     Ok(output_hash)
 }
 
-fn fee_per_gram_param(params: &Value) -> McpResult<u64> {
+fn fee_per_gram_param(params: &Value, limits: &SpendLimits) -> McpResult<u64> {
     let fee_per_gram = get_required_u64_param(params, "fee_per_gram")?;
     if fee_per_gram == 0 {
         return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
     }
+    limits.check_fee(fee_per_gram)?;
     Ok(fee_per_gram)
 }
 
-pub async fn claim_sha_atomic_swap(mut client: Client, params: &Value) -> McpResult<Value> {
+pub async fn claim_sha_atomic_swap(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
     let output_hash = output_hash_param(params)?;
     let pre_image = get_required_string_param(params, "pre_image")?;
-    let fee_per_gram = fee_per_gram_param(params)?;
+    let fee_per_gram = fee_per_gram_param(params, limits)?;
 
     if !pre_image.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(McpError::invalid_request("pre_image must be a valid hex string"));
@@ -823,9 +881,9 @@ pub async fn claim_sha_atomic_swap(mut client: Client, params: &Value) -> McpRes
     }))
 }
 
-pub async fn claim_htlc_refund(mut client: Client, params: &Value) -> McpResult<Value> {
+pub async fn claim_htlc_refund(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
     let output_hash = output_hash_param(params)?;
-    let fee_per_gram = fee_per_gram_param(params)?;
+    let fee_per_gram = fee_per_gram_param(params, limits)?;
 
     let response = client
         .claim_htlc_refund_transaction(ClaimHtlcRefundRequest {
@@ -885,11 +943,113 @@ pub async fn claim_htlc_refund(mut client: Client, params: &Value) -> McpResult<
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![allow(clippy::indexing_slicing)]
+    use std::time::Duration;
+
     use serde_json::json;
 
     use super::*;
+
+    /// A wallet client connected to a gRPC endpoint with no services. The wallet client has no lazy constructor, so
+    /// tests serve one: every call that reaches it fails with Unimplemented, which is not McpError::NotImplemented.
+    pub(crate) async fn unimplemented_wallet_client() -> Client {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(
+            tonic::transport::Server::builder()
+                .add_routes(tonic::service::Routes::default())
+                .serve_with_incoming(tonic::transport::server::TcpIncoming::from(listener)),
+        );
+        WalletGrpcClient::connect(&format!("http://{addr}")).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn spend_budget_is_cumulative_and_charged_only_on_success() {
+        let limits = SpendLimits::new(100, DEFAULT_MAX_FEE_PER_GRAM);
+        limits.spend(60, async { Ok(()) }).await.unwrap();
+        let err = limits.spend(50, async { Ok(()) }).await.unwrap_err().to_string();
+        assert!(err.contains("only 40 µT"), "{err}");
+        // A failed call is not charged
+        assert!(
+            limits
+                .spend(40, async { Err::<(), _>(McpError::server_error("down")) })
+                .await
+                .is_err()
+        );
+        limits.spend(40, async { Ok(()) }).await.unwrap();
+        assert!(limits.spend(1, async { Ok(()) }).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn concurrent_spends_cannot_both_pass_the_check() {
+        let limits = SpendLimits::new(100, DEFAULT_MAX_FEE_PER_GRAM);
+        let slow_call = || async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            Ok(())
+        };
+        let (first, second) = tokio::join!(limits.spend(70, slow_call()), limits.spend(70, slow_call()));
+        assert!(first.is_ok() != second.is_ok(), "exactly one spend fits the budget");
+    }
+
+    #[tokio::test]
+    async fn every_fund_moving_call_checks_the_budget_and_fee_ceiling() {
+        let client = unimplemented_wallet_client().await;
+        let limits = SpendLimits::new(10, 100);
+        let over_budget = |err: McpError| err.to_string().contains("spend budget");
+        let over_fee = |err: McpError| err.to_string().contains("above this server's limit");
+
+        let transfer_params =
+            |amount: u64, fee: u64| json!({"recipients": [{"address": "addr", "amount": amount, "fee_per_gram": fee}]});
+        assert!(over_budget(
+            transfer(client.clone(), &transfer_params(11, 1), &limits)
+                .await
+                .unwrap_err()
+        ));
+        assert!(over_fee(
+            transfer(client.clone(), &transfer_params(1, 101), &limits)
+                .await
+                .unwrap_err()
+        ));
+
+        let swap =
+            |amount: u64, fee: u64| json!({"recipient": {"address": "addr", "amount": amount, "fee_per_gram": fee}});
+        assert!(over_budget(
+            send_sha_atomic_swap(client.clone(), &swap(11, 1), &limits)
+                .await
+                .unwrap_err()
+        ));
+        assert!(over_fee(
+            send_sha_atomic_swap(client.clone(), &swap(1, 101), &limits)
+                .await
+                .unwrap_err()
+        ));
+
+        // 4 outputs of 3 µT is 12 µT
+        let split = json!({"amount_per_split": 3, "split_count": 4, "fee_per_gram": 1});
+        assert!(over_budget(
+            coin_split(client.clone(), &split, &limits).await.unwrap_err()
+        ));
+
+        let claim = json!({"output_hash": "00".repeat(32), "pre_image": "00", "fee_per_gram": 101});
+        assert!(over_fee(
+            claim_sha_atomic_swap(client.clone(), &claim, &limits)
+                .await
+                .unwrap_err()
+        ));
+        let refund = json!({"output_hash": "00".repeat(32), "fee_per_gram": 101});
+        assert!(over_fee(
+            claim_htlc_refund(client.clone(), &refund, &limits).await.unwrap_err()
+        ));
+
+        // Within the limits the call reaches the wallet, which fails it, so nothing is charged
+        assert!(!over_budget(
+            transfer(client.clone(), &transfer_params(10, 1), &limits)
+                .await
+                .unwrap_err()
+        ));
+        assert_eq!(*limits.remaining.lock().await, 10);
+    }
 
     #[test]
     fn unsupported_arguments_are_rejected() {

@@ -123,6 +123,30 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Where:** `applications/minotari_node` (`http`, `bootstrap.rs`, `config.rs`).
 - **Recorded:** 2026-11-17, issue #7998.
 
+### A-MCP-01: The MCP caller acts for the operator within the tools the server exposes
+
+- **Assumption:** The client of the base node and wallet MCP servers (normally an AI agent) is acting for the
+  operator, within the tools the server exposes. Read-only tools are always exposed. Control tools (submitting
+  blocks and transactions, transfers, atomic swaps, coin splits, claims and refunds) are exposed only when the
+  operator starts the server with control operations enabled (`control_enabled`). The operator is responsible for
+  who can talk to the server's stdio and for deciding whether to enable control operations.
+- **What that means:** With control operations enabled, the agent can submit blocks and transactions through the
+  node, and can move wallet funds, without a per-call human confirmation (the wallet server refuses to start with
+  `require_confirmation` and control operations both set). The agent may be prompt-injected, including by text
+  that reaches it through tool results. Text that comes from upstream (gRPC error messages, peer user agents, ban
+  reasons, addresses and protocols, wallet failure messages) is cleaned of control and invisible format characters,
+  capped in length, and quoted or labelled as untrusted (`upstream: "..."`, `untrusted_peer_claims`); it is not
+  neutralised and can still carry instructions. On the wallet side, the damage is limited by a cumulative spend
+  budget per server process (default 1,000,000 Tari across transfers, atomic swaps and coin splits) and a
+  `fee_per_gram` ceiling (default 10,000 µT/g) on every fund-moving call, both configurable.
+- **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
+  not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
+  configured spend budget or paying more than the fee ceiling, and making the server use unbounded memory through
+  upstream data (stream results and peer text must stay bounded). A single request line from the client itself is not
+  yet bounded by the stdio transport.
+- **Where:** `applications/minotari_mcp_common`, `applications/minotari_mcp_node`, `applications/minotari_mcp_wallet`.
+- **Recorded:** 2026-11-23.
+
 ## Withdrawn entries
 
 None.

@@ -25,6 +25,7 @@
 use std::{sync::Arc, time::Duration};
 
 use minotari_mcp_common::{
+    ArcToolWrapper,
     AutoDiscoveryConfig,
     AutoDiscoveryRegistry,
     CircuitBreakerConfig,
@@ -59,40 +60,6 @@ use crate::{
     resources::NodeResourceRegistry,
     tools::NodeToolRegistry,
 };
-
-/// Wrapper to convert Arc<dyn McpTool> to Box<dyn McpTool>
-struct ArcToolWrapper {
-    tool: Arc<dyn minotari_mcp_common::McpTool>,
-}
-
-impl ArcToolWrapper {
-    fn new(tool: Arc<dyn minotari_mcp_common::McpTool>) -> Self {
-        Self { tool }
-    }
-}
-
-#[async_trait::async_trait]
-impl minotari_mcp_common::McpTool for ArcToolWrapper {
-    fn name(&self) -> &str {
-        self.tool.name()
-    }
-
-    fn description(&self) -> &str {
-        self.tool.description()
-    }
-
-    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
-        self.tool.permission_level()
-    }
-
-    fn input_schema(&self) -> serde_json::Value {
-        self.tool.input_schema()
-    }
-
-    async fn execute(&self, args: serde_json::Value) -> minotari_mcp_common::McpResult<serde_json::Value> {
-        self.tool.execute(args).await
-    }
-}
 
 /// Minotari Node MCP Server
 pub struct NodeMcpServer {
