@@ -1372,13 +1372,17 @@ mod test {
         task.run().await.unwrap();
 
         let events = drain(&mut events);
-        assert_eq!(events.len(), 2, "{events:?}");
-        assert!(matches!(events[0], UtxoScannerEvent::Progress {
-            current_height: 7,
-            tip_height: 7,
-            ..
-        }));
-        assert!(matches!(events[1], UtxoScannerEvent::Completed { final_height: 7, .. }));
+        assert!(
+            matches!(events.as_slice(), [
+                UtxoScannerEvent::Progress {
+                    current_height: 7,
+                    tip_height: 7,
+                    ..
+                },
+                UtxoScannerEvent::Completed { final_height: 7, .. },
+            ]),
+            "{events:?}"
+        );
     }
 
     #[tokio::test]
