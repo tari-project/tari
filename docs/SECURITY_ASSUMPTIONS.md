@@ -140,7 +140,8 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   budget per server process (default 1,000,000 Tari) and a `fee_per_gram` ceiling (default 10,000 µT/g) on every
   fund-moving call, both configurable. Transfers, atomic swaps and coin splits are charged their amount plus an
   upper-bound estimate of their fee; claims and refunds are charged their fee estimate. A call that fails after funds
-  may have left the wallet is still charged.
+  may have left the wallet is still charged, as is a call the wallet accepts but reports as failed, so failed or
+  unconfirmed attempts can also use up the budget. The budget is held in memory and a server restart resets it.
 - **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
   not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
   configured spend budget or paying more than the fee ceiling, and making the server use unbounded memory through

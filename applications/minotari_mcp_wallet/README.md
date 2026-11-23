@@ -116,7 +116,8 @@ Example MCP client configuration:
    counts against a spend budget for the life of the server process (`--mcp-spend-budget`, default 1,000,000 Tari).
    Each call is charged its amount plus an upper-bound estimate of its fee, and the server refuses calls the remaining
    budget cannot cover. `--mcp-max-fee-per-gram` (default 10,000 µT) caps the fee rate of every such call. Set the
-   budget to what you are prepared to lose.
+   budget to what you are prepared to lose. Failed or unconfirmed attempts can also use up the budget, and restarting
+   the server resets it.
 
 4. **Audit Logging**: Enable audit logging in production environments to track all operations.
 
