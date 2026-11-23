@@ -23,6 +23,9 @@
 use serde::{Deserialize, Serialize};
 use tari_utilities::SafePassword;
 
+/// gRPC authentication settings.
+///
+/// Serializing `Basic` writes the password as a `<redacted>` placeholder, so serialized output is not re-loadable.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum GrpcAuthentication {
@@ -90,5 +93,10 @@ mod tests {
         let (user, pass) = valid.username_password().unwrap();
         assert_eq!(user, "admin");
         assert_eq!(pass.reveal(), b"real_password");
+    }
+
+    #[test]
+    fn serializing_none_is_unchanged() {
+        assert_eq!(serde_json::to_string(&GrpcAuthentication::None).unwrap(), "null");
     }
 }
