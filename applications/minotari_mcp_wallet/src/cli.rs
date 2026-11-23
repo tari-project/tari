@@ -83,7 +83,7 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION")]
     pub require_confirmation: bool,
 
-    /// Most µT the server may move out of the wallet in total per process (transfers, atomic swaps, coin splits)
+    /// Most µT the server may move out of the wallet in total per process, fees included
     #[clap(long, env = "MINOTARI_WALLET_MCP_SPEND_BUDGET", default_value_t = DEFAULT_SPEND_BUDGET)]
     pub mcp_spend_budget: u64,
 

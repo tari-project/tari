@@ -59,7 +59,12 @@ minotari_mcp_wallet --help
 - `MINOTARI_WALLET_MCP_AUDIT_LOGGING`: Enable audit logging
 - `MINOTARI_WALLET_MCP_AUDIT_LOG_PATH`: Audit log file path
 - `MINOTARI_WALLET_GRPC_ADDRESS`: Wallet gRPC endpoint (default: 127.0.0.1:18143)
-- `MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION`: Require user confirmation for transfers
+- `MINOTARI_WALLET_MCP_SPEND_BUDGET` / `--mcp-spend-budget`: Most µT the server may move out of the wallet in total
+  per process, fees included (default: 1000000000000, i.e. 1,000,000 Tari)
+- `MINOTARI_WALLET_MCP_MAX_FEE_PER_GRAM` / `--mcp-max-fee-per-gram`: Highest fee per gram, in µT, any fund-moving call
+  may use (default: 10000)
+- `MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION`: Not supported. The server cannot ask a person to confirm a call, so it
+  refuses to start when this is set together with control operations
 
 ## Usage
 
@@ -77,7 +82,7 @@ minotari_mcp_wallet --help
 
 3. **For control operations** (allows spending - use with caution):
    ```bash
-   minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --require-confirmation
+   minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --mcp-spend-budget 10000000
    ```
 
 ### AI Integration
@@ -107,7 +112,11 @@ Example MCP client configuration:
 
 2. **Network Binding**: The server only binds to localhost (127.0.0.1) for security. Do not modify this unless you understand the risks.
 
-3. **User Confirmation**: Use `--require-confirmation` for additional safety when control operations are enabled.
+3. **Spend Limits**: There is no per-call confirmation. Every transfer, atomic swap, coin split, claim and refund
+   counts against a spend budget for the life of the server process (`--mcp-spend-budget`, default 1,000,000 Tari).
+   Each call is charged its amount plus an upper-bound estimate of its fee, and the server refuses calls the remaining
+   budget cannot cover. `--mcp-max-fee-per-gram` (default 10,000 µT) caps the fee rate of every such call. Set the
+   budget to what you are prepared to lose.
 
 4. **Audit Logging**: Enable audit logging in production environments to track all operations.
 
@@ -125,7 +134,7 @@ minotari_mcp_wallet --mcp-enabled --mcp-audit-logging --mcp-rate-limit 10
 
 **For Trusted AI Control** (use with extreme caution):
 ```bash
-minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --require-confirmation --mcp-audit-logging
+minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --mcp-spend-budget 10000000 --mcp-audit-logging
 ```
 
 ## Development

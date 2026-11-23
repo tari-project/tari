@@ -70,7 +70,7 @@ pub struct WalletSecurityConfig {
     /// Enable transaction preview before execution
     pub enable_preview: bool,
 
-    /// Most µT the server may move out of the wallet in total per process (transfers, atomic swaps, coin splits)
+    /// Most µT the server may move out of the wallet in total per process, fees included
     pub spend_budget: u64,
 
     /// Highest fee_per_gram, in µT/g, any fund-moving call may use

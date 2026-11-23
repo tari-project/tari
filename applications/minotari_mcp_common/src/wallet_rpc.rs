@@ -26,7 +26,7 @@ use minotari_wallet_grpc_client::{
     },
 };
 use serde_json::{Value, json};
-use tonic::transport::Channel;
+use tonic::{Code, Status, transport::Channel};
 
 use crate::{
     McpError,
@@ -40,7 +40,7 @@ use crate::{
 
 type Client = WalletGrpcClient<Channel>;
 
-/// Default total the MCP server may move out of the wallet per process: 1,000,000 Tari, in µT
+/// Default total, fees included, the MCP server may move out of the wallet per process: 1,000,000 Tari, in µT
 pub const DEFAULT_SPEND_BUDGET: u64 = 1_000_000 * 1_000_000;
 /// Default highest fee_per_gram, in µT/g, any fund-moving call may use
 pub const DEFAULT_MAX_FEE_PER_GRAM: u64 = 10_000;
@@ -71,21 +71,66 @@ impl SpendLimits {
         Ok(())
     }
 
-    /// Run `call`, which moves `amount` µT, only if the budget still covers it, and charge the budget once it
-    /// succeeds. The lock is held across the call so concurrent calls cannot both pass the check.
-    async fn spend<T>(&self, amount: u64, call: impl Future<Output = McpResult<T>>) -> McpResult<T> {
+    /// Run `call`, which may move up to `charge` µT (amount plus an upper bound on fees), only if the budget still
+    /// covers it, and charge the budget unless the call clearly failed before anything was sent. The lock is held
+    /// across the call so concurrent calls cannot both pass the check.
+    async fn spend<T>(&self, charge: u64, call: impl Future<Output = Result<T, Status>>) -> McpResult<T> {
         let mut remaining = self.remaining.lock().await;
-        if amount > *remaining {
+        if charge > *remaining {
             return Err(McpError::invalid_request(format!(
-                "This would move {amount} µT but only {} µT of this server's spend budget remains",
+                "This could move {charge} µT including fees but only {} µT of this server's spend budget remains",
                 *remaining
             )));
         }
-        let result = call.await?;
-        *remaining = remaining.saturating_sub(amount);
-        Ok(result)
+        match call.await {
+            Ok(result) => {
+                *remaining = remaining.saturating_sub(charge);
+                Ok(result)
+            },
+            Err(status) if failed_before_sending(&status) => Err(status.into()),
+            Err(status) => {
+                // The wallet may have sent before failing, so fail safe
+                *remaining = remaining.saturating_sub(charge);
+                Err(McpError::tool_execution_failed(format!(
+                    "{}; {charge} µT was counted against the spend budget because funds may have left the wallet",
+                    McpError::from(status)
+                )))
+            },
+        }
     }
 }
+
+/// Whether a wallet error means the call was refused before any funds could have been sent
+fn failed_before_sending(status: &Status) -> bool {
+    matches!(
+        status.code(),
+        Code::InvalidArgument |
+            Code::FailedPrecondition |
+            Code::NotFound |
+            Code::PermissionDenied |
+            Code::Unauthenticated |
+            Code::ResourceExhausted |
+            Code::Unimplemented
+    )
+}
+
+// shortcut: conservative stand-ins for tari_transaction_components' WeightParams::v1 (kernel 10 g, input 8 g,
+// output 53 g plus 1 g per 16 bytes of features and script), which this crate does not depend on; derive the bound
+// from them if it ever does. Allows 64 inputs and 1 KiB of features and script per output, so it over-estimates.
+const KERNEL_GRAMS: u64 = 10;
+const INPUTS_GRAMS: u64 = 64 * 8;
+const OUTPUT_GRAMS: u64 = 53 + 1024 / 16;
+
+/// Upper bound on the fee of one transaction with `outputs` outputs at `fee_per_gram`
+fn fee_bound(fee_per_gram: u64, outputs: u64) -> u64 {
+    let grams = KERNEL_GRAMS
+        .saturating_add(INPUTS_GRAMS)
+        .saturating_add(outputs.saturating_mul(OUTPUT_GRAMS));
+    fee_per_gram.saturating_mul(grams)
+}
+
+/// Most recipients one Transfer call may pay
+const MAX_TRANSFER_RECIPIENTS: usize = 32;
 
 /// A wallet transaction status as its proto name without the `TRANSACTION_STATUS_` prefix, e.g. `MINED_CONFIRMED`
 fn transaction_status_name(status: i32) -> &'static str {
@@ -271,10 +316,12 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
         .ok_or_else(|| McpError::invalid_request(format!("fee_per_gram is required for recipient {index}")))?;
 
     // The wallet's Transfer rejects STANDARD_MIMBLEWIMBLE, so default to one-sided stealth
-    let payment_type = recipient_data
-        .get("payment_type")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(PaymentType::OneSidedToStealthAddress as u64);
+    let payment_type = match recipient_data.get("payment_type") {
+        None => PaymentType::OneSidedToStealthAddress as u64,
+        Some(v) => v.as_u64().ok_or_else(|| {
+            McpError::invalid_request(format!("payment_type must be an integer for recipient {index}"))
+        })?,
+    };
     if payment_type == PaymentType::StandardMimblewimble as u64 {
         return Err(McpError::invalid_request(format!(
             "payment_type 0 (STANDARD_MIMBLEWIMBLE) is not supported for recipient {index}; use 2 \
@@ -283,14 +330,17 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
     }
 
     // Sent only as user_payment_id: the wallet reads a non-empty raw_payment_id as an encoded memo instead
-    let user_payment_id = recipient_data
-        .get("payment_id")
-        .and_then(|v| v.as_str())
-        .map(|payment_id_str| UserPaymentId {
-            utf8_string: payment_id_str.to_string(),
+    let user_payment_id = match recipient_data.get("payment_id") {
+        None => None,
+        Some(v) => Some(UserPaymentId {
+            utf8_string: v
+                .as_str()
+                .ok_or_else(|| McpError::invalid_request(format!("payment_id must be a string for recipient {index}")))?
+                .to_string(),
             u256: vec![],
             user_bytes: vec![],
-        });
+        }),
+    };
 
     #[allow(clippy::cast_possible_truncation)]
     Ok(PaymentRecipient {
@@ -303,8 +353,9 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
     })
 }
 
-#[allow(clippy::indexing_slicing)]
-pub async fn transfer(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
+/// The Transfer request for `params`, its total amount, and the most it can cost including fees
+fn transfer_request(params: &Value, limits: &SpendLimits) -> McpResult<(TransferRequest, u64, u64)> {
+    reject_unknown_keys(params, &["recipients"], "transfer")?;
     let recipients_array = params
         .get("recipients")
         .and_then(|v| v.as_array())
@@ -313,27 +364,41 @@ pub async fn transfer(mut client: Client, params: &Value, limits: &SpendLimits) 
     if recipients_array.is_empty() {
         return Err(McpError::invalid_request("At least one recipient is required"));
     }
+    if recipients_array.len() > MAX_TRANSFER_RECIPIENTS {
+        return Err(McpError::invalid_request(format!(
+            "At most {MAX_TRANSFER_RECIPIENTS} recipients are allowed per transfer"
+        )));
+    }
 
     let mut recipients = Vec::with_capacity(recipients_array.len());
     let mut total_amount = 0u64;
+    let mut charge = 0u64;
 
     for (i, recipient_data) in recipients_array.iter().enumerate() {
         let recipient = parse_payment_recipient(i, recipient_data)?;
         limits.check_fee(recipient.fee_per_gram)?;
         total_amount = total_amount.saturating_add(recipient.amount);
+        // single_tx is false, so each recipient is paid in its own transaction with a payment and a change output
+        charge = charge
+            .saturating_add(recipient.amount)
+            .saturating_add(fee_bound(recipient.fee_per_gram, 2));
         recipients.push(recipient);
     }
 
+    let request = TransferRequest {
+        recipients,
+        single_tx: false,
+        excluded_commitments: vec![],
+    };
+    Ok((request, total_amount, charge))
+}
+
+#[allow(clippy::indexing_slicing)]
+pub async fn transfer(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
+    let (request, total_amount, charge) = transfer_request(params, limits)?;
     let response = limits
-        .spend(total_amount, async {
-            Ok(client
-                .transfer(TransferRequest {
-                    recipients,
-                    single_tx: false,
-                    excluded_commitments: vec![],
-                })
-                .await?
-                .into_inner())
+        .spend(charge, async {
+            client.transfer(request).await.map(tonic::Response::into_inner)
         })
         .await?;
 
@@ -430,10 +495,12 @@ pub async fn coin_split(mut client: Client, params: &Value, limits: &SpendLimits
         (request.amount_per_split, request.split_count, request.fee_per_gram);
     limits.check_fee(fee_per_gram)?;
     let total_amount = amount_per_split.saturating_mul(split_count);
+    // The split outputs plus change
+    let charge = total_amount.saturating_add(fee_bound(fee_per_gram, split_count.saturating_add(1)));
 
     let response = limits
-        .spend(total_amount, async {
-            Ok(client.coin_split(request).await?.into_inner())
+        .spend(charge, async {
+            client.coin_split(request).await.map(tonic::Response::into_inner)
         })
         .await?;
 
@@ -707,9 +774,15 @@ pub async fn get_completed_transactions(mut client: Client, params: &Value) -> M
 }
 
 pub async fn send_sha_atomic_swap(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
+    reject_unknown_keys(params, &["recipient"], "SendShaAtomicSwapTransaction")?;
     let recipient_data = params
         .get("recipient")
         .ok_or_else(|| McpError::invalid_request("recipient object is required"))?;
+    reject_unknown_keys(
+        recipient_data,
+        &["address", "amount", "fee_per_gram"],
+        "the atomic swap recipient",
+    )?;
 
     let address = recipient_data
         .get("address")
@@ -744,14 +817,16 @@ pub async fn send_sha_atomic_swap(mut client: Client, params: &Value, limits: &S
         user_payment_id: None,
     };
 
+    // The HTLC output plus change
+    let charge = amount.saturating_add(fee_bound(fee_per_gram, 2));
     let response = limits
-        .spend(amount, async {
-            Ok(client
+        .spend(charge, async {
+            client
                 .send_sha_atomic_swap_transaction(SendShaAtomicSwapRequest {
                     recipient: Some(recipient),
                 })
-                .await?
-                .into_inner())
+                .await
+                .map(tonic::Response::into_inner)
         })
         .await?;
     let failure_message = clean_upstream_text(&response.failure_message);
@@ -814,6 +889,11 @@ fn fee_per_gram_param(params: &Value, limits: &SpendLimits) -> McpResult<u64> {
 }
 
 pub async fn claim_sha_atomic_swap(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
+    reject_unknown_keys(
+        params,
+        &["output_hash", "pre_image", "fee_per_gram"],
+        "ClaimShaAtomicSwapTransaction",
+    )?;
     let output_hash = output_hash_param(params)?;
     let pre_image = get_required_string_param(params, "pre_image")?;
     let fee_per_gram = fee_per_gram_param(params, limits)?;
@@ -822,14 +902,19 @@ pub async fn claim_sha_atomic_swap(mut client: Client, params: &Value, limits: &
         return Err(McpError::invalid_request("pre_image must be a valid hex string"));
     }
 
-    let response = client
-        .claim_sha_atomic_swap_transaction(ClaimShaAtomicSwapRequest {
-            output: output_hash.clone(),
-            pre_image: pre_image.clone(),
-            fee_per_gram,
+    // A claim only costs its fee
+    let response = limits
+        .spend(fee_bound(fee_per_gram, 1), async {
+            client
+                .claim_sha_atomic_swap_transaction(ClaimShaAtomicSwapRequest {
+                    output: output_hash.clone(),
+                    pre_image: pre_image.clone(),
+                    fee_per_gram,
+                })
+                .await
+                .map(tonic::Response::into_inner)
         })
-        .await?
-        .into_inner();
+        .await?;
 
     let result = response
         .results
@@ -882,16 +967,22 @@ pub async fn claim_sha_atomic_swap(mut client: Client, params: &Value, limits: &
 }
 
 pub async fn claim_htlc_refund(mut client: Client, params: &Value, limits: &SpendLimits) -> McpResult<Value> {
+    reject_unknown_keys(params, &["output_hash", "fee_per_gram"], "ClaimHtlcRefundTransaction")?;
     let output_hash = output_hash_param(params)?;
     let fee_per_gram = fee_per_gram_param(params, limits)?;
 
-    let response = client
-        .claim_htlc_refund_transaction(ClaimHtlcRefundRequest {
-            output_hash: output_hash.clone(),
-            fee_per_gram,
+    // A refund only costs its fee
+    let response = limits
+        .spend(fee_bound(fee_per_gram, 1), async {
+            client
+                .claim_htlc_refund_transaction(ClaimHtlcRefundRequest {
+                    output_hash: output_hash.clone(),
+                    fee_per_gram,
+                })
+                .await
+                .map(tonic::Response::into_inner)
         })
-        .await?
-        .into_inner();
+        .await?;
 
     let result = response
         .results
@@ -965,20 +1056,37 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn spend_budget_is_cumulative_and_charged_only_on_success() {
+    async fn spend_budget_is_cumulative_and_charged_unless_refused_before_sending() {
         let limits = SpendLimits::new(100, DEFAULT_MAX_FEE_PER_GRAM);
         limits.spend(60, async { Ok(()) }).await.unwrap();
         let err = limits.spend(50, async { Ok(()) }).await.unwrap_err().to_string();
         assert!(err.contains("only 40 µT"), "{err}");
-        // A failed call is not charged
-        assert!(
-            limits
-                .spend(40, async { Err::<(), _>(McpError::server_error("down")) })
-                .await
-                .is_err()
-        );
-        limits.spend(40, async { Ok(()) }).await.unwrap();
-        assert!(limits.spend(1, async { Ok(()) }).await.is_err());
+
+        // Refused before anything was sent: not charged
+        let refused = limits.spend(10, async { Err::<(), _>(Status::invalid_argument("bad address")) });
+        assert!(refused.await.is_err());
+        assert_eq!(*limits.remaining.lock().await, 40);
+
+        // Funds may have left: charged, and the error says so
+        let lost = limits.spend(10, async { Err::<(), _>(Status::unavailable("connection reset")) });
+        let err = lost.await.unwrap_err().to_string();
+        assert!(err.contains("counted against the spend budget"), "{err}");
+        assert_eq!(*limits.remaining.lock().await, 30);
+    }
+
+    #[tokio::test]
+    async fn repeated_tiny_transfers_exhaust_the_budget_through_fees() {
+        let params = json!({"recipients": [{"address": "addr", "amount": 1, "fee_per_gram": 100}]});
+        let probe = SpendLimits::new(0, DEFAULT_MAX_FEE_PER_GRAM);
+        let (_, total_amount, charge) = transfer_request(&params, &probe).unwrap();
+        assert_eq!(total_amount, 1);
+        assert_eq!(charge, 1 + fee_bound(100, 2));
+
+        let limits = SpendLimits::new(charge * 3, DEFAULT_MAX_FEE_PER_GRAM);
+        for _ in 0..3 {
+            limits.spend(charge, async { Ok(()) }).await.unwrap();
+        }
+        assert!(limits.spend(charge, async { Ok(()) }).await.is_err());
     }
 
     #[tokio::test]
@@ -995,14 +1103,14 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn every_fund_moving_call_checks_the_budget_and_fee_ceiling() {
         let client = unimplemented_wallet_client().await;
-        let limits = SpendLimits::new(10, 100);
+        let limits = SpendLimits::new(100_000, 100);
         let over_budget = |err: McpError| err.to_string().contains("spend budget");
         let over_fee = |err: McpError| err.to_string().contains("above this server's limit");
 
         let transfer_params =
             |amount: u64, fee: u64| json!({"recipients": [{"address": "addr", "amount": amount, "fee_per_gram": fee}]});
         assert!(over_budget(
-            transfer(client.clone(), &transfer_params(11, 1), &limits)
+            transfer(client.clone(), &transfer_params(100_000, 1), &limits)
                 .await
                 .unwrap_err()
         ));
@@ -1015,7 +1123,7 @@ pub(crate) mod tests {
         let swap =
             |amount: u64, fee: u64| json!({"recipient": {"address": "addr", "amount": amount, "fee_per_gram": fee}});
         assert!(over_budget(
-            send_sha_atomic_swap(client.clone(), &swap(11, 1), &limits)
+            send_sha_atomic_swap(client.clone(), &swap(100_000, 1), &limits)
                 .await
                 .unwrap_err()
         ));
@@ -1025,30 +1133,85 @@ pub(crate) mod tests {
                 .unwrap_err()
         ));
 
-        // 4 outputs of 3 µT is 12 µT
-        let split = json!({"amount_per_split": 3, "split_count": 4, "fee_per_gram": 1});
+        // 4 outputs of 30,000 µT is 120,000 µT
+        let split = json!({"amount_per_split": 30_000, "split_count": 4, "fee_per_gram": 1});
         assert!(over_budget(
             coin_split(client.clone(), &split, &limits).await.unwrap_err()
         ));
 
-        let claim = json!({"output_hash": "00".repeat(32), "pre_image": "00", "fee_per_gram": 101});
+        let claim = |fee: u64| json!({"output_hash": "00".repeat(32), "pre_image": "00", "fee_per_gram": fee});
+        let refund = |fee: u64| json!({"output_hash": "00".repeat(32), "fee_per_gram": fee});
         assert!(over_fee(
-            claim_sha_atomic_swap(client.clone(), &claim, &limits)
+            claim_sha_atomic_swap(client.clone(), &claim(101), &limits)
                 .await
                 .unwrap_err()
         ));
-        let refund = json!({"output_hash": "00".repeat(32), "fee_per_gram": 101});
         assert!(over_fee(
-            claim_htlc_refund(client.clone(), &refund, &limits).await.unwrap_err()
+            claim_htlc_refund(client.clone(), &refund(101), &limits)
+                .await
+                .unwrap_err()
+        ));
+        // Claims and refunds are charged their fee bound
+        let small = SpendLimits::new(fee_bound(1, 1), 100);
+        assert!(over_budget(
+            claim_sha_atomic_swap(client.clone(), &claim(2), &small)
+                .await
+                .unwrap_err()
+        ));
+        assert!(over_budget(
+            claim_htlc_refund(client.clone(), &refund(2), &small).await.unwrap_err()
         ));
 
-        // Within the limits the call reaches the wallet, which fails it, so nothing is charged
+        // Within the limits the call reaches the wallet, which refuses it as unimplemented, so nothing is charged
         assert!(!over_budget(
-            transfer(client.clone(), &transfer_params(10, 1), &limits)
+            transfer(client.clone(), &transfer_params(1, 1), &limits)
                 .await
                 .unwrap_err()
         ));
-        assert_eq!(*limits.remaining.lock().await, 10);
+        assert_eq!(*limits.remaining.lock().await, 100_000);
+    }
+
+    #[tokio::test]
+    async fn fund_moving_calls_refuse_arguments_they_do_not_understand() {
+        let client = unimplemented_wallet_client().await;
+        let limits = SpendLimits::new(DEFAULT_SPEND_BUDGET, DEFAULT_MAX_FEE_PER_GRAM);
+        let recipient = json!({"address": "addr", "amount": 1, "fee_per_gram": 1});
+
+        let dry_run = json!({"recipients": [recipient], "dry_run": true});
+        let err = transfer(client.clone(), &dry_run, &limits)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("dry_run is not supported"), "{err}");
+
+        let mut bad_payment_id = recipient.clone();
+        bad_payment_id["payment_id"] = json!(7);
+        let err = transfer(client.clone(), &json!({"recipients": [bad_payment_id]}), &limits)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("payment_id must be a string"), "{err}");
+
+        let mut bad_payment_type = recipient.clone();
+        bad_payment_type["payment_type"] = json!("2");
+        assert!(
+            transfer(client.clone(), &json!({"recipients": [bad_payment_type]}), &limits)
+                .await
+                .is_err()
+        );
+
+        let too_many = json!({"recipients": vec![recipient.clone(); MAX_TRANSFER_RECIPIENTS + 1]});
+        assert!(transfer(client.clone(), &too_many, &limits).await.is_err());
+
+        let swap = json!({"recipient": recipient, "dry_run": true});
+        assert!(send_sha_atomic_swap(client.clone(), &swap, &limits).await.is_err());
+        let refund = json!({"output_hash": "00".repeat(32), "fee_per_gram": 1, "force": true});
+        let err = claim_htlc_refund(client.clone(), &refund, &limits)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("force is not supported"), "{err}");
+        assert_eq!(*limits.remaining.lock().await, DEFAULT_SPEND_BUDGET);
     }
 
     #[test]

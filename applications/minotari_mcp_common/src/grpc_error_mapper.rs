@@ -55,7 +55,8 @@ pub fn clean_upstream_text(message: &str) -> String {
 }
 
 /// Every character of Unicode general category Cf (format) as of Unicode 16.0 (DerivedGeneralCategory.txt), plus the
-/// variation selectors. These render as nothing or reorder text, so they can hide instructions from a reader.
+/// variation selectors (Variation_Selector=Yes: U+180B-180D, U+180F, U+FE00-FE0F, U+E0100-E01EF). These render as
+/// nothing or reorder text, so they can hide instructions from a reader.
 const INVISIBLE_FORMAT_CHARS: [(char, char); 23] = [
     ('\u{00AD}', '\u{00AD}'),
     ('\u{0600}', '\u{0605}'),
@@ -64,7 +65,7 @@ const INVISIBLE_FORMAT_CHARS: [(char, char); 23] = [
     ('\u{070F}', '\u{070F}'),
     ('\u{0890}', '\u{0891}'),
     ('\u{08E2}', '\u{08E2}'),
-    ('\u{180E}', '\u{180E}'),
+    ('\u{180B}', '\u{180F}'),
     ('\u{200B}', '\u{200F}'),
     ('\u{202A}', '\u{202E}'),
     ('\u{2060}', '\u{2064}'),
@@ -720,6 +721,8 @@ mod tests {
         assert_eq!(sanitize_upstream_message(tagged), r#"upstream: "ok""#);
         let others = "a\u{061C}b\u{00AD}c\u{FFF9}d\u{180E}e\u{206A}f\u{1BCA0}g\u{1D173}h\u{FE0F}i\u{E0100}j";
         assert_eq!(clean_upstream_text(others), "abcdefghij");
+        let mongolian = "a\u{180B}b\u{180C}c\u{180D}d\u{180F}e";
+        assert_eq!(clean_upstream_text(mongolian), "abcde");
     }
 
     #[test]

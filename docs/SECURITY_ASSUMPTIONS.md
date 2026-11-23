@@ -137,8 +137,10 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   reasons, addresses and protocols, wallet failure messages) is cleaned of control and invisible format characters,
   capped in length, and quoted or labelled as untrusted (`upstream: "..."`, `untrusted_peer_claims`); it is not
   neutralised and can still carry instructions. On the wallet side, the damage is limited by a cumulative spend
-  budget per server process (default 1,000,000 Tari across transfers, atomic swaps and coin splits) and a
-  `fee_per_gram` ceiling (default 10,000 µT/g) on every fund-moving call, both configurable.
+  budget per server process (default 1,000,000 Tari) and a `fee_per_gram` ceiling (default 10,000 µT/g) on every
+  fund-moving call, both configurable. Transfers, atomic swaps and coin splits are charged their amount plus an
+  upper-bound estimate of their fee; claims and refunds are charged their fee estimate. A call that fails after funds
+  may have left the wallet is still charged.
 - **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
   not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
   configured spend budget or paying more than the fee ceiling, and making the server use unbounded memory through
