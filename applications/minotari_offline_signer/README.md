@@ -75,7 +75,8 @@ escaped), and finally a recap. When run from a terminal it then asks `Sign this 
 
 The signed file carries a `receipt`: the transaction id, a hash of the payload that was approved, whether it was
 approved at a prompt (`Prompt`) or signed without one (`NoPrompt`), and when it was signed (unix seconds). The receipt
-is not signed. Files written by older signers have no receipt.
+is not signed, so anyone handling the file can change it: it is not proof of approval and nothing should trust it as
+such. Files written by older signers have no receipt.
 
 The signer only signs transactions that leave a change output. A payload where what is left after the outputs and
 the fee is no more than a change output would cost, such as a send-all or sweep, is refused, because with no change

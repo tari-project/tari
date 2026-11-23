@@ -834,14 +834,15 @@ pub enum PayloadNotConfirmed {
 /// ```
 ///
 /// and a `ConfirmedPayload` cannot be built outside this module:
-/// ```compile_fail
+/// ```compile_fail,E0451
+/// use tari_common_types::types::FixedHash;
 /// use tari_transaction_components::offline_signing::{
 ///     ConfirmedPayload,
-///     models::PrepareOneSidedTransactionForSigningResult,
+///     models::{ConfirmationKind, PrepareOneSidedTransactionForSigningResult},
 /// };
 ///
 /// fn wrap(payload: PrepareOneSidedTransactionForSigningResult) -> ConfirmedPayload<PrepareOneSidedTransactionForSigningResult> {
-///     ConfirmedPayload { payload }
+///     ConfirmedPayload { payload, confirmation: ConfirmationKind::Prompt, payload_hash: FixedHash::default() }
 /// }
 /// ```
 #[derive(Clone)]
@@ -955,7 +956,7 @@ pub fn present_payload_summary<P: OfflinePayload>(
     };
     info!(
         target: LOG_TARGET,
-        "Offline payload {} {decision}, payload hash {payload_hash}", summary.tx_id
+        "Offline payload {} ({}) {decision}, payload hash {payload_hash}", summary.tx_id, summary.kind
     );
     out.flush()?;
     Ok(Confirmation {

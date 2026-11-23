@@ -3550,6 +3550,9 @@ mod test {
             assert!(!record.contains("memo text"), "{record}");
         }
         assert!(records[0].contains("approved"), "{records:#?}");
+        for record in &records {
+            assert!(record.contains("(one-sided payment"), "{record}");
+        }
         assert!(
             records[1].contains(") signed,") && records[1].ends_with(", confirmation Prompt"),
             "{records:#?}"

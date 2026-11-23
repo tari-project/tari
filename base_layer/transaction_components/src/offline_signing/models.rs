@@ -399,7 +399,8 @@ pub enum ConfirmationKind {
     NoPrompt,
 }
 
-/// A record of what the offline signer approved and signed. Not signed itself.
+/// A record of what the offline signer approved and signed. It is not signed, so anyone handling the result can
+/// rewrite it: it is not proof of approval and nothing should trust it as such.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SigningReceipt {
     pub tx_id: TxId,

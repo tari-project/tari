@@ -58,7 +58,7 @@ use crate::{
             has_payload_auth_fields,
         },
         one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
-        payload_summary::{LOG_TARGET, format_unix_time},
+        payload_summary::{LOG_TARGET, PayloadKind, format_unix_time},
     },
     transaction_components::{MemoField, OutputFeatures, TransactionError, WalletOutput},
 };
@@ -488,6 +488,7 @@ fn payload_log_context<P: OfflinePayload>(request: &P, policy: &PayloadKeyPolicy
 
 /// Records whether an offline payload was signed, after the integrity and key-id checks have run.
 fn log_signing_outcome<T>(
+    kind: PayloadKind,
     receipt: &SigningReceipt,
     context: &str,
     result: Result<T, TransactionBuilderError>,
@@ -501,12 +502,12 @@ fn log_signing_outcome<T>(
     match &result {
         Ok(_) => info!(
             target: LOG_TARGET,
-            "Offline payload {tx_id} ({context}) signed, payload hash {payload_hash}, confirmation {confirmation:?}"
+            "Offline payload {tx_id} ({kind}, {context}) signed, payload hash {payload_hash}, confirmation {confirmation:?}"
         ),
         // The error can quote amounts or an address, and the caller reports it in full
         Err(_) => warn!(
             target: LOG_TARGET,
-            "Offline payload {tx_id} ({context}) not signed, payload hash {payload_hash}, confirmation {confirmation:?}"
+            "Offline payload {tx_id} ({kind}, {context}) not signed, payload hash {payload_hash}, confirmation {confirmation:?}"
         ),
     }
     result
@@ -523,6 +524,7 @@ pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
     let request = confirmed.into_payload();
     let context = payload_log_context(&request, policy);
     log_signing_outcome(
+        PayloadKind::OneSided,
         &receipt,
         &context,
         verify_and_sign_one_sided(
@@ -569,6 +571,7 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
     let request = confirmed.into_payload();
     let context = payload_log_context(&request, policy);
     log_signing_outcome(
+        PayloadKind::MultisigDeposit,
         &receipt,
         &context,
         verify_and_sign_deposit_multisig(
@@ -615,6 +618,7 @@ pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterf
     let request = confirmed.into_payload();
     let context = payload_log_context(&request, policy);
     log_signing_outcome(
+        PayloadKind::MultisigWithdrawal,
         &receipt,
         &context,
         verify_and_sign_withdraw_multisig(
