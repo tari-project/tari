@@ -9,7 +9,6 @@ A Model Context Protocol (MCP) server that provides AI agents with secure access
 - **Permission levels**: Separate read-only and control operations with explicit user consent
 - **Rate limiting**: Configurable request rate limits per client
 - **Audit logging**: Optional comprehensive logging of all operations
-- **User confirmation**: Optional confirmation prompts for value-transferring operations
 
 ### Wallet Operations
 
@@ -117,7 +116,9 @@ Example MCP client configuration:
    Each call is charged its amount plus an upper-bound estimate of its fee, and the server refuses calls the remaining
    budget cannot cover. `--mcp-max-fee-per-gram` (default 10,000 µT) caps the fee rate of every such call. Set the
    budget to what you are prepared to lose. Failed or unconfirmed attempts can also use up the budget, and restarting
-   the server resets it.
+   the server resets it. The budget only limits calls made through the MCP server: an agent or process that can reach
+   the wallet's gRPC interface directly (the MCP server does not yet authenticate to it, so it must be left open to
+   local clients), or that can restart the MCP server, can bypass or reset it.
 
 4. **Audit Logging**: Enable audit logging in production environments to track all operations.
 

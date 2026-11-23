@@ -219,6 +219,8 @@ impl InputSanitizer {
             )));
         }
 
+        // shortcut: a key repeated in the raw JSON is collapsed by serde_json (last one wins) before it gets here;
+        // rejecting that needs a duplicate-aware deserializer in the transport.
         let mut sanitized_obj = serde_json::Map::new();
         for (key, value) in obj {
             // Sanitize the key (treat as string)
@@ -227,8 +229,15 @@ impl InputSanitizer {
                 _ => return Err(McpError::invalid_request("Object key must be a string")),
             };
 
-            // Validate key format (no leading/trailing whitespace, reasonable length)
+            // Refuse a key that cleaning would change rather than rename it: a lookalike such as "amount " could
+            // otherwise replace the real key. Unchanged keys are distinct, so no two keys can merge.
             let trimmed_key = sanitized_key.trim();
+            if trimmed_key != key {
+                return Err(McpError::invalid_request(format!(
+                    "Object key {key:?} contains control characters, HTML entities, surrounding whitespace or non-NFC \
+                     text"
+                )));
+            }
             if trimmed_key.is_empty() {
                 return Err(McpError::invalid_request("Object key cannot be empty"));
             }
@@ -390,6 +399,20 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn keys_that_cleaning_would_change_are_refused() {
+        assert!(sanitize_tool_input(&json!({ "amount": 1, "amount\u{007f}": 2 })).is_err());
+        let err = sanitize_tool_input(&json!({ "address ": "x" }))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(r#""address ""#), "{err}");
+        assert!(sanitize_tool_input(&json!({ "recipients": [{ "address ": "x", "amount": 1 }] })).is_err());
+        assert!(sanitize_tool_input(&json!({ "a&amp;b": 1 })).is_err());
+
+        let normal = json!({ "recipients": [{ "address": "x", "amount": 1 }], "fee_per_gram": 5 });
+        assert_eq!(sanitize_tool_input(&normal).unwrap(), normal);
+    }
 
     #[test]
     fn payment_id_is_kept_verbatim_or_refused() {

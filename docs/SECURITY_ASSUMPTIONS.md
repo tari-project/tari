@@ -141,12 +141,15 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   fund-moving call, both configurable. Transfers, atomic swaps and coin splits are charged their amount plus an
   upper-bound estimate of their fee; claims and refunds are charged their fee estimate. A call that fails after funds
   may have left the wallet is still charged, as is a call the wallet accepts but reports as failed, so failed or
-  unconfirmed attempts can also use up the budget. The budget is held in memory and a server restart resets it.
+  unconfirmed attempts can also use up the budget. The budget is held in memory and a server restart resets it. It
+  only limits calls made through the MCP server: an agent or process that can reach the wallet's gRPC interface
+  directly (the MCP server does not yet authenticate to it, so it must be left open to local clients; see A-GRPC-01),
+  or that can restart the MCP server, can bypass or reset it.
 - **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
   not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
-  configured spend budget or paying more than the fee ceiling, and making the server use unbounded memory through
-  upstream data (stream results and peer text must stay bounded). A single request line from the client itself is not
-  yet bounded by the stdio transport.
+  configured spend budget or paying more than the fee ceiling through the MCP server, and making the server use
+  unbounded memory through upstream data (stream results and peer text must stay bounded). A single request line from
+  the client itself is not yet bounded by the stdio transport.
 - **Where:** `applications/minotari_mcp_common`, `applications/minotari_mcp_node`, `applications/minotari_mcp_wallet`.
 - **Recorded:** 2026-11-23.
 

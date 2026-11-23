@@ -19,6 +19,7 @@ use minotari_wallet_grpc_client::{
         GetTransactionInfoRequest,
         PaymentRecipient,
         SendShaAtomicSwapRequest,
+        SendShaAtomicSwapResponse,
         TransactionStatus,
         TransferRequest,
         UserPaymentId,
@@ -100,13 +101,13 @@ impl SpendLimits {
     }
 }
 
-/// Whether a wallet error means the call was refused before any funds could have been sent
+/// Whether a wallet error means the call was refused before any funds could have been sent. NotFound is not one: the
+/// wallet returns it from transfers, claims and refunds after the transaction was already submitted.
 fn failed_before_sending(status: &Status) -> bool {
     matches!(
         status.code(),
         Code::InvalidArgument |
             Code::FailedPrecondition |
-            Code::NotFound |
             Code::PermissionDenied |
             Code::Unauthenticated |
             Code::ResourceExhausted |
@@ -830,11 +831,12 @@ pub async fn send_sha_atomic_swap(mut client: Client, params: &Value, limits: &S
         })
         .await?;
     let failure_message = clean_upstream_text(&response.failure_message);
+    let (pre_image, output_hash) = swap_secrets(&response);
 
     Ok(json!({
         "transaction_id": response.transaction_id,
-        "pre_image": hex::encode(&response.pre_image),
-        "output_hash": hex::encode(&response.output_hash),
+        "pre_image": pre_image,
+        "output_hash": output_hash,
         "is_success": response.is_success,
         "failure_message": failure_message,
         "swap_details": {
@@ -863,6 +865,14 @@ pub async fn send_sha_atomic_swap(mut client: Client, params: &Value, limits: &S
             ]
         }
     }))
+}
+
+/// The swap's pre-image and output hash, which the wallet already sends as hex text
+fn swap_secrets(response: &SendShaAtomicSwapResponse) -> (String, String) {
+    (
+        clean_upstream_text(&response.pre_image),
+        clean_upstream_text(&response.output_hash),
+    )
 }
 
 /// Validate a 32-byte hex output hash argument
@@ -1072,6 +1082,26 @@ pub(crate) mod tests {
         let err = lost.await.unwrap_err().to_string();
         assert!(err.contains("counted against the spend budget"), "{err}");
         assert_eq!(*limits.remaining.lock().await, 30);
+
+        // NotFound can follow a submitted claim or refund, so it is charged too
+        let after_submit = limits.spend(10, async { Err::<(), _>(Status::not_found("Transaction not found")) });
+        assert!(after_submit.await.is_err());
+        assert_eq!(*limits.remaining.lock().await, 20);
+    }
+
+    #[test]
+    fn swap_output_hash_can_be_claimed_with() {
+        let response = SendShaAtomicSwapResponse {
+            pre_image: "ab".repeat(32),
+            output_hash: "cd".repeat(32),
+            ..Default::default()
+        };
+        let (pre_image, output_hash) = swap_secrets(&response);
+        assert_eq!(pre_image, "ab".repeat(32));
+        assert_eq!(
+            output_hash_param(&json!({ "output_hash": output_hash })).unwrap(),
+            "cd".repeat(32)
+        );
     }
 
     #[tokio::test]
