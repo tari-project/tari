@@ -85,8 +85,12 @@ minotari_mcp_wallet --mcp-enabled
 
 **With control operations (use with caution):**
 ```bash
-minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --require-confirmation
+minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --mcp-spend-budget 10000000
 ```
+
+Control operations are limited by a per-process spend budget (`--mcp-spend-budget`, in µT, default 1,000,000 Tari)
+that every fund-moving call is charged against, fees included as an upper-bound estimate, and by a fee rate ceiling
+(`--mcp-max-fee-per-gram`, default 10,000 µT). There is no per-call confirmation.
 
 ### Starting the Node MCP Server
 
