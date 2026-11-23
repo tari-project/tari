@@ -3455,6 +3455,7 @@ mod test {
     /// transaction id and payload hash: no address, amount or memo text. Covers the offline-signing log target only;
     /// the transaction builder logs under its own target while signing.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn signing_logs_name_the_payload_without_its_contents() {
         use std::{
             cell::Cell,
@@ -3550,13 +3551,60 @@ mod test {
         }
         assert!(records[0].contains("approved"), "{records:#?}");
         assert!(
-            records[1].contains("signed") && records[1].contains("Prompt"),
+            records[1].contains(") signed,") && records[1].ends_with(", confirmation Prompt"),
             "{records:#?}"
         );
         assert!(records[2].contains("signed without a prompt"), "{records:#?}");
         assert!(
-            records[3].contains("not signed") && records[3].contains("NoPrompt"),
+            records[3].contains(") not signed,") && records[3].ends_with(", confirmation NoPrompt"),
             "{records:#?}"
         );
+
+        // Refused after approval with an error that quotes amounts: the record must not repeat it
+        let payload = prepare_one_sided(
+            &spend,
+            &view,
+            &bob,
+            MicroMinotari(100_000),
+            MicroMinotari(1),
+            MemoField::new_empty(),
+        );
+        let tx_id = payload.tx_id;
+        CAPTURE.with(|c| c.set(true));
+        let summary = PayloadSummary::from_one_sided(payload);
+        let payload_hash = summary.payload_hash().unwrap();
+        let confirmation = present_payload_summary(
+            &summary,
+            ConfirmationMode::NonInteractive,
+            &mut Vec::new(),
+            &mut std::io::empty(),
+        )
+        .unwrap();
+        let err = sign_locked_transaction(
+            &spend,
+            create_consensus_manager().consensus_constants(0).clone(),
+            Network::LocalNet,
+            summary.confirm(confirmation).unwrap(),
+            &PayloadKeyPolicy::default(),
+        )
+        .unwrap_err();
+        CAPTURE.with(|c| c.set(false));
+        let TransactionBuilderError::FeeGreaterThanAmount { fee, sent } = err else {
+            panic!("expected the fee to be refused, got {err:?}");
+        };
+
+        let records = std::mem::take(&mut *logger.0.lock().unwrap());
+        assert_eq!(records.len(), 2, "{records:#?}");
+        let record = &records[1];
+        assert!(record.contains(") not signed,"), "{record}");
+        assert!(record.contains(&tx_id.to_string()), "{record}");
+        assert!(record.contains(&payload_hash.to_string()), "{record}");
+        assert!(!record.contains("µT"), "{record}");
+        assert!(!record.contains("greater than"), "{record}");
+        // Digits only appear inside the tx id, the hash and the expiry, never as the error's amounts
+        let words: Vec<&str> = record.split(|c: char| !c.is_ascii_alphanumeric()).collect();
+        for amount in [fee, sent] {
+            assert!(!words.contains(&amount.as_u64().to_string().as_str()), "{record}");
+        }
     }
 }

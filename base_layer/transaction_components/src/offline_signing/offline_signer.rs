@@ -503,10 +503,10 @@ fn log_signing_outcome<T>(
             target: LOG_TARGET,
             "Offline payload {tx_id} ({context}) signed, payload hash {payload_hash}, confirmation {confirmation:?}"
         ),
-        Err(e) => warn!(
+        // The error can quote amounts or an address, and the caller reports it in full
+        Err(_) => warn!(
             target: LOG_TARGET,
-            "Offline payload {tx_id} ({context}) not signed, payload hash {payload_hash}, confirmation \
-             {confirmation:?}: {e}"
+            "Offline payload {tx_id} ({context}) not signed, payload hash {payload_hash}, confirmation {confirmation:?}"
         ),
     }
     result
