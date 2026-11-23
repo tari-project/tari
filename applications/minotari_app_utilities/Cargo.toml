@@ -51,3 +51,6 @@ miner_input = [
     "tari_script",
     "tari_transaction_components",
 ]
+
+[dev-dependencies]
+tempfile = "3.1.0"
