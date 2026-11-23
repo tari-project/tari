@@ -3452,7 +3452,8 @@ mod test {
     }
 
     /// Logs reach places the summary screen does not, so the confirmation and signing records carry only the
-    /// transaction id and payload hash: no address, amount or memo text.
+    /// transaction id and payload hash: no address, amount or memo text. Covers the offline-signing log target only;
+    /// the transaction builder logs under its own target while signing.
     #[test]
     fn signing_logs_name_the_payload_without_its_contents() {
         use std::{
@@ -3497,6 +3498,7 @@ mod test {
         );
         let sender = payload.info.sender_address.clone();
         let tx_id = payload.tx_id;
+        let refused = PayloadSummary::from_one_sided(payload.clone());
 
         CAPTURE.with(|c| c.set(true));
         let summary = PayloadSummary::from_one_sided(payload);
@@ -3516,10 +3518,26 @@ mod test {
             &PayloadKeyPolicy::default(),
         )
         .unwrap();
+        // Signed by a wallet whose view key did not sign the payload, so it is refused after confirmation
+        let confirmation = present_payload_summary(
+            &refused,
+            ConfirmationMode::NonInteractive,
+            &mut Vec::new(),
+            &mut std::io::empty(),
+        )
+        .unwrap();
+        sign_locked_transaction(
+            &KeyManager::new_random().unwrap(),
+            create_consensus_manager().consensus_constants(0).clone(),
+            Network::LocalNet,
+            refused.confirm(confirmation).unwrap(),
+            &PayloadKeyPolicy::default(),
+        )
+        .unwrap_err();
         CAPTURE.with(|c| c.set(false));
 
         let records = std::mem::take(&mut *logger.0.lock().unwrap());
-        assert_eq!(records.len(), 2, "{records:#?}");
+        assert_eq!(records.len(), 4, "{records:#?}");
         for record in &records {
             assert!(record.contains(&tx_id.to_string()), "{record}");
             assert!(record.contains(&payload_hash.to_string()), "{record}");
@@ -3533,6 +3551,11 @@ mod test {
         assert!(records[0].contains("approved"), "{records:#?}");
         assert!(
             records[1].contains("signed") && records[1].contains("Prompt"),
+            "{records:#?}"
+        );
+        assert!(records[2].contains("signed without a prompt"), "{records:#?}");
+        assert!(
+            records[3].contains("not signed") && records[3].contains("NoPrompt"),
             "{records:#?}"
         );
     }

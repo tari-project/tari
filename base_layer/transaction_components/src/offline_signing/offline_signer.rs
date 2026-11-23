@@ -492,15 +492,22 @@ fn log_signing_outcome<T>(
     context: &str,
     result: Result<T, TransactionBuilderError>,
 ) -> Result<T, TransactionBuilderError> {
-    let tx_id = receipt.tx_id;
+    let SigningReceipt {
+        tx_id,
+        payload_hash,
+        confirmation,
+        ..
+    } = receipt;
     match &result {
         Ok(_) => info!(
             target: LOG_TARGET,
-            "Offline payload {tx_id} ({context}) signed, payload hash {}, confirmation {:?}",
-            receipt.payload_hash,
-            receipt.confirmation
+            "Offline payload {tx_id} ({context}) signed, payload hash {payload_hash}, confirmation {confirmation:?}"
         ),
-        Err(e) => warn!(target: LOG_TARGET, "Offline payload {tx_id} ({context}) not signed: {e}"),
+        Err(e) => warn!(
+            target: LOG_TARGET,
+            "Offline payload {tx_id} ({context}) not signed, payload hash {payload_hash}, confirmation \
+             {confirmation:?}: {e}"
+        ),
     }
     result
 }
