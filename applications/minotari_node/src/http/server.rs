@@ -6,12 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use axum::{
-    Extension,
-    Router,
-    extract::DefaultBodyLimit,
-    routing::{get, post},
-};
+use axum::{Extension, Router, extract::DefaultBodyLimit, routing::get};
 use log::{error, info};
 use tari_core::{
     base_node::rpc::BaseNodeWalletQueryService,
@@ -50,47 +45,6 @@ pub enum Error {
 #[openapi(paths(get_tip_info, get_header_by_height, get_height_at_time, sync_utxos_by_block))]
 pub struct ApiDoc;
 
-/// The wallet query routes, without the extensions they need
-pub(crate) fn routes<B: BlockchainBackend + 'static>() -> Router {
-    Router::new()
-        .route("/get_tip_info", get(handler::get_tip_info::handle::<B>))
-        .route("/get_header_by_height", get(handler::get_header_by_height::handle::<B>))
-        .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
-        .route("/get_utxos_mined_info", get(handler::get_utxos_mined_info::handle::<B>))
-        .route("/fetch_utxo", get(handler::get_utxo::handle::<B>))
-        .route(
-            "/get_utxos_deleted_info",
-            get(handler::get_utxos_deleted_info::handle::<B>).layer(DefaultBodyLimit::disable()),
-        )
-        .route(
-            "/transactions",
-            get(handler::transaction_query::handle::<B>).layer(DefaultBodyLimit::disable()),
-        )
-        .route(
-            "/sync_utxos_by_block",
-            get(handler::sync_utxos_by_block::handle::<B>).layer(DefaultBodyLimit::disable()),
-        )
-        .route(
-            "/get_utxos_by_block",
-            get(handler::get_utxos_by_block::handle::<B>).layer(DefaultBodyLimit::disable()),
-        )
-        .route(
-            "/generate_burn_output_proof",
-            get(handler::generate_burn_output_proof::handle::<B>),
-        )
-        .route(
-            "/get_mempool_fee_per_gram_stats",
-            get(handler::get_mempool_fee_per_gram_stats::handle::<B>),
-        )
-        .layer(RequestBodyLimitLayer::new(handler::json_rpc::MAX_JSON_RPC_BODY_BYTES))
-        // After the layer, so it does not cover this route: the handler enforces the same cap itself and logs
-        // what it rejects
-        .route(
-            "/json_rpc",
-            post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::disable()),
-        )
-}
-
 pub struct Server<S> {
     port: u16,
     query_service: Arc<S>,
@@ -122,11 +76,44 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
     pub async fn start<B: BlockchainBackend + 'static>(&self) -> Result<(), Error> {
         let shutdown_signal = self.shutdown_signal.clone();
         let port = self.port;
-        let router = routes::<B>()
+        let router = Router::new()
+            .route("/get_tip_info", get(handler::get_tip_info::handle::<B>))
+            .route("/get_header_by_height", get(handler::get_header_by_height::handle::<B>))
+            .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
+            .route("/get_utxos_mined_info", get(handler::get_utxos_mined_info::handle::<B>))
+            .route("/fetch_utxo", get(handler::get_utxo::handle::<B>))
+            .route(
+                "/get_utxos_deleted_info",
+                get(handler::get_utxos_deleted_info::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/transactions",
+                get(handler::transaction_query::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/sync_utxos_by_block",
+                get(handler::sync_utxos_by_block::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/get_utxos_by_block",
+                get(handler::get_utxos_by_block::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route("/json_rpc", handler::json_rpc::route::<B>())
+            .route(
+                "/generate_burn_output_proof",
+                get(handler::generate_burn_output_proof::handle::<B>),
+            )
+            .route(
+                "/get_mempool_fee_per_gram_stats",
+                get(handler::get_mempool_fee_per_gram_stats::handle::<B>),
+            )
+            // A large transaction with 2_316 inputs, 154 outputs and byte size 2_109_809 translated to 4_853_330 JSON
+            // object bytes, ~ 2.3 times larger. So we set the limit here to 2.5 times 4 MB.
+            .layer(RequestBodyLimitLayer::new(handler::json_rpc::MAX_JSON_RPC_BODY_BYTES))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
             .layer(Extension(self.mempool_handle.clone()))
-            .layer(Extension(Arc::new(handler::json_rpc::JsonRpcLimits::default())))
+            .layer(Extension(handler::json_rpc::JsonRpcLimiter::default()))
             .layer(Extension(Arc::new(self.cache_cfg.clone())));
         let listen_ip = self.listen_ip;
         let address = SocketAddr::new(listen_ip, port);
@@ -136,7 +123,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
         // spawn server
         tokio::spawn(async move {
             info!(target: LOG_TARGET, "Wallet query HTTP server listening at {listen_ip}:{port}");
-            if let Err(error) = axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
+            if let Err(error) = axum::serve(listener, router)
                 .with_graceful_shutdown(shutdown_signal)
                 .await
             {
