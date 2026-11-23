@@ -3837,7 +3837,7 @@ async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change()
         .unwrap();
     let signed = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_deposit_multisig_transaction(confirmed(PayloadSummary::from_multisig(prepared)))
+        .sign_one_sided_deposit_multisig_transaction(confirmed(PayloadSummary::from_multisig(prepared).unwrap()))
         .await
         .unwrap();
     assert_eq!(

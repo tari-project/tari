@@ -1079,7 +1079,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            confirmed(PayloadSummary::from_multisig(init)),
+            confirmed(PayloadSummary::from_multisig(init).unwrap()),
             &PayloadKeyPolicy::default(),
         )
         .unwrap();
@@ -1137,7 +1137,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            confirmed(PayloadSummary::from_multisig(init)),
+            confirmed(PayloadSummary::from_multisig(init).unwrap()),
             &PayloadKeyPolicy::default(),
         )
         .unwrap_err();
@@ -1492,7 +1492,7 @@ mod test {
             alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            confirmed(PayloadSummary::from_multisig(init)),
+            confirmed(PayloadSummary::from_multisig(init).unwrap()),
             &PayloadKeyPolicy::default(),
         )
         .unwrap()
@@ -3324,7 +3324,7 @@ mod test {
                 &spend,
                 create_consensus_manager().consensus_constants(0).clone(),
                 Network::LocalNet,
-                confirmed(PayloadSummary::from_multisig(payload)),
+                confirmed(PayloadSummary::from_multisig(payload).unwrap()),
                 policy,
             )
             .map(|_| ())
@@ -3455,13 +3455,16 @@ mod test {
                 &canonical,
             )
             .unwrap();
+            // The summary refuses an invalid threshold before the operator sees it
+            let summary = PayloadSummary::from_multisig(prepared).map_err(|e| e.to_string())?;
             sign_locked_deposit_multisig_transaction(
                 &alice_key_manager,
                 rules.consensus_constants(0).clone(),
                 Network::LocalNet,
-                confirmed(PayloadSummary::from_multisig(prepared)),
+                confirmed(summary),
                 &PayloadKeyPolicy::default(),
             )
+            .map_err(|e| e.to_string())
         };
 
         assert!(

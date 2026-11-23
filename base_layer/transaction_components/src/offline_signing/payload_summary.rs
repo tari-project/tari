@@ -58,6 +58,7 @@ use crate::{
     fee::Fee,
     helpers::terminal_safe::TerminalSafe,
     key_manager::TariKeyId,
+    multisig::script::validate_multisig_bounds,
     offline_signing::{
         models::{
             HasVersion,
@@ -330,14 +331,16 @@ impl PayloadDetails {
         writeln!(f, "Expires        : {} ({left})", format_unix_time(expires_at))
     }
 
-    /// Builds the details of a multisig deposit payload.
-    pub(crate) fn multisig(tx_id: TxId, info: &OneSidedMultisigTransactionInfo) -> Self {
+    /// Builds the details of a multisig deposit payload. A threshold the signer would refuse (`m = 0`, `m > n` or
+    /// `n > MAX_MULTISIG_LIMIT`) is rejected here, so it is never shown to the operator for approval.
+    pub(crate) fn multisig(tx_id: TxId, info: &OneSidedMultisigTransactionInfo) -> Result<Self, TransactionError> {
+        validate_multisig_bounds(info.party_number, info.public_keys.len())?;
         let mut details = Self::one_sided(PayloadKind::MultisigDeposit, tx_id, &info.base);
         details.multisig_public_keys = info.public_keys.iter().map(|pk| pk.to_hex()).collect();
         // `party_number` holds the threshold m
         details.multisig_required_signatures = Some(info.party_number);
         details.use_top_level_memo_for_recipients();
-        details
+        Ok(details)
     }
 
     /// Multisig signers put the top-level memo on the recipient output, so that is the memo shown for it.
@@ -720,9 +723,9 @@ impl PayloadSummary<PrepareOneSidedTransactionForSigningResult> {
 }
 
 impl PayloadSummary<PrepareDepositMultisigTransactionResult> {
-    pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Self {
-        let details = PayloadDetails::multisig(request.tx_id, &request.info);
-        Self::new(details, request)
+    pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Result<Self, TransactionError> {
+        let details = PayloadDetails::multisig(request.tx_id, &request.info)?;
+        Ok(Self::new(details, request))
     }
 }
 
@@ -936,6 +939,28 @@ mod test {
             None,
         )
         .unwrap()
+    }
+
+    fn random_public_key() -> tari_common_types::types::CompressedPublicKey {
+        use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
+
+        CompressedPublicKey::new_from_pk(UncompressedPublicKey::from_secret_key(&PrivateKey::random(
+            &mut rand::rng(),
+        )))
+    }
+
+    fn multisig_request(party_number: u8, key_count: usize) -> PrepareDepositMultisigTransactionResult {
+        let keys = (0..key_count).map(|_| random_public_key()).collect();
+        PrepareDepositMultisigTransactionResult {
+            version: get_latest_version(),
+            tx_id: TxId::from(1u64),
+            info: OneSidedMultisigTransactionInfo::new(info(&[1000]), keys, party_number),
+            payload_signature: PayloadIntegritySignature {
+                signature: Default::default(),
+            },
+            payload_key_id: None,
+            expires_at: unix_now().saturating_add(3600),
+        }
     }
 
     fn info(amounts: &[u64]) -> OneSidedTransactionInfo {
@@ -1471,13 +1496,14 @@ mod test {
             let deposit = PayloadSummary::from_multisig(PrepareDepositMultisigTransactionResult {
                 version: get_latest_version(),
                 tx_id: TxId::from(1u64),
-                info: OneSidedMultisigTransactionInfo::new(memo_info(recipient_memo), vec![], 1),
+                info: OneSidedMultisigTransactionInfo::new(memo_info(recipient_memo), vec![random_public_key()], 1),
                 payload_signature: PayloadIntegritySignature {
                     signature: Default::default(),
                 },
                 payload_key_id: None,
                 expires_at: unix_now().saturating_add(3600),
-            });
+            })
+            .unwrap();
             let withdraw = PayloadSummary::from_withdraw_multisig(PrepareWithdrawMultisigTransactionResult {
                 version: get_latest_version(),
                 tx_id: TxId::from(1u64),
@@ -1514,29 +1540,30 @@ mod test {
         }
     }
 
+    /// A tampered payload with a threshold the signer would refuse must not reach the operator as "5 of 3".
     #[test]
-    fn multisig_summary_labels_required_signatures() {
-        use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
+    fn multisig_summary_refuses_an_invalid_threshold() {
+        use crate::multisig::script::MAX_MULTISIG_LIMIT;
 
-        let keys = (0..3)
-            .map(|_| {
-                CompressedPublicKey::new_from_pk(UncompressedPublicKey::from_secret_key(&PrivateKey::random(
-                    &mut rand::rng(),
-                )))
-            })
-            .collect();
-        let request = PrepareDepositMultisigTransactionResult {
-            version: get_latest_version(),
-            tx_id: TxId::from(1u64),
-            info: OneSidedMultisigTransactionInfo::new(info(&[1000]), keys, 2),
-            payload_signature: PayloadIntegritySignature {
-                signature: Default::default(),
-            },
-            payload_key_id: None,
-            expires_at: unix_now().saturating_add(3600),
+        let summary_err = |party_number: u8, key_count: usize| match PayloadSummary::from_multisig(multisig_request(
+            party_number,
+            key_count,
+        )) {
+            Ok(summary) => panic!("expected the summary to be refused, got:\n{summary}"),
+            Err(e) => e.to_string(),
         };
 
-        let summary = PayloadSummary::from_multisig(request);
+        assert!(PayloadSummary::from_multisig(multisig_request(2, 3)).is_ok());
+        assert!(summary_err(0, 3).contains("Invalid multisig threshold party_number=0"));
+        assert!(summary_err(5, 3).contains("Invalid multisig threshold party_number=5"));
+        assert!(summary_err(2, usize::from(MAX_MULTISIG_LIMIT) + 1).contains("expected 1..=32, got 33"));
+    }
+
+    #[test]
+    fn multisig_summary_labels_required_signatures() {
+        let request = multisig_request(2, 3);
+
+        let summary = PayloadSummary::from_multisig(request).unwrap();
         assert_eq!(summary.kind, PayloadKind::MultisigDeposit);
         let rendered = summary.to_string();
         assert!(rendered.contains("Payload        : multisig deposit"), "{rendered}");

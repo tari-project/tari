@@ -298,7 +298,7 @@ mod test {
     }
 
     #[test]
-    fn create_and_spend_multisig_enforce_script_bounds_and_exact_signature_count() {
+    fn create_deposit_multisig_enforces_script_bounds() {
         use std::{
             future::Future,
             pin::pin,
@@ -401,6 +401,23 @@ mod test {
             Uuid::nil(),
         )));
         assert!(oversized.contains("expected 1..=32, got 33"), "{oversized}");
+    }
+
+    #[test]
+    fn spend_multisig_utxo_requires_exact_signature_count() {
+        let rules = create_consensus_manager();
+        let consensus_constants = rules.consensus_constants(0);
+        let key_manager = KeyManager::new_random().unwrap();
+        let recipient_key_manager = KeyManager::new_random().unwrap();
+        let recipient = TariAddress::new_dual_address(
+            recipient_key_manager.get_view_key().pub_key,
+            recipient_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let mut session = MultisigSession::new(key_manager.clone());
 
         // Excess signatures (> threshold) must be rejected before building a transaction that would fail with
         // StackNotEmpty
