@@ -154,7 +154,7 @@ impl BlockSync {
     }
 }
 
-/// After a sync, swap to the strongest chain we hold, including orphans held on the synced tip, and publish a chain
+/// After a sync, swap to the strongest chain we hold, including orphans held on synced blocks, and publish a chain
 /// change as `handle_block` does, so that the mempool and other listeners follow it
 async fn swap_to_highest_pow_chain_and_publish<B: BlockchainBackend + 'static>(shared: &BaseNodeStateMachine<B>) {
     match shared.db.swap_to_highest_pow_chain().await {

@@ -63,10 +63,12 @@ impl McpResource for SyncProgressResource {
         let mut client = self.grpc_client.as_ref().clone();
 
         // Get basic version info to test connectivity
-        let version_response = client
-            .get_version(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to connect to node: {e}")))?;
+        let version_response = client.get_version(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to connect to node: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let _version = version_response.into_inner();
 

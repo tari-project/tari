@@ -31,3 +31,5 @@ which = "5.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
+# `router` lets tests run an in-process gRPC server with no services
+tonic = { version = "0.13.1", default-features = false, features = ["router"] }

@@ -38,7 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use std::{
-    cmp::Ordering,
+    cmp::Reverse,
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
@@ -189,23 +189,14 @@ impl BlockHeader {
     }
 
     /// Given a slice of headers, calculate the maximum, minimum and average periods between them.
-    /// Expects the slice of headers to be ordered from youngest to oldest, but will reverse them if not.
-    /// This function always allocates a vec of the slice length. This is in case it needs to reverse the list.
+    /// Sorts the headers by descending height (youngest to oldest).
+    /// This function always allocates a vec of the slice length.
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {
             (0, 0, 0.0)
         } else {
             let mut headers = headers.to_vec();
-
-            // ensure the slice is in reverse order
-            let ordering = headers
-                .first()
-                .expect("Already checked")
-                .timestamp
-                .cmp(&headers.last().expect("Already checked").timestamp);
-            if ordering == Ordering::Less {
-                headers.reverse();
-            }
+            headers.sort_by_key(|h| Reverse(h.height));
 
             let last_ts = headers.first().expect("Already checked").timestamp;
             let first_ts = headers.last().expect("Already checked").timestamp;
@@ -424,9 +415,10 @@ mod test {
 
     #[test]
     fn test_timing_stats() {
-        let headers = vec![500, 350, 300, 210, 100u64]
+        let headers = [(5, 500u64), (4, 350), (3, 300), (2, 210), (1, 100)]
             .into_iter()
-            .map(|t| BlockHeader {
+            .map(|(h, t)| BlockHeader {
+                height: h,
                 timestamp: t.into(),
                 ..BlockHeader::new(0)
             })
@@ -440,9 +432,10 @@ mod test {
 
     #[test]
     fn timing_negative_blocks() {
-        let headers = vec![150, 90, 100u64]
+        let headers = [(3, 150u64), (2, 90), (1, 100)]
             .into_iter()
-            .map(|t| BlockHeader {
+            .map(|(h, t)| BlockHeader {
+                height: h,
                 timestamp: t.into(),
                 ..BlockHeader::new(0)
             })
@@ -477,9 +470,10 @@ mod test {
 
     #[test]
     fn timing_two_blocks() {
-        let headers = vec![150, 90]
+        let headers = [(2, 150u64), (1, 90)]
             .into_iter()
-            .map(|t| BlockHeader {
+            .map(|(h, t)| BlockHeader {
+                height: h,
                 timestamp: t.into(),
                 ..BlockHeader::new(0)
             })
@@ -493,9 +487,10 @@ mod test {
 
     #[test]
     fn timing_wrong_order() {
-        let headers = vec![90, 150]
+        let headers = [(1, 90u64), (2, 150)]
             .into_iter()
-            .map(|t| BlockHeader {
+            .map(|(h, t)| BlockHeader {
+                height: h,
                 timestamp: t.into(),
                 ..BlockHeader::new(0)
             })
@@ -505,5 +500,50 @@ mod test {
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn timing_stats_orders_by_height_when_youngest_timestamp_is_smaller() {
+        let headers = vec![
+            BlockHeader {
+                height: 1,
+                timestamp: 150.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 2,
+                timestamp: 100.into(),
+                ..BlockHeader::new(0)
+            },
+        ];
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        assert_eq!((max, min), (0, 0));
+        assert!((avg - 0f64).abs() < f64::EPSILON);
+
+        let shuffled = vec![
+            BlockHeader {
+                height: 2,
+                timestamp: 200.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 4,
+                timestamp: 470.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 1,
+                timestamp: 140.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 3,
+                timestamp: 320.into(),
+                ..BlockHeader::new(0)
+            },
+        ];
+        let (max, min, avg) = BlockHeader::timing_stats(&shuffled);
+        assert_eq!((max, min), (150, 60));
+        assert!((avg - 110f64).abs() < f64::EPSILON);
     }
 }
