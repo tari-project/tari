@@ -48,8 +48,12 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use blake2::Blake2b;
+use digest::{Digest, consts::U32};
 use log::info;
-use tari_common_types::{tari_address::TariAddress, transaction::TxId};
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
+use tari_crypto::hashing::DomainSeparatedHasher;
+use tari_hashing::OfflineSigningPayloadHashDomain;
 use tari_script::TariScript;
 use tari_utilities::hex::Hex;
 
@@ -60,6 +64,7 @@ use crate::{
     key_manager::TariKeyId,
     offline_signing::{
         models::{
+            ConfirmationKind,
             HasVersion,
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
@@ -67,13 +72,22 @@ use crate::{
             PrepareDepositMultisigTransactionResult,
             PrepareOneSidedTransactionForSigningResult,
             PrepareWithdrawMultisigTransactionResult,
+            SigningReceipt,
             borsh_canonical_multisig,
             borsh_canonical_one_sided,
             has_payload_auth_fields,
         },
         offline_signer::{check_payload_expiry, unix_now},
     },
-    transaction_components::{MemoField, OutputFeatures, OutputType, RangeProofType, TransactionError, WalletOutput},
+    transaction_components::{
+        MemoField,
+        OutputFeatures,
+        OutputType,
+        RangeProofType,
+        TransactionError,
+        WalletOutput,
+        covenants::Covenant,
+    },
     weight::TransactionWeight,
 };
 
@@ -185,7 +199,19 @@ pub struct OutputSummary {
     pub amount: MicroMinotari,
     pub script: TariScript,
     pub features: OutputFeatures,
+    pub covenant: Covenant,
     pub payment_id: MemoField,
+}
+
+impl OutputSummary {
+    /// [`unusual_features`], plus a covenant if the output carries one.
+    pub fn unusual(&self) -> Vec<String> {
+        let mut reasons = unusual_features(&self.features);
+        if !self.covenant.is_empty() {
+            reasons.push("carries a covenant: it restricts how this output can be spent later".to_string());
+        }
+        reasons
+    }
 }
 
 /// Reasons why output features differ from those of a normal payment, one per non-default feature.
@@ -272,6 +298,7 @@ impl PayloadDetails {
                     amount: o.value(),
                     script: o.script().clone(),
                     features: o.features().clone(),
+                    covenant: o.covenant().clone(),
                     payment_id: o.payment_id().clone(),
                 })
                 .collect(),
@@ -507,11 +534,7 @@ impl PayloadDetails {
             )?;
         }
         for (i, output) in self.outputs.iter().enumerate() {
-            let warning = if unusual_features(&output.features).is_empty() {
-                ""
-            } else {
-                UNUSUAL
-            };
+            let warning = if output.unusual().is_empty() { "" } else { UNUSUAL };
             writeln!(
                 f,
                 "  output [{}] {} -> script {} (NOT a normal payment){}",
@@ -586,13 +609,12 @@ fn write_memo(f: &mut Formatter<'_>, label: &str, memo: &MemoField) -> std::fmt:
     Ok(())
 }
 
-fn write_features(f: &mut Formatter<'_>, features: &OutputFeatures) -> std::fmt::Result {
+fn write_features(f: &mut Formatter<'_>, features: &OutputFeatures, reasons: &[String]) -> std::fmt::Result {
     writeln!(
         f,
         "      features: type {}, maturity {}, range proof {}",
         features.output_type, features.maturity, features.range_proof_type
     )?;
-    let reasons = unusual_features(features);
     if !reasons.is_empty() {
         writeln!(f, "      WARNING : {}", reasons.join("; "))?;
     }
@@ -620,7 +642,7 @@ impl Display for PayloadDetails {
             // Both forms are shown so the operator can check the address against whichever one they were given
             writeln!(f, "      address : {}", recipient.address.to_base58())?;
             writeln!(f, "      emoji   : {}", TerminalSafe(&recipient.address))?;
-            write_features(f, &recipient.features)?;
+            write_features(f, &recipient.features, &unusual_features(&recipient.features))?;
             if recipient.payload_memo_differs {
                 writeln!(
                     f,
@@ -641,7 +663,14 @@ impl Display for PayloadDetails {
                 writeln!(f, "  [{}] amount  : {}", i.saturating_add(1), output.amount)?;
                 // There is no address to show: whoever can satisfy this script owns the funds
                 writeln!(f, "      script  : {}", TerminalSafe(&output.script))?;
-                write_features(f, &output.features)?;
+                if !output.covenant.is_empty() {
+                    writeln!(
+                        f,
+                        "      Covenant: {}",
+                        TerminalSafe(&output.covenant.to_bytes().to_hex())
+                    )?;
+                }
+                write_features(f, &output.features, &output.unusual())?;
             }
         }
         if let Some(required) = self.multisig_required_signatures {
@@ -703,7 +732,19 @@ impl<P: OfflinePayload> PayloadSummary<P> {
         if !decision.approved {
             return Err(PayloadNotConfirmed::Declined);
         }
-        Ok(ConfirmedPayload { payload: self.payload })
+        Ok(ConfirmedPayload {
+            payload: self.payload,
+            confirmation: decision.kind,
+            payload_hash: decision.payload_hash,
+        })
+    }
+
+    /// Domain-separated Blake2b-256 of the payload's canonical bytes, the bytes its integrity signature covers.
+    pub fn payload_hash(&self) -> Result<FixedHash, TransactionError> {
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U32>, OfflineSigningPayloadHashDomain>::new_with_label("payload_hash")
+                .chain_update(self.payload.canonical_bytes()?);
+        Ok(FixedHash::from(Digest::finalize(hasher)))
     }
 
     /// Gives the payload back without signing it.
@@ -753,6 +794,8 @@ impl<P: OfflinePayload> Display for PayloadSummary<P> {
 pub struct Confirmation {
     summary_id: u64,
     approved: bool,
+    kind: ConfirmationKind,
+    payload_hash: FixedHash,
 }
 
 impl Confirmation {
@@ -791,24 +834,37 @@ pub enum PayloadNotConfirmed {
 /// ```
 ///
 /// and a `ConfirmedPayload` cannot be built outside this module:
-/// ```compile_fail
+/// ```compile_fail,E0451
+/// use tari_common_types::types::FixedHash;
 /// use tari_transaction_components::offline_signing::{
 ///     ConfirmedPayload,
-///     models::PrepareOneSidedTransactionForSigningResult,
+///     models::{ConfirmationKind, PrepareOneSidedTransactionForSigningResult},
 /// };
 ///
 /// fn wrap(payload: PrepareOneSidedTransactionForSigningResult) -> ConfirmedPayload<PrepareOneSidedTransactionForSigningResult> {
-///     ConfirmedPayload { payload }
+///     ConfirmedPayload { payload, confirmation: ConfirmationKind::Prompt, payload_hash: FixedHash::default() }
 /// }
 /// ```
 #[derive(Clone)]
 pub struct ConfirmedPayload<P: OfflinePayload> {
     payload: P,
+    confirmation: ConfirmationKind,
+    payload_hash: FixedHash,
 }
 
 impl<P: OfflinePayload> ConfirmedPayload<P> {
     pub fn payload(&self) -> &P {
         &self.payload
+    }
+
+    /// A receipt for signing this payload now.
+    pub(crate) fn receipt(&self) -> SigningReceipt {
+        SigningReceipt {
+            tx_id: self.payload.tx_id(),
+            payload_hash: self.payload_hash,
+            confirmation: self.confirmation,
+            signed_at: unix_now(),
+        }
     }
 
     pub(crate) fn into_payload(self) -> P {
@@ -820,6 +876,8 @@ impl<P: OfflinePayload> std::fmt::Debug for ConfirmedPayload<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfirmedPayload")
             .field("payload", &self.payload)
+            .field("confirmation", &self.confirmation)
+            .field("payload_hash", &self.payload_hash)
             .finish()
     }
 }
@@ -845,7 +903,8 @@ impl ConfirmedPayload<PrepareWithdrawMultisigTransactionResult> {
 pub enum ConfirmationMode {
     /// Ask y/N on `input`.
     Interactive,
-    /// There is no one to ask: write and log the summary, then approve.
+    /// There is no one to ask: write the summary, log a record (transaction id, decision and payload hash), then
+    /// approve.
     NonInteractive,
 }
 
@@ -854,7 +913,8 @@ pub enum ConfirmationMode {
 ///
 /// In [`ConfirmationMode::Interactive`] the operator is asked to type `y` or `yes`; anything else, including end of
 /// input, declines. In [`ConfirmationMode::NonInteractive`] the confirmation is approved without reading `input`.
-/// Either way the summary is logged with the decision.
+/// Either way the decision is logged with the transaction id and payload hash; the summary itself is not, as it
+/// carries addresses, amounts and memo text.
 pub fn present_payload_summary<P: OfflinePayload>(
     summary: &PayloadSummary<P>,
     mode: ConfirmationMode,
@@ -862,27 +922,26 @@ pub fn present_payload_summary<P: OfflinePayload>(
     input: &mut dyn BufRead,
 ) -> std::io::Result<Confirmation> {
     check_payload_expiry(summary.expires_at, unix_now()).map_err(|e| std::io::Error::other(e.to_string()))?;
+    let payload_hash = summary
+        .payload_hash()
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
     write!(
         out,
         "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\n"
     )?;
-    let approved = match mode {
+    let (approved, kind, decision) = match mode {
         ConfirmationMode::NonInteractive => {
             // Only claim a log record when a logger will actually write one
             if log::log_enabled!(target: LOG_TARGET, log::Level::Info) {
                 writeln!(
                     out,
-                    "Signing without a prompt (non-interactive mode or no terminal). The summary above has been \
-                     logged."
+                    "Signing without a prompt (non-interactive mode or no terminal). A record (transaction id and \
+                     payload hash) has been logged."
                 )?;
             } else {
                 writeln!(out, "Signing without a prompt (non-interactive mode or no terminal).")?;
             }
-            info!(
-                target: LOG_TARGET,
-                "Signing offline payload {} without a prompt (non-interactive mode or no terminal):\n{}", summary.tx_id, summary
-            );
-            true
+            (true, ConfirmationKind::NoPrompt, "signed without a prompt")
         },
         ConfirmationMode::Interactive => {
             write!(out, "Sign this transaction? [y/N]: ")?;
@@ -891,20 +950,20 @@ pub fn present_payload_summary<P: OfflinePayload>(
             input.read_line(&mut answer)?;
             let answer = answer.trim().to_ascii_lowercase();
             let approved = answer == "y" || answer == "yes";
-            info!(
-                target: LOG_TARGET,
-                "Offline payload {} {} at the prompt:\n{}",
-                summary.tx_id,
-                if approved { "approved" } else { "declined" },
-                summary
-            );
-            approved
+            let decision = if approved { "approved" } else { "declined" };
+            (approved, ConfirmationKind::Prompt, decision)
         },
     };
+    info!(
+        target: LOG_TARGET,
+        "Offline payload {} ({}) {decision}, payload hash {payload_hash}", summary.tx_id, summary.kind
+    );
     out.flush()?;
     Ok(Confirmation {
         summary_id: summary.id,
         approved,
+        kind,
+        payload_hash,
     })
 }
 
@@ -917,6 +976,7 @@ mod test {
 
     use super::*;
     use crate::{
+        helpers::terminal_safe::needs_escape,
         key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
         offline_signing::models::{PayloadIntegritySignature, PaymentRecipient, get_latest_version},
         transaction_components::{EncryptedData, WalletOutput, covenants::Covenant, memo_field::TxType},
@@ -1411,6 +1471,73 @@ mod test {
         );
     }
 
+    fn output_with_covenant(key_manager: &KeyManager, covenant: Covenant) -> WalletOutput {
+        WalletOutput::new(
+            Default::default(),
+            MicroMinotari::from(300),
+            key_manager.get_random_key(None, None).unwrap().key_id,
+            OutputFeatures::default(),
+            push_pubkey_script(&key_manager.get_spend_key().pub_key),
+            ExecutionStack::default(),
+            TariKeyId::Zero,
+            Default::default(),
+            Default::default(),
+            0,
+            covenant,
+            EncryptedData::default(),
+            MicroMinotari::zero(),
+            MemoField::new_empty(),
+            key_manager,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn payload_summary_shows_an_output_covenant_escaped() {
+        // Control and bidi characters inside the covenant's own data
+        let covenant = crate::covenant!(field_eq(
+            @field::features,
+            @bytes("\x1b[2J\r\u{202e}".as_bytes().to_vec().try_into().unwrap())
+        ))
+        .unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut with_covenant = info(&[1000]);
+        with_covenant.outputs = vec![output_with_covenant(&key_manager, covenant.clone())];
+
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(with_covenant)).to_string();
+        let lines: Vec<&str> = rendered.lines().collect();
+        let script = lines.iter().position(|l| l.starts_with("      script  : ")).unwrap();
+        assert_eq!(
+            lines[script.saturating_add(1)],
+            format!("      Covenant: {}", covenant.to_bytes().to_hex()),
+            "{rendered}"
+        );
+        assert!(
+            lines[script.saturating_add(3)].starts_with("      WARNING : ") &&
+                lines[script.saturating_add(3)]
+                    .ends_with("carries a covenant: it restricts how this output can be spent later"),
+            "{rendered}"
+        );
+        let recap = &rendered[rendered.find("---- Recap ----").unwrap()..];
+        let line = recap.lines().find(|l| l.starts_with("  output [1] ")).unwrap();
+        assert!(
+            line.ends_with("(WARNING: unusual output features, see above)"),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.chars().any(|c| c != '\n' && needs_escape(c) && c != '\\'),
+            "raw control characters in:\n{rendered}"
+        );
+
+        // No covenant, no line and no warning
+        let mut info = info(&[1000]);
+        info.outputs = vec![output_with_covenant(&key_manager, Covenant::default())];
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        assert!(!rendered.contains("Covenant"), "{rendered}");
+        assert!(!rendered.contains("WARNING :"), "{rendered}");
+        assert!(!rendered.contains("unusual output features"), "{rendered}");
+    }
+
     #[test]
     fn payload_summary_wraps_memo_text() {
         let mut text = " ".repeat(200);
@@ -1644,18 +1771,15 @@ mod test {
         .unwrap();
         assert!(confirmation.is_approved());
         let written = String::from_utf8(out).unwrap();
-        // Tests run without a logger unless one was installed, so expect whichever form applies
-        let logged = if log::log_enabled!(target: LOG_TARGET, log::Level::Info) {
-            " The summary above has been logged."
-        } else {
-            ""
-        };
-        assert_eq!(
-            written,
-            format!(
-                "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nSigning without \
-                 a prompt (non-interactive mode or no terminal).{logged}\n"
-            )
+        // Another test may install a logger at any moment, so either form is accepted
+        let prefix = format!(
+            "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nSigning without a \
+             prompt (non-interactive mode or no terminal)."
+        );
+        let rest = written.strip_prefix(&prefix).unwrap_or_else(|| panic!("{written}"));
+        assert!(
+            rest == "\n" || rest == " A record (transaction id and payload hash) has been logged.\n",
+            "{written}"
         );
     }
 }
