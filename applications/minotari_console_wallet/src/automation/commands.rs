@@ -156,6 +156,7 @@ use crate::{
     cli::{CliCommands, CliRecipientInfo, ImportPayloadKeyArgs, MakeItRainTransactionType},
     init::init_wallet,
     recovery::{get_seed_from_seed_words, wallet_recovery},
+    utils::genesis_header_hash,
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -765,13 +766,22 @@ async fn fetch_unspent_output(
         let output = client
             .fetch_utxo(output_hash.to_vec())
             .await
-            .map_err(|e| CommandError::General(format!("Refusing to sign: could not fetch the output: {e}")))?
+            .map_err(|e| {
+                CommandError::General(format!(
+                    "Refusing to sign: the base node did not return the output (unknown hash, or the node is \
+                     unreachable): {}",
+                    TerminalSafe(&e.to_string())
+                ))
+            })?
             .ok_or_else(|| CommandError::General("Refusing to sign: the base node does not know the output".into()))?;
         let deleted = client
-            .query_deleted_utxos(vec![output_hash.to_vec()], vec![])
+            .query_deleted_utxos(vec![output_hash.to_vec()], genesis_header_hash().to_vec())
             .await
             .map_err(|e| {
-                CommandError::General(format!("Refusing to sign: could not check the output is unspent: {e}"))
+                CommandError::General(format!(
+                    "Refusing to sign: could not check the output is unspent: {}",
+                    TerminalSafe(&e.to_string())
+                ))
             })?;
         match deleted.utxos.first() {
             Some(info) if info.found_in_header.is_some() && info.spent_in_header.is_none() => Ok(output),
@@ -817,10 +827,10 @@ fn check_co_signed_output(
     Ok(())
 }
 
-/// Writes what a multisig co-signer is about to sign and returns whether they approved it. As for offline payloads,
-/// the operator is asked y/N on `input` when interactive and the signing is approved without asking otherwise; the
-/// decision is logged with the public values shown. `checked_output_hash` is set once [`check_co_signed_output`]
-/// passed, and `utxo_commitment` is then the checked output's commitment.
+/// Writes what a multisig co-signer is about to sign and returns an error unless they approved it. As for offline
+/// payloads, the operator is asked y/N on `input` when interactive and the signing is approved without asking
+/// otherwise; the decision is logged with the public values shown. `checked_output_hash` is set once
+/// [`check_co_signed_output`] passed, and `utxo_commitment` is then the checked output's commitment.
 fn confirm_script_message_signing(
     mode: ConfirmationMode,
     out: &mut dyn Write,
@@ -829,7 +839,7 @@ fn confirm_script_message_signing(
     utxo_commitment: Option<&CompressedCommitment>,
     message: &[u8; 32],
     sender_offset_key: Option<&CompressedPublicKey>,
-) -> io::Result<bool> {
+) -> Result<(), CommandError> {
     let commitment_hex = utxo_commitment.map(|c| c.to_hex());
     let offset_hex = sender_offset_key.map(|k| k.to_hex());
     let checked = if checked_output_hash.is_some() {
@@ -863,7 +873,7 @@ fn confirm_script_message_signing(
     let (approved, decision) = match mode {
         ConfirmationMode::NonInteractive => {
             writeln!(out, "Signing without a prompt (non-interactive mode or no terminal).")?;
-            (true, "signed without a prompt")
+            (true, "approved for signing without a prompt")
         },
         ConfirmationMode::Interactive => {
             write!(out, "Sign this script message? [y/N]: ")?;
@@ -872,7 +882,7 @@ fn confirm_script_message_signing(
             input.read_line(&mut answer)?;
             let answer = answer.trim().to_ascii_lowercase();
             let approved = answer == "y" || answer == "yes";
-            (approved, if approved { "approved" } else { "declined" })
+            (approved, if approved { "approved for signing" } else { "declined" })
         },
     };
     info!(
@@ -884,7 +894,11 @@ fn confirm_script_message_signing(
         commitment_hex.as_deref().unwrap_or("none"),
     );
     out.flush()?;
-    Ok(approved)
+    if approved {
+        Ok(())
+    } else {
+        Err(CommandError::General("SignScriptMessage not signed: declined".into()))
+    }
 }
 
 /// Writes the summary of an offline payload and returns it confirmed, or an error if it was not confirmed.
@@ -3324,7 +3338,7 @@ pub async fn command_runner(
                     None => None,
                 };
                 let mode = offline_confirmation_mode(non_interactive_mode);
-                let approved = confirm_script_message_signing(
+                confirm_script_message_signing(
                     mode,
                     &mut offline_summary_output(mode),
                     &mut io::stdin().lock(),
@@ -3332,12 +3346,7 @@ pub async fn command_runner(
                     checked_commitment.as_ref().or(args.utxo_commitment.as_ref()),
                     &commitment_bytes,
                     sender_offset,
-                )
-                .map_err(|e| CommandError::General(e.to_string()))?;
-                if !approved {
-                    eprintln!("SignScriptMessage not signed: declined");
-                    continue;
-                }
+                )?;
                 let signature =
                     key_manager_service.sign_script_message_with_spend_key_trusted(&commitment_bytes, sender_offset)?;
                 info!(target: LOG_TARGET, "Multisig script message {} signed", commitment_bytes.to_hex());
@@ -3779,7 +3788,10 @@ pub async fn command_runner(
                     }
 
                     // Check if spent
-                    match client.query_deleted_utxos(vec![output_hash], vec![]).await {
+                    match client
+                        .query_deleted_utxos(vec![output_hash], genesis_header_hash().to_vec())
+                        .await
+                    {
                         Ok(response) => {
                             if let Some(deleted_info) = response.utxos.first() {
                                 match (&deleted_info.found_in_header, &deleted_info.spent_in_header) {
@@ -4347,7 +4359,7 @@ mod test {
         let commitment = CompressedCommitment::default();
         let hash = FixedHash::from([0xcd; 32]);
         let mut out = Vec::new();
-        let approved = confirm_script_message_signing(
+        confirm_script_message_signing(
             ConfirmationMode::NonInteractive,
             &mut out,
             &mut io::empty(),
@@ -4357,7 +4369,6 @@ mod test {
             None,
         )
         .unwrap();
-        assert!(approved);
         let written = String::from_utf8(out).unwrap();
         assert!(written.contains(&hash.to_hex()), "{written}");
         assert!(written.contains("Checked with the base node"), "{written}");
@@ -4393,7 +4404,7 @@ mod test {
     fn script_message_signing_asks_and_only_signs_on_yes() {
         for (answer, expected) in [("y\n", true), ("YES\n", true), ("n\n", false), ("", false)] {
             let mut out = Vec::new();
-            let approved = confirm_script_message_signing(
+            let result = confirm_script_message_signing(
                 ConfirmationMode::Interactive,
                 &mut out,
                 &mut answer.as_bytes(),
@@ -4401,9 +4412,14 @@ mod test {
                 None,
                 &[0xab; 32],
                 None,
-            )
-            .unwrap();
-            assert_eq!(approved, expected, "{answer:?}");
+            );
+            match result {
+                Ok(()) => assert!(expected, "{answer:?}"),
+                Err(e) => {
+                    assert!(!expected, "{answer:?}");
+                    assert!(e.to_string().contains("not signed: declined"), "{e}");
+                },
+            }
             assert!(String::from_utf8(out).unwrap().contains("[y/N]"));
         }
     }

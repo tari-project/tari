@@ -203,6 +203,7 @@ use tonic::{Request, Response, Status};
 use crate::{
     grpc::{TransactionWrapper, convert_to_transaction_event, wallet_debouncer::WalletDebouncer},
     notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
+    utils::genesis_header_hash,
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -3910,7 +3911,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }
 
             // Step 4: Check if spent
-            match client.query_deleted_utxos(vec![output_hash], vec![]).await {
+            match client
+                .query_deleted_utxos(vec![output_hash], genesis_header_hash().to_vec())
+                .await
+            {
                 Ok(response) => {
                     if let Some(deleted_info) = response.utxos.first() {
                         match (&deleted_info.found_in_header, &deleted_info.spent_in_header) {
