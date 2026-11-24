@@ -332,7 +332,7 @@ pub struct BroadcastSignedOneSidedTransactionArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct SignMessageArgs {
-    /// The message to be signed (UTF-8 string)
+    /// The 32-byte message to be signed, in hex
     #[clap(long)]
     pub message: String,
     /// Optional output file path
@@ -348,7 +348,8 @@ pub struct SignScriptMessageArgs {
     /// The 32-byte script message to be signed, in hex
     #[clap(long)]
     pub message: String,
-    /// Optional commitment of the multisig UTXO being signed for, printed before signing
+    /// Optional commitment of the multisig UTXO being signed for; printed before signing as given, not checked against
+    /// the message
     #[clap(long, value_parser = parse_compressed_commitment)]
     pub utxo_commitment: Option<CompressedCommitment>,
     /// Optional output file path
