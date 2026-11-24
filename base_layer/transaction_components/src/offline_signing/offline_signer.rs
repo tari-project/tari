@@ -57,7 +57,12 @@ use crate::{
             get_latest_version,
             has_payload_auth_fields,
         },
-        one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
+        one_sided_signer::{
+            build_and_sign_transaction,
+            sign_multisig_transaction,
+            sign_multisig_withdraw_transaction,
+            validate_multisig_threshold,
+        },
         payload_summary::{LOG_TARGET, PayloadKind, format_unix_time},
     },
     transaction_components::{MemoField, OutputFeatures, TransactionError, WalletOutput},
@@ -357,6 +362,7 @@ pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKey
     recipient: TariAddress,
     payload_lifetime: Option<Duration>,
 ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
+    validate_multisig_threshold(party_number, public_keys.len())?;
     // The offline signer derives the recipient output from the view key; refuse here, before the operator approves.
     if recipient.public_view_key().is_none() {
         return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());

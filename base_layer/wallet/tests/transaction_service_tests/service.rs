@@ -107,7 +107,15 @@ use tari_core::base_node::{
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SK};
 use tari_node_components::blocks::BlockHeader as NodeBlockHeader;
 use tari_p2p::Network;
-use tari_script::{ExecutionStack, Opcode, TariScript, inputs, push_pubkey_script, script};
+use tari_script::{
+    CompressedCheckSigSchnorrSignature,
+    ExecutionStack,
+    Opcode,
+    TariScript,
+    inputs,
+    push_pubkey_script,
+    script,
+};
 use tari_service_framework::{RegisterHandle, StackBuilder, reply_channel};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -128,7 +136,7 @@ use tari_transaction_components::{
         OfflinePayload,
         PayloadSummary,
         PaymentRecipient,
-        one_sided_signer::withdraw_pending_output,
+        one_sided_signer::{multisig_pending_output, withdraw_pending_output},
         prepare_withdraw_multisig_transaction,
         present_payload_summary,
     },
@@ -3847,7 +3855,7 @@ async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change()
         .unwrap();
     let signed = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_deposit_multisig_transaction(confirmed(PayloadSummary::from_multisig(prepared)))
+        .sign_one_sided_deposit_multisig_transaction(confirmed(PayloadSummary::from_multisig(prepared).unwrap()))
         .await
         .unwrap();
     assert_eq!(
@@ -4149,6 +4157,314 @@ async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() 
         .unwrap();
     assert_eq!(balance.available_balance, input_value);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}
+
+/// A deposit no spend could ever meet the threshold of is refused before any input is locked.
+#[tokio::test]
+async fn prepare_deposit_multisig_transaction_refuses_an_unmeetable_threshold() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let public_keys = vec![
+        alice_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+    ];
+
+    for (m, n) in [(0u8, 2usize), (3, 2), (1, 0)] {
+        let err = alice_ts_interface
+            .transaction_service_handle
+            .prepare_deposit_multisig_transaction(
+                MicroMinotari(100_000),
+                m,
+                public_keys[..n].to_vec(),
+                bob_address.clone(),
+                None,
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+    }
+
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}
+
+/// Adds a 1-of-1 multisig output over the wallet's own spend key to the wallet, as `Unspent`.
+async fn add_unspent_multisig_output(
+    ts: &mut TransactionServiceNoCommsInterface,
+    amount: MicroMinotari,
+) -> WalletOutput {
+    let key_manager = ts.key_manager_handle.key_manager();
+    let spend_key = key_manager.get_spend_key();
+    let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+    let sender_offset = key_manager.get_random_key(None, None).unwrap();
+    let script_pubkey = key_manager
+        .stealth_address_script_spending_key(&commitment_mask.key_id, &spend_key.pub_key)
+        .unwrap();
+    let script = TariScript::new(vec![
+        Opcode::CheckMultiSigVerify(1, 1, vec![spend_key.pub_key.clone()], Box::new([0u8; 32])),
+        Opcode::PushPubKey(Box::new(script_pubkey)),
+    ])
+    .unwrap();
+    let output = WalletOutputBuilder::new(amount, commitment_mask.key_id)
+        .with_script(script)
+        .with_features(OutputFeatures::default())
+        .with_input_data(ExecutionStack::default())
+        .with_script_key(script_key.key_id)
+        .encrypt_data_for_recovery(key_manager, None, MemoField::default())
+        .unwrap()
+        .with_sender_offset_public_key(sender_offset.pub_key.clone())
+        .sign_metadata_signature(key_manager, &sender_offset.key_id)
+        .unwrap()
+        .try_build(key_manager)
+        .unwrap();
+    ts.output_manager_service_handle
+        .add_output(output.clone(), None)
+        .await
+        .unwrap();
+    ts.oms_db
+        .mark_outputs_as_unspent(vec![(output.output_hash(), true)])
+        .unwrap();
+    output
+}
+
+async fn output_status(
+    ts: &mut TransactionServiceNoCommsInterface,
+    output: &WalletOutput,
+) -> (OutputStatus, Option<TxId>) {
+    let outputs = ts
+        .output_manager_service_handle
+        .get_outputs_by_commitments(vec![output.commitment().clone()])
+        .await
+        .unwrap();
+    (outputs[0].status.clone(), outputs[0].spent_in_tx_id)
+}
+
+/// The multisig input of a prepared withdrawal is locked until the withdrawal is cancelled, across restarts, so it can
+/// be neither prepared again nor counted as available.
+#[tokio::test]
+async fn prepare_withdraw_multisig_transaction_locks_the_multisig_input() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let amount = MicroMinotari(100_000);
+    let output = add_unspent_multisig_output(&mut alice, amount).await;
+    let key_manager = alice.key_manager_handle.key_manager();
+    let own_address = TariAddress::new_dual_address_with_default_features(
+        key_manager.get_view_key().pub_key,
+        key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let balance = alice.output_manager_service_handle.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, amount);
+
+    let prepare = |mut handle: TransactionServiceHandle| {
+        let (commitment, address) = (output.commitment().clone(), own_address.clone());
+        async move {
+            handle
+                .prepare_withdraw_multisig_transaction(
+                    commitment,
+                    vec![CompressedCheckSigSchnorrSignature::default()],
+                    address,
+                    None,
+                )
+                .await
+        }
+    };
+    let prepared = prepare(alice.transaction_service_handle.clone()).await.unwrap();
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(prepared.tx_id))
+    );
+    let balance = alice.output_manager_service_handle.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, MicroMinotari::zero());
+    assert!(prepare(alice.transaction_service_handle.clone()).await.is_err());
+
+    // What a restart clears does not release it.
+    alice
+        .output_manager_service_handle
+        .clear_short_term_encumberances()
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(prepared.tx_id))
+    );
+
+    alice
+        .output_manager_service_handle
+        .cancel_pending_transaction(prepared.tx_id)
+        .await
+        .unwrap();
+    assert_eq!(output_status(&mut alice, &output).await.0, OutputStatus::Unspent);
+}
+
+/// A multisig input sent online is locked under the returned transaction, so it cannot be sent a second time.
+#[tokio::test]
+async fn send_multisig_utxo_locks_the_multisig_input() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let output = add_unspent_multisig_output(&mut alice, MicroMinotari(100_000)).await;
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    let tx_id = alice
+        .transaction_service_handle
+        .send_multisig_utxo(output.commitment().clone(), bob_address.clone(), vec![
+            CompressedCheckSigSchnorrSignature::default(),
+        ])
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(tx_id))
+    );
+
+    let submitted = alice.base_node_mock.submit_transaction_calls().await;
+    let result = alice
+        .transaction_service_handle
+        .send_multisig_utxo(output.commitment().clone(), bob_address, vec![
+            CompressedCheckSigSchnorrSignature::default(),
+        ])
+        .await;
+    assert!(result.is_err());
+    assert_eq!(alice.base_node_mock.submit_transaction_calls().await, submitted);
+}
+
+/// Input selection for a multisig deposit pays for the multisig script the output really carries. One input covers
+/// the amount and the fee of an output with a plain script, but not the fee of the real multisig output, so the
+/// selection must take a second input; and the memo kept in the wallet records the fee charged.
+#[tokio::test]
+async fn create_multisig_utxo_sizes_the_fee_for_the_multisig_script() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let input_value = MicroMinotari(1_000_000);
+    let mut inputs = Vec::new();
+    for _ in 0..2 {
+        let uo = make_input(
+            &mut rand::rng(),
+            input_value,
+            &OutputFeatures::default(),
+            alice.key_manager_handle.key_manager(),
+        );
+        alice
+            .output_manager_service_handle
+            .add_output(uo.clone(), None)
+            .await
+            .unwrap();
+        alice
+            .oms_db
+            .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+            .unwrap();
+        inputs.push(uo);
+    }
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    // Enough keys that the script outweighs a change output: a selection measuring a plain script then plans change
+    // from the first input alone, which cannot even pay the real fee.
+    let public_keys = vec![bob_key_manager.get_spend_key().pub_key; 100];
+    let party_number = 2;
+
+    // The fee of spending one input into the multisig output, with no change.
+    let consensus_constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let memo = MemoField::new_address_and_data(
+        bob_address.clone(),
+        MicroMinotari::zero(),
+        true,
+        TxType::PaymentToOther,
+        vec![0; 16],
+    )
+    .unwrap();
+    let mut probe = TransactionBuilder::new(
+        consensus_constants.clone(),
+        alice.key_manager_handle.key_manager().clone(),
+        Network::LocalNet,
+    )
+    .unwrap();
+    probe.with_fee_per_gram(MicroMinotari(1));
+    probe.with_input(inputs[0].clone()).unwrap();
+    let one_input_fee = probe
+        .get_fee_estimate_with(&[multisig_pending_output(
+            &consensus_constants,
+            &bob_address,
+            MicroMinotari::zero(),
+            &OutputFeatures::default(),
+            &memo,
+            party_number,
+            public_keys.len(),
+        )
+        .unwrap()])
+        .unwrap();
+
+    let tx_id = alice
+        .transaction_service_handle
+        .create_multisig_utxo(
+            input_value - one_input_fee + MicroMinotari(1),
+            party_number,
+            public_keys,
+            bob_address,
+        )
+        .await
+        .unwrap();
+
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transaction(tx_id)
+        .await
+        .unwrap();
+    assert_eq!(completed.transaction.body.inputs().len(), 2);
+    assert_eq!(
+        completed.payment_id.get_fee(),
+        Some(completed.transaction.body.get_total_fee().unwrap())
+    );
 }
 
 /// A pending outbound transaction stored by an older version may no longer decode. It can still be cancelled, which

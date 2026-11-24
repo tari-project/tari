@@ -89,7 +89,7 @@ use tari_transaction_components::{
             sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
         },
-        one_sided_signer::{multisig_pending_output, withdraw_pending_output},
+        one_sided_signer::{multisig_pending_output, multisig_placeholder_script, withdraw_pending_output},
     },
     transaction_builder::{
         PendingOutput,
@@ -106,6 +106,7 @@ use tari_transaction_components::{
         TransactionError,
         TransactionOutput,
         ValidatorNodeSignature,
+        WalletOutput,
         WalletOutputBuilder,
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -758,9 +759,8 @@ where
                         payload_lifetime,
                     )?;
 
-                    self.resources
-                        .output_manager_service
-                        .confirm_pending_transaction(response.tx_id, None, None)
+                    // Held until the signed transaction is submitted or `tx_id` is cancelled, across restarts.
+                    self.encumber_and_confirm_input(response.tx_id, selected_utxo.commitment.clone(), None)
                         .await
                         .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
 
@@ -1531,6 +1531,8 @@ where
                         uuid.as_bytes().to_vec(),
                     )
                     .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
+                    // Selection must pay for the multisig script the output will really carry.
+                    let script = multisig_placeholder_script(request.party_number, request.public_keys.len())?;
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -1540,7 +1542,7 @@ where
                             selected_criteria,
                             OutputFeatures::default(),
                             fee_per_gram,
-                            push_pubkey_script(&Default::default()),
+                            script,
                             Covenant::default(),
                             payment_id,
                         )
@@ -1693,45 +1695,43 @@ where
                             tx_outputs_to_tx_id(view_key.as_bytes(), finalized_transaction.transaction.body.outputs()),
                         ),
                     };
-                    self.resources
-                        .output_manager_service
-                        .clone()
-                        .confirm_pending_transaction(tx_id, None, change)
+                    let fee = finalized_transaction.transaction.body.get_total_fee()?;
+                    let sent_hashes = finalized_transaction.sent_output_hashes.clone();
+                    let completed_transaction = CompletedTransaction::new_with_output_hashes(
+                        tx_id,
+                        self.resources.one_sided_tari_address.clone(),
+                        recipient_address,
+                        amount,
+                        fee,
+                        finalized_transaction.transaction,
+                        LegacyTransactionStatus::Completed,
+                        Utc::now(),
+                        TransactionDirection::Outbound,
+                        None,
+                        None,
+                        payment_id,
+                        sent_hashes,
+                        vec![],
+                        change_hashes,
+                        0,
+                    )?;
+
+                    self.encumber_and_confirm_input(tx_id, selected_utxo.commitment.clone(), change)
                         .await
                         .map_err(|e| {
-                            TransactionError::BuilderError(format!("Failed to confirm pending transaction: {:?}", e))
+                            TransactionError::BuilderError(format!(
+                                "Failed to lock the input and confirm the pending transaction: {:?}",
+                                e
+                            ))
                         })?;
-
-                    let fee = finalized_transaction.transaction.body.get_total_fee()?;
 
                     // This event being sent is important, but not critical to the protocol being successful. Send only
                     // fails if there are no subscribers.
                     let _result = self
                         .event_publisher
                         .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-                    let sent_hashes = finalized_transaction.sent_output_hashes.clone();
-                    self.submit_transaction(
-                        transaction_broadcast_join_handles,
-                        CompletedTransaction::new_with_output_hashes(
-                            tx_id,
-                            self.resources.one_sided_tari_address.clone(),
-                            recipient_address,
-                            amount,
-                            fee,
-                            finalized_transaction.transaction,
-                            LegacyTransactionStatus::Completed,
-                            Utc::now(),
-                            TransactionDirection::Outbound,
-                            None,
-                            None,
-                            payment_id,
-                            sent_hashes,
-                            vec![],
-                            change_hashes,
-                            0,
-                        )?,
-                    )
-                    .await?;
+                    self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
+                        .await?;
                     Ok(TransactionServiceResponse::SendMultisigUtxo(tx_id))
                 }
                 .await
@@ -4500,6 +4500,25 @@ where
         );
 
         Ok(new_tx_id)
+    }
+
+    /// Locks the `Unspent` output `commitment` as the input of `tx_id` and confirms `tx_id` with its `change`,
+    /// releasing the input again if the confirm fails.
+    async fn encumber_and_confirm_input(
+        &mut self,
+        tx_id: TxId,
+        commitment: CompressedCommitment,
+        change: Option<Vec<WalletOutput>>,
+    ) -> Result<(), OutputManagerError> {
+        let mut output_manager = self.resources.output_manager_service.clone();
+        output_manager.encumber_outputs(tx_id, vec![commitment]).await?;
+        if let Err(e) = output_manager.confirm_pending_transaction(tx_id, None, change).await {
+            if let Err(cancel_err) = output_manager.cancel_pending_transaction(tx_id).await {
+                warn!(target: LOG_TARGET, "Failed to release the input of TxId: {tx_id}: {cancel_err}");
+            }
+            return Err(e);
+        }
+        Ok(())
     }
 
     async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {

@@ -535,6 +535,9 @@ where
                 self.confirm_encumberance(tx_id, tx_id_update, change_outputs)
                     .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
             },
+            OutputManagerRequest::EncumberOutputs { tx_id, commitments } => self
+                .encumber_outputs(tx_id, &commitments)
+                .map(|_| OutputManagerResponse::OutputsEncumbered),
             OutputManagerRequest::CancelPendingTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
@@ -1900,6 +1903,27 @@ where
             .db
             .confirm_encumbered_outputs(tx_id, tx_id_update, change)?;
         Ok(())
+    }
+
+    /// Short-term encumber exactly these outputs against `tx_id`, failing without encumbering any of them if one is
+    /// unknown or not `Unspent`.
+    fn encumber_outputs(
+        &mut self,
+        tx_id: TxId,
+        commitments: &[CompressedCommitment],
+    ) -> Result<(), OutputManagerError> {
+        let mut outputs = Vec::with_capacity(commitments.len());
+        for commitment in commitments {
+            let output = self
+                .resources
+                .db
+                .fetch_by_commitment(commitment.clone(), &self.resources.key_manager)?;
+            if output.status != OutputStatus::Unspent {
+                return Err(OutputManagerStorageError::OutputAlreadySpent.into());
+            }
+            outputs.push(output);
+        }
+        Ok(self.resources.db.encumber_outputs(tx_id, outputs, vec![])?)
     }
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool

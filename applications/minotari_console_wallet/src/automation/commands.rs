@@ -3203,10 +3203,11 @@ pub async fn command_runner(
                 let mode = offline_confirmation_mode(non_interactive_mode);
                 // A payload this wallet would refuse is never shown for approval
                 let review = verify_offline_payload(&key_manager_service, &payload_key_policy, &request)
+                    .and_then(|()| PayloadSummary::from_multisig(request))
                     .map_err(|e| CommandError::General(e.to_string()))
-                    .and_then(|()| {
+                    .and_then(|summary| {
                         review_offline_payload(
-                            PayloadSummary::from_multisig(request),
+                            summary,
                             mode,
                             &mut offline_summary_output(mode),
                             &mut io::stdin().lock(),

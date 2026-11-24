@@ -59,6 +59,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     MicroMinotari,
+    TransactionBuilderError,
     fee::Fee,
     helpers::terminal_safe::TerminalSafe,
     key_manager::TariKeyId,
@@ -78,6 +79,7 @@ use crate::{
             has_payload_auth_fields,
         },
         offline_signer::{check_payload_expiry, unix_now},
+        one_sided_signer::validate_multisig_threshold,
     },
     transaction_components::{
         MemoField,
@@ -357,14 +359,19 @@ impl PayloadDetails {
         writeln!(f, "Expires        : {} ({left})", format_unix_time(expires_at))
     }
 
-    /// Builds the details of a multisig deposit payload.
-    pub(crate) fn multisig(tx_id: TxId, info: &OneSidedMultisigTransactionInfo) -> Self {
+    /// Builds the details of a multisig deposit payload. Fails on a threshold no spend could meet, so that it is
+    /// never shown for approval.
+    pub(crate) fn multisig(
+        tx_id: TxId,
+        info: &OneSidedMultisigTransactionInfo,
+    ) -> Result<Self, TransactionBuilderError> {
+        validate_multisig_threshold(info.party_number, info.public_keys.len())?;
         let mut details = Self::one_sided(PayloadKind::MultisigDeposit, tx_id, &info.base);
         details.multisig_public_keys = info.public_keys.iter().map(|pk| pk.to_hex()).collect();
         // `party_number` holds the threshold m
         details.multisig_required_signatures = Some(info.party_number);
         details.use_top_level_memo_for_recipients();
-        details
+        Ok(details)
     }
 
     /// Multisig signers put the top-level memo on the recipient output, so that is the memo shown for it.
@@ -761,9 +768,9 @@ impl PayloadSummary<PrepareOneSidedTransactionForSigningResult> {
 }
 
 impl PayloadSummary<PrepareDepositMultisigTransactionResult> {
-    pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Self {
-        let details = PayloadDetails::multisig(request.tx_id, &request.info);
-        Self::new(details, request)
+    pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Result<Self, TransactionBuilderError> {
+        let details = PayloadDetails::multisig(request.tx_id, &request.info)?;
+        Ok(Self::new(details, request))
     }
 }
 
@@ -1598,13 +1605,18 @@ mod test {
             let deposit = PayloadSummary::from_multisig(PrepareDepositMultisigTransactionResult {
                 version: get_latest_version(),
                 tx_id: TxId::from(1u64),
-                info: OneSidedMultisigTransactionInfo::new(memo_info(recipient_memo), vec![], 1),
+                info: OneSidedMultisigTransactionInfo::new(
+                    memo_info(recipient_memo),
+                    vec![tari_common_types::types::CompressedPublicKey::default()],
+                    1,
+                ),
                 payload_signature: PayloadIntegritySignature {
                     signature: Default::default(),
                 },
                 payload_key_id: None,
                 expires_at: unix_now().saturating_add(3600),
-            });
+            })
+            .unwrap();
             let withdraw = PayloadSummary::from_withdraw_multisig(PrepareWithdrawMultisigTransactionResult {
                 version: get_latest_version(),
                 tx_id: TxId::from(1u64),
@@ -1663,7 +1675,7 @@ mod test {
             expires_at: unix_now().saturating_add(3600),
         };
 
-        let summary = PayloadSummary::from_multisig(request);
+        let summary = PayloadSummary::from_multisig(request).unwrap();
         assert_eq!(summary.kind, PayloadKind::MultisigDeposit);
         let rendered = summary.to_string();
         assert!(rendered.contains("Payload        : multisig deposit"), "{rendered}");

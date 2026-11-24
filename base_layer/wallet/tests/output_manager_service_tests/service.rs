@@ -58,7 +58,7 @@ use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{ExecutionStack, TariScript, inputs, push_pubkey_script, script};
@@ -1289,6 +1289,73 @@ async fn cancel_transaction() {
         oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(),
         num_outputs
     );
+}
+
+/// `encumber_outputs` locks exactly the listed outputs, and nothing at all if any of them is unknown or not `Unspent`.
+#[tokio::test]
+async fn encumber_outputs_is_all_or_nothing() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    let mut outputs = Vec::new();
+    for _ in 0..3 {
+        let uo = make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(1000),
+            &OutputFeatures::default(),
+            oms.key_manager_handle.key_manager(),
+        );
+        oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+        backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
+        outputs.push(uo.commitment().clone());
+    }
+    let (tx1, tx2) = (TxId::from(1u64), TxId::from(2u64));
+    let statuses = async |oms: &mut TestOmsService| {
+        oms.output_manager_handle
+            .get_outputs_by_commitments(outputs.clone())
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|o| (o.status, o.spent_in_tx_id))
+            .collect::<Vec<_>>()
+    };
+
+    oms.output_manager_handle
+        .encumber_outputs(tx1, vec![outputs[2].clone()])
+        .await
+        .unwrap();
+    let before = statuses(&mut oms).await;
+    assert_eq!(before, vec![
+        (OutputStatus::Unspent, None),
+        (OutputStatus::Unspent, None),
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx1)),
+    ]);
+
+    // One output is already encumbered, or one commitment is unknown: nothing changes.
+    let unknown = CompressedCommitment::default();
+    for commitments in [vec![outputs[0].clone(), outputs[2].clone()], vec![
+        outputs[0].clone(),
+        unknown,
+    ]] {
+        assert!(
+            oms.output_manager_handle
+                .encumber_outputs(tx2, commitments)
+                .await
+                .is_err()
+        );
+        assert_eq!(statuses(&mut oms).await, before);
+    }
+
+    oms.output_manager_handle
+        .encumber_outputs(tx2, outputs[..2].to_vec())
+        .await
+        .unwrap();
+    assert_eq!(statuses(&mut oms).await, vec![
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx2)),
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx2)),
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx1)),
+    ]);
 }
 
 #[tokio::test]

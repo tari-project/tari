@@ -420,6 +420,8 @@ service Wallet {
   // The PrepareWithdrawMultisigTransaction RPC constructs a transaction that spends a previously created multisig UTXO.
   // The caller must supply a valid UTXO commitment and a complete set of Schnorr signatures from all multisig participants.
   // The unsigned transaction is returned as JSON and can be submitted once fully signed.
+  // The multisig UTXO stays locked under the returned `tx_id`, across restarts, until the signed transaction is
+  // submitted or the wallet's `CancelPendingTransaction(tx_id)` releases it.
   //
   // ### Request Parameters:
   //

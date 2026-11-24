@@ -80,15 +80,7 @@ pub fn multisig_pending_output(
     party_number: u8,
     key_count: usize,
 ) -> Result<PendingOutput, TransactionBuilderError> {
-    let script = TariScript::new(vec![
-        Opcode::CheckMultiSigVerify(
-            party_number,
-            u8::try_from(key_count).map_err(|e| TransactionBuilderError::Other(e.to_string()))?,
-            vec![CompressedPublicKey::default(); key_count],
-            Box::new([0u8; 32]),
-        ),
-        Opcode::PushPubKey(Box::default()),
-    ])?;
+    let script = multisig_placeholder_script(party_number, key_count)?;
     Ok(PendingOutput::new(
         amount,
         recipient_output_features_and_scripts_size(
@@ -100,6 +92,33 @@ pub fn multisig_pending_output(
         )?,
     )
     .for_recipient(recipient.clone()))
+}
+
+/// Refuses an `m` of `key_count` multisig threshold that no spend could meet, or that a script cannot encode. The
+/// script itself only rejects it when it runs, so an output with such a script would be mined and never be spendable.
+pub fn validate_multisig_threshold(m: u8, key_count: usize) -> Result<(), TransactionBuilderError> {
+    if m == 0 || usize::from(m) > key_count || key_count > usize::from(u8::MAX) {
+        return Err(TransactionBuilderError::Other(format!(
+            "invalid multisig threshold: {m} of {key_count}"
+        )));
+    }
+    Ok(())
+}
+
+/// A script that serialises to the same size as a multisig recipient output's real script - one
+/// `CheckMultiSigVerify` over `key_count` keys followed by one `PushPubKey` - for measuring the output's fee before
+/// its keys exist.
+pub fn multisig_placeholder_script(m: u8, key_count: usize) -> Result<TariScript, TransactionBuilderError> {
+    validate_multisig_threshold(m, key_count)?;
+    Ok(TariScript::new(vec![
+        Opcode::CheckMultiSigVerify(
+            m,
+            u8::try_from(key_count).map_err(|e| TransactionBuilderError::Other(e.to_string()))?,
+            vec![CompressedPublicKey::default(); key_count],
+            Box::new([0u8; 32]),
+        ),
+        Opcode::PushPubKey(Box::default()),
+    ])?)
 }
 
 /// The declaration of a multisig withdrawal's recipient output, the way the withdrawal signer makes it. The online
@@ -340,6 +359,7 @@ pub(crate) fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     network: Network,
     mut info: OneSidedMultisigTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
+    validate_multisig_threshold(info.party_number, info.public_keys.len())?;
     check_payload_key_ids(
         &info.base.inputs,
         &info.base.outputs,
@@ -443,6 +463,7 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     info: &OneSidedMultisigTransactionInfo,
     sender_offset_key: &TariKeyAndId,
 ) -> Result<(WalletOutput, TariKeyId), TransactionBuilderError> {
+    validate_multisig_threshold(info.party_number, info.public_keys.len())?;
     if info.base.recipients.len() != 1 {
         return Err(TransactionBuilderError::Other(
             "Only one recipient is supported for multisig transactions".to_string(),
