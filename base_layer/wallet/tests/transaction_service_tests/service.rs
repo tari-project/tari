@@ -4770,6 +4770,75 @@ async fn submitting_a_payload_whose_relock_was_cleared_succeeds() {
     );
 }
 
+/// A signed payload whose signed tx_id names another prepared payload's tx_id is refused, and both payloads keep
+/// their locks.
+#[tokio::test]
+async fn submitting_a_payload_that_names_another_prepared_payload_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (x_inputs, x_tx_id, mut x_signed) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let (y_inputs, y_tx_id, _) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    x_signed.signed_transaction.tx_id = y_tx_id;
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(x_signed)
+            .await
+            .is_err()
+    );
+    for (input, tx_id) in [(&x_inputs[0], x_tx_id), (&y_inputs[0], y_tx_id)] {
+        assert_eq!(
+            output_status(&mut alice, input).await,
+            (OutputStatus::EncumberedToBeSpent, Some(tx_id))
+        );
+    }
+}
+
+/// A payload confirmed under its signed tx_id but never recorded (the wallet stopped before the record was written)
+/// can be released with a record-less cancel and then submitted again.
+#[tokio::test]
+async fn a_confirmed_but_unrecorded_payload_can_be_released_and_submitted_again() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, prepared_tx_id, signed) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let new_tx_id = signed.signed_transaction.tx_id;
+    alice
+        .output_manager_service_handle
+        .confirm_pending_transaction(
+            prepared_tx_id,
+            Some(new_tx_id),
+            signed
+                .signed_transaction
+                .change_output
+                .clone()
+                .map(|change| vec![change]),
+        )
+        .await
+        .unwrap();
+    alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(new_tx_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &inputs[0]).await,
+        (OutputStatus::Unspent, None)
+    );
+
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &inputs[0]).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+}
+
 /// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be
 /// prepared again, and records nothing.
 #[tokio::test]

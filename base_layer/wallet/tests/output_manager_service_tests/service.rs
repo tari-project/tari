@@ -1336,6 +1336,36 @@ async fn release_unrecorded_transaction_removes_its_change() {
         assert_eq!(outputs[0].commitment, *input.commitment());
         assert_eq!(outputs[0].status, OutputStatus::Unspent);
     }
+
+    // A plain cancel leaves the change row behind; releasing afterwards, with nothing locked, still removes it.
+    oms.output_manager_handle
+        .encumber_outputs(tx_id, vec![input.commitment().clone()])
+        .await
+        .unwrap();
+    oms.output_manager_handle
+        .confirm_pending_transaction(tx_id, None, Some(vec![change.clone()]))
+        .await
+        .unwrap();
+    oms.output_manager_handle
+        .cancel_pending_transaction(tx_id)
+        .await
+        .unwrap();
+    oms.output_manager_handle
+        .release_unrecorded_transaction(tx_id)
+        .await
+        .unwrap();
+    let outputs = oms
+        .output_manager_handle
+        .get_outputs_by_commitments(vec![change.commitment().clone()])
+        .await
+        .unwrap();
+    assert!(outputs.is_empty());
+    assert!(matches!(
+        oms.output_manager_handle.release_unrecorded_transaction(tx_id).await,
+        Err(OutputManagerError::OutputManagerStorageError(
+            OutputManagerStorageError::ValueNotFound
+        ))
+    ));
 }
 
 /// `encumber_outputs` locks exactly the listed outputs, and nothing at all if any of them is unknown or not `Unspent`.

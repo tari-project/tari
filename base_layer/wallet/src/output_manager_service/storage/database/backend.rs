@@ -144,6 +144,9 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// This method must take all the `outputs_to_be_spent` from the specified transaction and move them back into the
     /// `UnspentOutputs` pool. The `outputs_to_be_received`'` will be marked as cancelled inbound outputs in case they
     /// need to be recovered.
+    /// Cancel the pending transaction `tx_id`, which has no transaction record, and delete the change outputs it would
+    /// have received, in one database transaction. Fails with `ValueNotFound` if there was nothing to do.
+    fn release_unrecorded_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     fn cancel_pending_or_completed_transaction(
         &self,
         tx_id: TxId,

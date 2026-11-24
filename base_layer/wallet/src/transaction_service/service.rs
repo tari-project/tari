@@ -1202,7 +1202,7 @@ where
                     }
                     self.resources
                         .output_manager_service
-                        .cancel_pending_transaction(tx_id)
+                        .release_unrecorded_transaction(tx_id)
                         .await?;
                     info!(target: LOG_TARGET, "Released the inputs of prepared TxId: {tx_id} (record-less cancel)");
                     Ok(TransactionServiceResponse::TransactionCancelled)
@@ -4546,10 +4546,14 @@ where
     }
 
     /// Refuses, before anything is locked, a signed payload whose records could not all be written: one that names a
-    /// transaction this wallet already has a record of - a prepared payload has none until it is submitted - or a
-    /// recipient or change output its transaction does not carry, or that does not name a distinct sent output for
-    /// each recipient.
-    fn check_signed_payload(&self, request: &SignedOneSidedTransactionResult) -> Result<(), TransactionServiceError> {
+    /// transaction this wallet already has a record of - a prepared payload has none until it is submitted - or, other
+    /// than its own prepared tx_id, one that already has outputs (such as another prepared payload's), or a recipient
+    /// or change output its transaction does not carry, or that does not name a distinct sent output for each
+    /// recipient.
+    async fn check_signed_payload(
+        &self,
+        request: &SignedOneSidedTransactionResult,
+    ) -> Result<(), TransactionServiceError> {
         let refuse = |reason: &str| Err(TransactionServiceError::Other(format!("The signed payload {reason}")));
         let signed = &request.signed_transaction;
         let recipients = request.request.info.recipients.len();
@@ -4588,11 +4592,16 @@ where
         if tx_ids.len() <= recipients {
             return refuse("names the same transaction twice");
         }
+        let mut output_manager = self.resources.output_manager_service.clone();
         for tx_id in tx_ids {
             if self.db.get_any_transaction(tx_id)?.is_some() {
                 return refuse(&format!(
                     "names transaction {tx_id}, which has already been submitted or recorded"
                 ));
+            }
+            // The records are written under these tx_ids, and the confirm moves the payload's outputs to the first
+            if tx_id != request.request.tx_id && !output_manager.fetch_outputs_by_tx_id(tx_id).await?.is_empty() {
+                return refuse(&format!("names transaction {tx_id}, which already has outputs"));
             }
         }
         Ok(())
@@ -4937,7 +4946,7 @@ where
         for recipient in &request.request.info.recipients {
             self.verify_send(&recipient.address, TariAddressFeatures::create_one_sided_only())?;
         }
-        self.check_signed_payload(&request)?;
+        self.check_signed_payload(&request).await?;
         let payment_id = &request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
         let change = request.signed_transaction.change_output.clone().map(|v| vec![v]);
