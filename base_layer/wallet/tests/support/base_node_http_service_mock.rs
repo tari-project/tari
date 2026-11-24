@@ -241,8 +241,10 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     async fn query_deleted_utxos(
         &self,
         hashes: Vec<Vec<u8>>,
-        _must_include_header: Vec<u8>,
+        must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, Error> {
+        // As the base node does, which then also requires the header to be in its chain
+        FixedHash::try_from(must_include_header)?;
         let state = self.state.read().await;
         let mined_utxos = state
             .mined_utxos

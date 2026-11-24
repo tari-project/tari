@@ -62,11 +62,13 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   non-interactively, where it signs without asking. Choosing the non-interactive mode is a deployment decision, and
   the operator is then responsible for controlling what is delivered to the signer.
 - **What that means:** In non-interactive mode there is no per-request human approval. The signer signs every
-  request that passes its own checks.
+  request that passes its own checks. The console wallet's offline-payload signing commands and
+  `sign-script-message` follow the same rule, and treat stdin that is not a terminal as non-interactive.
 - **Not covered:** The checks the signer applies in either mode must hold, the summary shown in interactive mode must
   describe everything that is signed, and the interactive mode must not be bypassable without the operator selecting
   the non-interactive mode.
-- **Where:** `applications/minotari_offline_signer`, `base_layer/transaction_components` (`offline_signing`).
+- **Where:** `applications/minotari_offline_signer`, `base_layer/transaction_components` (`offline_signing`),
+  `applications/minotari_console_wallet` (offline-payload signing commands, `sign-script-message`).
 - **Recorded:** 2026-11-17.
 
 ### A-MULTISIG-01: Multisig co-signers trust the party that builds the spending transaction
@@ -75,7 +77,10 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   created. It does not cover the recipient, amount or fee of the transaction that later spends the output.
   Co-signers trust whoever assembles that transaction.
 - **What that means:** Once the required number of signatures exists, the party building the transaction decides
-  where the funds go. Co-signers should confirm out of band which output they are signing for.
+  where the funds go. A signature is valid for every output whose script has the same message and key, so
+  co-signers should take the message from an output they know independently, not only from the party asking.
+  With `--output-hash`, the console wallet's `sign-script-message` refuses unless its base node has that output
+  unspent with this message and key; that does not tie the signature to it.
 - **Not covered:** Spending with fewer signatures than the threshold, using a signature for a different output's
   script message, or a non-member producing an accepted signature.
 - **Where:** `base_layer/transaction_components` (`multisig`, `key_manager`), `base_layer/wallet`,

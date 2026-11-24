@@ -494,13 +494,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .sign_message_with_spend_key(message, sender_offset_pub_key)
     }
 
-    pub fn sign_script_message_with_spend_key(
+    pub fn sign_script_message_with_spend_key_trusted(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
         self.key_manager
-            .sign_script_message_with_spend_key(message, sender_offset_pub_key)
+            .sign_script_message_with_spend_key_trusted(message, sender_offset_pub_key)
     }
 
     pub fn sign_with_nonce_and_challenge(
