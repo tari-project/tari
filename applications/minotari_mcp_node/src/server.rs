@@ -25,6 +25,7 @@
 use std::{sync::Arc, time::Duration};
 
 use minotari_mcp_common::{
+    ArcToolWrapper,
     AutoDiscoveryConfig,
     AutoDiscoveryRegistry,
     CircuitBreakerConfig,
@@ -32,7 +33,6 @@ use minotari_mcp_common::{
     CliIntegrationUtils,
     ConnectionManager,
     ConnectionPoolConfig,
-    ConversionRegistryFactory,
     GrpcErrorMapper,
     GrpcExecutor,
     HealthConfig,
@@ -61,40 +61,6 @@ use crate::{
     tools::NodeToolRegistry,
 };
 
-/// Wrapper to convert Arc<dyn McpTool> to Box<dyn McpTool>
-struct ArcToolWrapper {
-    tool: Arc<dyn minotari_mcp_common::McpTool>,
-}
-
-impl ArcToolWrapper {
-    fn new(tool: Arc<dyn minotari_mcp_common::McpTool>) -> Self {
-        Self { tool }
-    }
-}
-
-#[async_trait::async_trait]
-impl minotari_mcp_common::McpTool for ArcToolWrapper {
-    fn name(&self) -> &str {
-        self.tool.name()
-    }
-
-    fn description(&self) -> &str {
-        self.tool.description()
-    }
-
-    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
-        self.tool.permission_level()
-    }
-
-    fn input_schema(&self) -> serde_json::Value {
-        self.tool.input_schema()
-    }
-
-    async fn execute(&self, args: serde_json::Value) -> minotari_mcp_common::McpResult<serde_json::Value> {
-        self.tool.execute(args).await
-    }
-}
-
 /// Minotari Node MCP Server
 pub struct NodeMcpServer {
     inner: Box<dyn McpServer>,
@@ -120,16 +86,11 @@ impl NodeMcpServer {
         let connection_manager = Self::create_connection_manager(&config).await?;
 
         // Create health-aware gRPC executor
-        let conversion_registry = ConversionRegistryFactory::create_node_registry();
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let node_client_impl = Arc::new(NodeGrpcClientImpl::new(
-            (*grpc_client).clone(),
-            conversion_registry.clone(),
-        ));
+        let node_client_impl = Arc::new(NodeGrpcClientImpl::new((*grpc_client).clone()));
         let grpc_executor = Arc::new(GrpcExecutor::new_node_with_health(
             node_client_impl,
             error_mapper.clone(),
-            conversion_registry,
             connection_manager.clone(),
         ));
 

@@ -32,6 +32,69 @@ use tonic::{Code, Status};
 
 use crate::McpError;
 
+/// Longest upstream message, in characters, passed on to a tool result
+const MAX_UPSTREAM_MESSAGE_CHARS: usize = 512;
+
+/// Make text from a gRPC peer safe to show an agent: truncated, invisible format characters dropped, and control
+/// characters and runs of whitespace collapsed to one space. Use this for field values in a successful response.
+pub fn clean_upstream_text(message: &str) -> String {
+    let truncated: String = message
+        .chars()
+        .take(MAX_UPSTREAM_MESSAGE_CHARS)
+        .filter(|c| !is_invisible_format_char(*c))
+        .collect();
+    let mut text = truncated
+        .split(|c: char| c.is_control() || c.is_whitespace())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if message.chars().nth(MAX_UPSTREAM_MESSAGE_CHARS).is_some() {
+        text.push('…');
+    }
+    text
+}
+
+/// Every character of Unicode general category Cf (format) as of Unicode 16.0 (DerivedGeneralCategory.txt), plus the
+/// variation selectors (Variation_Selector=Yes: U+180B-180D, U+180F, U+FE00-FE0F, U+E0100-E01EF). These render as
+/// nothing or reorder text, so they can hide instructions from a reader.
+const INVISIBLE_FORMAT_CHARS: [(char, char); 23] = [
+    ('\u{00AD}', '\u{00AD}'),
+    ('\u{0600}', '\u{0605}'),
+    ('\u{061C}', '\u{061C}'),
+    ('\u{06DD}', '\u{06DD}'),
+    ('\u{070F}', '\u{070F}'),
+    ('\u{0890}', '\u{0891}'),
+    ('\u{08E2}', '\u{08E2}'),
+    ('\u{180B}', '\u{180F}'),
+    ('\u{200B}', '\u{200F}'),
+    ('\u{202A}', '\u{202E}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{206F}'),
+    ('\u{FE00}', '\u{FE0F}'),
+    ('\u{FEFF}', '\u{FEFF}'),
+    ('\u{FFF9}', '\u{FFFB}'),
+    ('\u{110BD}', '\u{110BD}'),
+    ('\u{110CD}', '\u{110CD}'),
+    ('\u{13430}', '\u{1343F}'),
+    ('\u{1BCA0}', '\u{1BCA3}'),
+    ('\u{1D173}', '\u{1D17A}'),
+    ('\u{E0001}', '\u{E0001}'),
+    ('\u{E0020}', '\u{E007F}'),
+    ('\u{E0100}', '\u{E01EF}'),
+];
+
+fn is_invisible_format_char(c: char) -> bool {
+    INVISIBLE_FORMAT_CHARS
+        .iter()
+        .any(|(start, end)| (*start..=*end).contains(&c))
+}
+
+/// [clean_upstream_text], quoted as `upstream: "..."` so an error message reads as data rather than instructions
+pub fn sanitize_upstream_message(message: &str) -> String {
+    // Debug formatting escapes embedded quotes, so the text cannot close the quotation early
+    format!("upstream: {:?}", clean_upstream_text(message))
+}
+
 /// Enhanced error information with context and recommendations
 #[derive(Debug, Clone)]
 pub struct ErrorContext {
@@ -148,6 +211,7 @@ impl GrpcErrorMapper {
         if let Some(context) = self.custom_mappings.get(status.message()) {
             return context.clone();
         }
+        let upstream = sanitize_upstream_message(status.message());
 
         // Map based on gRPC status code
         match status.code() {
@@ -177,7 +241,7 @@ impl GrpcErrorMapper {
             },
 
             Code::Unknown => ErrorContext {
-                message: format!("Unknown error: {}", status.message()),
+                message: format!("Unknown error: {upstream}"),
                 category: ErrorCategory::Internal,
                 severity: ErrorSeverity::High,
                 user_message: "An unexpected error occurred".to_string(),
@@ -192,7 +256,7 @@ impl GrpcErrorMapper {
             },
 
             Code::InvalidArgument => ErrorContext {
-                message: format!("Invalid argument: {}", status.message()),
+                message: format!("Invalid argument: {upstream}"),
                 category: ErrorCategory::Validation,
                 severity: ErrorSeverity::Medium,
                 user_message: "The provided parameters are invalid".to_string(),
@@ -223,7 +287,7 @@ impl GrpcErrorMapper {
             },
 
             Code::NotFound => ErrorContext {
-                message: format!("Resource not found: {}", status.message()),
+                message: format!("Resource not found: {upstream}"),
                 category: ErrorCategory::Resource,
                 severity: ErrorSeverity::Medium,
                 user_message: "The requested resource could not be found".to_string(),
@@ -285,7 +349,7 @@ impl GrpcErrorMapper {
             },
 
             Code::FailedPrecondition => ErrorContext {
-                message: format!("Failed precondition: {}", status.message()),
+                message: format!("Failed precondition: {upstream}"),
                 category: ErrorCategory::State,
                 severity: ErrorSeverity::High,
                 user_message: "The system is not in the correct state for this operation".to_string(),
@@ -316,7 +380,7 @@ impl GrpcErrorMapper {
             },
 
             Code::OutOfRange => ErrorContext {
-                message: format!("Value out of range: {}", status.message()),
+                message: format!("Value out of range: {upstream}"),
                 category: ErrorCategory::Validation,
                 severity: ErrorSeverity::Medium,
                 user_message: "One or more values are outside the valid range".to_string(),
@@ -433,7 +497,7 @@ impl GrpcErrorMapper {
                 "operation": operation,
                 "details": {
                     "grpc_code": format!("{:?}", status.code()),
-                    "grpc_message": status.message(),
+                    "grpc_message": sanitize_upstream_message(status.message()),
                     "category_description": context.category.description(),
                     "severity_description": context.severity.description(),
                 }
@@ -457,7 +521,10 @@ impl GrpcErrorMapper {
         let mut context = HashMap::new();
 
         context.insert("grpc_code".to_string(), json!(format!("{:?}", status.code())));
-        context.insert("grpc_message".to_string(), json!(status.message()));
+        context.insert(
+            "grpc_message".to_string(),
+            json!(sanitize_upstream_message(status.message())),
+        );
 
         // Extract metadata if available
         if !status.metadata().is_empty() {
@@ -583,6 +650,91 @@ mod tests {
         let error_msg = format!("{mcp_error:?}");
         assert!(error_msg.contains("get_balance"));
         assert!(error_msg.contains("INVALID_PARAMETERS"));
+    }
+
+    #[test]
+    fn sanitize_upstream_message_truncates_strips_and_quotes() {
+        let long = "a".repeat(600);
+        let out = sanitize_upstream_message(&long);
+        assert_eq!(out, format!("upstream: \"{}…\"", "a".repeat(512)));
+        assert_eq!(
+            sanitize_upstream_message(&"b".repeat(512)),
+            format!("upstream: \"{}\"", "b".repeat(512))
+        );
+
+        let out = sanitize_upstream_message("bad\n\r\tinput\x1b[31m  now \"quoted\"");
+        assert!(out.starts_with("upstream: \""));
+        assert_eq!(out, r#"upstream: "bad input [31m now \"quoted\"""#);
+        assert!(!out.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn mcp_tools_do_not_format_raw_grpc_status() {
+        // A gRPC call's error is a Status, whose Display carries the peer's raw message, details and metadata
+        let raw_status =
+            regex::Regex::new(r#"\.await\s*\.map_err\(\|e\|\s*\{?\s*McpError::\w+\(format!\(\s*"[^"]*\{e(:\?)?\}""#)
+                .unwrap();
+        assert!(
+            raw_status.is_match(".await\n    .map_err(|e| McpError::tool_execution_failed(format!(\"Failed: {e}\")))?")
+        );
+        // Tool files that are not compiled into either server
+        let uncompiled = [
+            "burn_transaction.rs",
+            "cancel_transaction.rs",
+            "coin_split.rs",
+            "import_utxos.rs",
+            "transfer.rs",
+        ];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut checked = 0;
+        for dir in [
+            "minotari_mcp_node/src/tools",
+            "minotari_mcp_node/src/resources",
+            "minotari_mcp_wallet/src/tools",
+            "minotari_mcp_wallet/src/resources",
+        ] {
+            for entry in std::fs::read_dir(root.join(dir)).unwrap() {
+                let path = entry.unwrap().path();
+                let name = path.file_name().unwrap().to_string_lossy().to_string();
+                if dir.ends_with("tools") && uncompiled.contains(&name.as_str()) {
+                    continue;
+                }
+                let source = std::fs::read_to_string(&path).unwrap();
+                assert!(
+                    !raw_status.is_match(&source),
+                    "{} formats a raw gRPC status",
+                    path.display()
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 20);
+    }
+
+    #[test]
+    fn invisible_format_characters_are_dropped() {
+        // "ok" followed by "hi" spelled in tag characters, which render as nothing
+        let tagged = "ok\u{E0068}\u{E0069}";
+        assert_eq!(clean_upstream_text(tagged), "ok");
+        let bidi = "user\u{202E}gnp.exe\u{202C} agent\u{200B}\u{FEFF}\u{2066}x\u{2069}\u{2061}";
+        assert_eq!(clean_upstream_text(bidi), "usergnp.exe agentx");
+        assert_eq!(sanitize_upstream_message(tagged), r#"upstream: "ok""#);
+        let others = "a\u{061C}b\u{00AD}c\u{FFF9}d\u{180E}e\u{206A}f\u{1BCA0}g\u{1D173}h\u{FE0F}i\u{E0100}j";
+        assert_eq!(clean_upstream_text(others), "abcdefghij");
+        let mongolian = "a\u{180B}b\u{180C}c\u{180D}d\u{180F}e";
+        assert_eq!(clean_upstream_text(mongolian), "abcde");
+    }
+
+    #[test]
+    fn mapped_status_text_is_sanitized() {
+        let mapper = GrpcErrorMapper::new();
+        let status = Status::new(Code::InvalidArgument, "x\ny");
+        assert_eq!(
+            mapper.map_status(&status).message,
+            r#"Invalid argument: upstream: "x y""#
+        );
+        let response = mapper.create_error_response(&status, "op");
+        assert_eq!(response["error"]["details"]["grpc_message"], r#"upstream: "x y""#);
     }
 
     #[test]

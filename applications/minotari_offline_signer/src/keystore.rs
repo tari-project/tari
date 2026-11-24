@@ -385,6 +385,12 @@ fn decrypt_bytes(data: &EncryptedKeyData, passphrase: &str) -> Result<Zeroizing<
 
     let nonce_bytes =
         Vec::from_hex(&data.nonce).map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid nonce: {}", e)))?;
+    if nonce_bytes.len() != 12 {
+        return Err(OfflineSignerError::DecryptionError(format!(
+            "Invalid nonce length: expected 12 bytes, got {}",
+            nonce_bytes.len()
+        )));
+    }
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = Vec::from_hex(&data.ciphertext)
@@ -457,5 +463,14 @@ mod test {
         ));
         let locked = keyring::Error::NoStorageAccess("the keychain is locked".into());
         assert!(matches!(retrieve_error(locked), OfflineSignerError::KeystoreError(_)));
+    }
+
+    #[test]
+    fn decrypt_key_rejects_invalid_nonce_length_without_panicking() {
+        let key = PrivateKey::default();
+        let mut encrypted = encrypt_key(&key, "passphrase").unwrap();
+        encrypted.nonce = "001122".to_string();
+        let err = decrypt_key(&encrypted, "passphrase").unwrap_err();
+        assert!(matches!(err, OfflineSignerError::DecryptionError(_)));
     }
 }
