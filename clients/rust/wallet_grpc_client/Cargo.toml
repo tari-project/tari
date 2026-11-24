@@ -1,6 +1,6 @@
 [package]
 name = "minotari_wallet_grpc_client"
-description = "Base node GRPC client"
+description = "Minotari wallet gRPC client"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,4 +17,7 @@ thiserror = { workspace = true }
 tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros"] }
+tari_utilities = { workspace = true }
+
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
+tonic = { version = "0.13.1", default-features = false, features = ["prost", "router", "server"] }

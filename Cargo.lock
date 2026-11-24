@@ -4894,6 +4894,7 @@ dependencies = [
  "minotari_app_grpc",
  "tari_common",
  "tari_common_types",
+ "tari_utilities",
  "thiserror 2.0.21",
  "tokio",
  "tonic 0.13.1",
