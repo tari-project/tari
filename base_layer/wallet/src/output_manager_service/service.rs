@@ -1891,13 +1891,14 @@ where
     ) -> Result<(), OutputManagerError> {
         let mut change = Vec::new();
         for output in change_outputs {
-            change.push(DbWalletOutput::from_wallet_output(
-                output,
-                None,
-                OutputSource::default(),
-                Some(tx_id),
-                None,
-            ));
+            let output = DbWalletOutput::from_wallet_output(output, None, OutputSource::default(), Some(tx_id), None);
+            // A change output can come from a signed payload file, and becomes spendable once its transaction is mined
+            if commitment_mask::blocks_revival(&self.resources.key_manager, &output, "Confirm pending transaction") {
+                return Err(OutputManagerError::CommitmentMaskVerificationFailed(
+                    output.commitment.to_hex(),
+                ));
+            }
+            change.push(output);
         }
         self.resources
             .db

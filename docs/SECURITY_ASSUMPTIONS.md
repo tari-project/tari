@@ -71,6 +71,19 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   `applications/minotari_console_wallet` (offline-payload signing commands, `sign-script-message`).
 - **Recorded:** 2026-11-17.
 
+### A-SIGNER-02: The online wallet trusts the signed-result file it is given to submit
+
+- **Assumption:** The channel that carries a signed-result file from the offline signer back to the online wallet is
+  trusted. The wallet does not verify the file's payload signature when it submits it, and that signature does not
+  cover the signed transaction anyway.
+- **What that means:** Whoever can replace the file can have the wallet broadcast a different transaction that
+  spends the payload's own inputs.
+- **Not covered:** A tampered file releasing or locking outputs other than those of its own prepared tx_id, creating
+  records under tx_ids the wallet already has, or adding a wallet output whose commitment does not open to its
+  stated value.
+- **Where:** `base_layer/wallet` (`transaction_service`), `applications/minotari_console_wallet`.
+- **Recorded:** 2026-11-24.
+
 ### A-MULTISIG-01: Multisig co-signers trust the party that builds the spending transaction
 
 - **Assumption:** A co-signer's signature covers the message fixed in the output's script when the output was
@@ -102,7 +115,8 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Assumption:** The base node and wallet gRPC interfaces are administrative interfaces. Whoever can connect with
   valid credentials, to the methods the operator enabled, is acting for the operator. The operator is responsible
   for the bind address, authentication, TLS and the list of enabled methods.
-- **What that means:** An authenticated wallet gRPC client can spend funds. An authenticated base node gRPC client
+- **What that means:** An authenticated wallet gRPC client can spend funds, and can release the inputs locked by a
+  prepared offline-signing payload with `CancelTransaction`. An authenticated base node gRPC client
   can call every enabled method, including expensive ones.
 - **Not covered:** Reaching a method without the configured credentials, reaching a method the operator disabled,
   and anything an unauthenticated or remote peer-to-peer party can cause through these interfaces. Read-only methods

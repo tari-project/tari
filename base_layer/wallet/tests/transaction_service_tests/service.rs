@@ -4687,6 +4687,57 @@ async fn submitting_a_payload_with_other_inputs_than_it_locked_is_refused() {
     }
 }
 
+/// `payload` with `edit` applied to its JSON form, the way a tampered file would carry it.
+fn tampered(
+    payload: &SignedOneSidedTransactionResult,
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> SignedOneSidedTransactionResult {
+    let mut json = serde_json::to_value(payload).unwrap();
+    edit(&mut json);
+    serde_json::from_value(json).unwrap()
+}
+
+/// A signed payload is refused, with nothing locked or recorded, if its change output does not open to its stated
+/// value, is missing, its transaction spends nothing, or it has expired and has to be locked again.
+#[tokio::test]
+async fn submitting_a_forged_or_expired_payload_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    assert!(signed.signed_transaction.change_output.is_some());
+
+    let forged_change_value = tampered(&signed, |json| {
+        let value = json.pointer_mut("/signed_transaction/change_output/value").unwrap();
+        *value = serde_json::json!(value.as_u64().unwrap() + 1_000_000);
+    });
+    let missing_change = tampered(&signed, |json| {
+        *json.pointer_mut("/signed_transaction/change_output").unwrap() = serde_json::Value::Null;
+    });
+    let no_inputs = tampered(&signed, |json| {
+        *json.pointer_mut("/signed_transaction/transaction/body/inputs").unwrap() = serde_json::json!([]);
+    });
+    let mut expired = signed;
+    expired.request.expires_at = 1;
+
+    for payload in [forged_change_value, missing_change, no_inputs, expired] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
+        );
+        assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+    }
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+}
+
 /// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be
 /// prepared again, and records nothing.
 #[tokio::test]

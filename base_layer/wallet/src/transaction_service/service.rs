@@ -1748,7 +1748,7 @@ where
                     let _result = self
                         .event_publisher
                         .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-                    self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
+                    self.submit_or_release(transaction_broadcast_join_handles, completed_transaction)
                         .await?;
                     Ok(TransactionServiceResponse::SendMultisigUtxo(tx_id))
                 }
@@ -4571,6 +4571,16 @@ where
         {
             return refuse("names an output its transaction does not carry");
         }
+        if signed.transaction.body.inputs().is_empty() {
+            return refuse("spends nothing");
+        }
+        // The change output is stored as this wallet's own, so it must be the transaction's change output. Its hash is
+        // recomputed, as the stored one is just a field of the file; the hash covers the commitment.
+        match &signed.change_output {
+            None if signed.change_hashes.is_empty() => {},
+            Some(change) if signed.change_hashes.contains(&change.to_transaction_output()?.hash()) => {},
+            _ => return refuse("does not carry its transaction's change output"),
+        }
         let mut tx_ids = HashSet::from([request.request.tx_id]);
         for i in 0..recipients {
             tx_ids.insert(self.recipient_tx_id(request, i)?);
@@ -4586,6 +4596,34 @@ where
             }
         }
         Ok(())
+    }
+
+    /// As `submit_transaction`, releasing the transaction's locked inputs if its record could not even be written.
+    async fn submit_or_release(
+        &mut self,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        completed_transaction: CompletedTransaction,
+    ) -> Result<(), TransactionServiceError> {
+        let tx_id = completed_transaction.tx_id;
+        let result = self
+            .submit_transaction(transaction_broadcast_join_handles, completed_transaction)
+            .await;
+        if result.is_err() && matches!(self.db.get_any_transaction(tx_id), Ok(None)) {
+            match self
+                .resources
+                .output_manager_service
+                .cancel_pending_transaction(tx_id)
+                .await
+            {
+                Ok(()) => {
+                    info!(target: LOG_TARGET, "Released the inputs of TxId: {tx_id} (its record was not written)")
+                },
+                Err(e) => warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {tx_id}: {e}"),
+            }
+        }
+        result
     }
 
     /// Releases whatever a payload that cannot be submitted still has locked under its `tx_id`, so its other inputs
@@ -4605,14 +4643,15 @@ where
 
     /// Makes sure the inputs of a signed payload are locked under the payload's `tx_id`. If any output is spent in
     /// that tx_id, the inputs must be exactly those outputs, and all still locked. If none is (the payload was
-    /// cancelled, or prepared by a version that did not lock), every input must be `Unspent`, and they are locked
-    /// again. Returns whether anything was locked, or as the inner error a refusal after which the payload's inputs
-    /// should be released. The outer error leaves them alone: a failure to find out, or inputs that are not the
-    /// payload's at all.
+    /// cancelled, or prepared by a version that did not lock), the payload must not have expired and every input must
+    /// be `Unspent`, and they are locked again. Returns whether anything was locked, or as the inner error a refusal
+    /// after which the payload's inputs should be released. The outer error leaves them alone: a failure to find out,
+    /// or inputs that are not the payload's at all.
     async fn lock_signed_inputs(
         &mut self,
         tx_id: TxId,
         transaction: &Transaction,
+        expires_at: u64,
     ) -> Result<Result<bool, TransactionServiceError>, TransactionServiceError> {
         let refuse = |reason: &str| {
             Ok(Err(TransactionServiceError::Other(format!(
@@ -4661,6 +4700,10 @@ where
                 return Ok(Ok(false));
             }
             return refuse("are not all still locked for it");
+        }
+        // A version 5 payload has no expiry (`0`)
+        if expires_at != 0 && u64::try_from(Utc::now().timestamp()).unwrap_or(u64::MAX) > expires_at {
+            return refuse("belong to a payload that has expired");
         }
         let outputs = output_manager.get_outputs_by_commitments(inputs.clone()).await?;
         if outputs.len() != inputs.len() || outputs.iter().any(|o| o.status != OutputStatus::Unspent) {
@@ -4936,7 +4979,11 @@ where
             completed_txs.push(completed_tx);
         }
         let relocked = match self
-            .lock_signed_inputs(old_tx_id, &request.signed_transaction.transaction)
+            .lock_signed_inputs(
+                old_tx_id,
+                &request.signed_transaction.transaction,
+                request.request.expires_at,
+            )
             .await?
         {
             Ok(relocked) => relocked,
@@ -4963,7 +5010,7 @@ where
 
         let mut completed_txs = completed_txs.into_iter();
         if let Some(first_completed_tx) = completed_txs.next() {
-            self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
+            self.submit_or_release(transaction_broadcast_join_handles, first_completed_tx)
                 .await?;
         }
         for completed_tx in completed_txs {
