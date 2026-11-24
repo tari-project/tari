@@ -29,7 +29,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedPublicKey, CompressedSignature, PrivateKey},
 };
-use tari_script::{ExecutionStack, Opcode, TariScript, push_pubkey_script};
+use tari_script::{ExecutionStack, MAX_MULTISIG_LIMIT, Opcode, TariScript, push_pubkey_script};
 
 use crate::{
     MicroMinotari,
@@ -94,10 +94,10 @@ pub fn multisig_pending_output(
     .for_recipient(recipient.clone()))
 }
 
-/// Refuses an `m` of `key_count` multisig threshold that no spend could meet, or that a script cannot encode. The
-/// script itself only rejects it when it runs, so an output with such a script would be mined and never be spendable.
+/// Refuses an `m` of `key_count` multisig threshold that no spend could meet. The script itself only rejects it when
+/// it runs, so an output with such a script would be mined and never be spendable.
 pub fn validate_multisig_threshold(m: u8, key_count: usize) -> Result<(), TransactionBuilderError> {
-    if m == 0 || usize::from(m) > key_count || key_count > usize::from(u8::MAX) {
+    if m == 0 || usize::from(m) > key_count || key_count > usize::from(MAX_MULTISIG_LIMIT) {
         return Err(TransactionBuilderError::Other(format!(
             "invalid multisig threshold: {m} of {key_count}"
         )));

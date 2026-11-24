@@ -4190,18 +4190,13 @@ async fn prepare_deposit_multisig_transaction_refuses_an_unmeetable_threshold() 
         Network::LocalNet,
     )
     .unwrap();
-    let public_keys = vec![
-        alice_ts_interface.key_manager_handle.get_spend_key().pub_key,
-        bob_key_manager.get_spend_key().pub_key,
-    ];
-
-    for (m, n) in [(0u8, 2usize), (3, 2), (1, 0)] {
+    for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 33)] {
         let err = alice_ts_interface
             .transaction_service_handle
             .prepare_deposit_multisig_transaction(
                 MicroMinotari(100_000),
                 m,
-                public_keys[..n].to_vec(),
+                vec![bob_key_manager.get_spend_key().pub_key; n],
                 bob_address.clone(),
                 None,
             )
@@ -4380,12 +4375,17 @@ async fn send_multisig_utxo_locks_the_multisig_input() {
 
 /// Input selection for a multisig deposit pays for the multisig script the output really carries. One input covers
 /// the amount and the fee of an output with a plain script, but not the fee of the real multisig output, so the
-/// selection must take a second input; and the memo kept in the wallet records the fee charged.
+/// selection must take a second input; and the memo kept in the wallet records the fee charged. Change is not forced,
+/// so the second input is only taken if the selection itself finds the first one short.
 #[tokio::test]
 async fn create_multisig_utxo_sizes_the_fee_for_the_multisig_script() {
     let factories = CryptoFactories::default();
     let connection = make_wallet_database_memory_connection();
-    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let oms_config = OutputManagerServiceConfig {
+        force_change_output: false,
+        ..Default::default()
+    };
+    let mut alice = setup_transaction_service_no_comms_with_oms_config(factories, connection, None, oms_config).await;
     let input_value = MicroMinotari(1_000_000);
     let mut inputs = Vec::new();
     for _ in 0..2 {
@@ -4414,9 +4414,7 @@ async fn create_multisig_utxo_sizes_the_fee_for_the_multisig_script() {
         Network::LocalNet,
     )
     .unwrap();
-    // Enough keys that the script outweighs a change output: a selection measuring a plain script then plans change
-    // from the first input alone, which cannot even pay the real fee.
-    let public_keys = vec![bob_key_manager.get_spend_key().pub_key; 100];
+    let public_keys = vec![bob_key_manager.get_spend_key().pub_key; 3];
     let party_number = 2;
 
     // The fee of spending one input into the multisig output, with no change.

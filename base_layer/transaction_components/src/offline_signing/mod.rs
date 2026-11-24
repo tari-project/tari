@@ -3429,19 +3429,20 @@ mod test {
                 None,
             )
         };
-        let bad: [(u8, usize); 3] = [(0, 2), (3, 2), (1, 0)];
+        let bad: [(u8, usize); 4] = [(0, 2), (3, 2), (1, 0), (2, 33)];
         for (m, n) in bad {
             let err = prepare(m, n).unwrap_err().to_string();
             assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
         }
         prepare(1, 1).unwrap();
+        prepare(32, 32).unwrap();
         let valid = prepare(2, 2).unwrap();
 
         // A payload carrying a bad threshold is neither summarised for approval nor signed.
         for (m, n) in bad {
             let mut info = valid.info.clone();
             info.party_number = m;
-            info.public_keys.truncate(n);
+            info.public_keys = vec![bob.get_spend_key().pub_key; n];
             let payload = PrepareDepositMultisigTransactionResult {
                 info: info.clone(),
                 ..valid.clone()

@@ -181,7 +181,11 @@ use tari_transaction_components::{
     MicroMinotari,
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
-    offline_signing::{MAX_PAYLOAD_LIFETIME, models::SignedOneSidedTransactionResult},
+    offline_signing::{
+        MAX_PAYLOAD_LIFETIME,
+        models::SignedOneSidedTransactionResult,
+        one_sided_signer::validate_multisig_threshold,
+    },
     rpc::MAX_ALLOWED_QUERY_SIZE,
     transaction_components::{
         OutputFeatures,
@@ -1057,21 +1061,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         if message.amount == 0 {
             return Err(Status::invalid_argument("amount must be greater than 0".to_string()));
         }
-        if public_keys.is_empty() {
-            return Err(Status::invalid_argument("public_keys cannot be empty".to_string()));
-        }
         let party_number_u8 = u8::try_from(message.party_number)
             .map_err(|_| Status::invalid_argument("party_number_u8 must be in 1..=255".to_string()))?;
-        if party_number_u8 == 0 {
-            return Err(Status::invalid_argument(
-                "party_number_u8 must be greater than 0".to_string(),
-            ));
-        }
-        if (party_number_u8 as usize) > public_keys.len() {
-            return Err(Status::invalid_argument(
-                "party_number_u8 must be less than or equal to the number of public keys".to_string(),
-            ));
-        }
+        validate_multisig_threshold(party_number_u8, public_keys.len())
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
         // Ensure unique signers
         {
             let mut set = std::collections::HashSet::new();
@@ -2498,27 +2491,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             // A payload prepared for offline signing has no record until it is submitted, only the inputs locked
             // under its tx_id. The output manager, unlike the transaction service, reports a tx_id that locks nothing.
             Ok(None) => {
-                let response = match self
+                let result = self
                     .get_output_manager_service()
                     .cancel_pending_transaction(message.tx_id.into())
-                    .await
-                {
-                    Ok(()) => tari_rpc::CancelTransactionResponse {
-                        is_success: true,
-                        failure_message: "".to_string(),
-                    },
-                    Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {
-                        return Err(Status::not_found(format!(
-                            "Transaction TxId:{} is not found",
-                            message.tx_id
-                        )));
-                    },
-                    Err(e) => tari_rpc::CancelTransactionResponse {
-                        is_success: false,
-                        failure_message: e.to_string(),
-                    },
-                };
-                return Ok(Response::new(response));
+                    .await;
+                return record_less_cancel_response(message.tx_id, result).map(Response::new);
             },
             // A pending outbound row stored by an older version may no longer decode; the service can still cancel it
             Err(e) if is_undecodable_transaction(&e) => {
@@ -4535,6 +4512,26 @@ fn found_or_none<T>(context: &str, result: Result<T, TransactionServiceError>) -
     }
 }
 
+/// The `CancelTransaction` reply for a tx_id without a transaction record, from the output manager's cancel of it
+fn record_less_cancel_response(
+    tx_id: u64,
+    result: Result<(), OutputManagerError>,
+) -> Result<tari_rpc::CancelTransactionResponse, Status> {
+    match result {
+        Ok(()) => Ok(tari_rpc::CancelTransactionResponse {
+            is_success: true,
+            failure_message: "".to_string(),
+        }),
+        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {
+            Err(Status::not_found(format!("Transaction TxId:{tx_id} is not found")))
+        },
+        Err(e) => Ok(tari_rpc::CancelTransactionResponse {
+            is_success: false,
+            failure_message: e.to_string(),
+        }),
+    }
+}
+
 /// Whether a transaction lookup failed because the stored row no longer decodes, rather than for a systemic reason
 fn is_undecodable_transaction(err: &TransactionServiceError) -> bool {
     matches!(
@@ -4607,8 +4604,38 @@ mod tests {
         memo_from_raw_bytes,
         parse_excluded_commitments,
         payload_lifetime,
+        record_less_cancel_response,
         with_request_offset,
     };
+
+    #[test]
+    fn a_record_less_cancel_reports_an_unknown_tx_id_as_not_found() {
+        use minotari_wallet::output_manager_service::error::{OutputManagerError, OutputManagerStorageError};
+        use tonic::Code;
+
+        let released = record_less_cancel_response(7, Ok(())).unwrap();
+        assert!(released.is_success);
+        assert!(released.failure_message.is_empty());
+
+        let unknown = record_less_cancel_response(
+            7,
+            Err(OutputManagerError::OutputManagerStorageError(
+                OutputManagerStorageError::ValueNotFound,
+            )),
+        )
+        .unwrap_err();
+        assert_eq!(unknown.code(), Code::NotFound);
+
+        let failed = record_less_cancel_response(
+            7,
+            Err(OutputManagerError::OutputManagerStorageError(
+                OutputManagerStorageError::OutputAlreadySpent,
+            )),
+        )
+        .unwrap();
+        assert!(!failed.is_success);
+        assert!(!failed.failure_message.is_empty());
+    }
 
     #[test]
     fn only_an_undecodable_row_goes_straight_to_cancel() {
