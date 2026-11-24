@@ -131,7 +131,7 @@ use crate::{
     output_manager_service::{
         UtxoSelectionCriteria,
         UtxoSelectionFilter,
-        error::OutputManagerError,
+        error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
         storage::{OutputStatus, database::OutputBackendQuery, models::SpendingPriority},
@@ -1191,6 +1191,23 @@ where
                 .await
             },
 
+            // Handled here rather than in the output manager so that it cannot interleave with a submit of the same
+            // payload, which moves its inputs to the signed transaction's tx_id.
+            TransactionServiceRequest::CancelRecordLessTransaction(tx_id) => {
+                async {
+                    if self.db.get_any_transaction(tx_id)?.is_some() {
+                        return Err(TransactionServiceError::FailedToCancelTransaction(format!(
+                            "Transaction {tx_id} has a record"
+                        )));
+                    }
+                    self.resources
+                        .output_manager_service
+                        .cancel_pending_transaction(tx_id)
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionCancelled)
+                }
+                .await
+            },
             TransactionServiceRequest::CancelPendingTransaction(tx_id) => {
                 async {
                     self.cancel_pending_transaction(tx_id).await?;
@@ -4502,6 +4519,20 @@ where
         Ok(new_tx_id)
     }
 
+    /// Releases whatever a payload that cannot be submitted still has locked under its `tx_id`, so its other inputs
+    /// can be prepared again. Nothing is left under that tx_id once the payload has been submitted.
+    async fn release_refused_payload(&mut self, tx_id: TxId) {
+        match self
+            .resources
+            .output_manager_service
+            .cancel_pending_transaction(tx_id)
+            .await
+        {
+            Ok(()) | Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {},
+            Err(e) => warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {tx_id}: {e}"),
+        }
+    }
+
     /// Makes sure every input of a signed payload is locked under the payload's `tx_id`, locking again those that are
     /// `Unspent` (the payload was cancelled, or prepared by a version that did not lock). Refuses an input this wallet
     /// does not hold or that is spent or locked by another transaction. Returns whether anything was locked.
@@ -4761,9 +4792,16 @@ where
         // Use original keys generated in this wallet (they correspond to keys with the same values)
         let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
-        let relocked = self
+        let relocked = match self
             .lock_signed_inputs(old_tx_id, &request.signed_transaction.transaction)
-            .await?;
+            .await
+        {
+            Ok(relocked) => relocked,
+            Err(e) => {
+                self.release_refused_payload(old_tx_id).await;
+                return Err(e);
+            },
+        };
 
         let _result = self
             .event_publisher

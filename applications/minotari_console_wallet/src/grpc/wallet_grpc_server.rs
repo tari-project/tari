@@ -2489,11 +2489,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let txn = match transaction_service.get_any_transaction(message.tx_id.into()).await {
             Ok(Some(txn)) => txn,
             // A payload prepared for offline signing has no record until it is submitted, only the inputs locked
-            // under its tx_id. The output manager, unlike the transaction service, reports a tx_id that locks nothing.
+            // under its tx_id
             Ok(None) => {
-                let result = self
-                    .get_output_manager_service()
-                    .cancel_pending_transaction(message.tx_id.into())
+                let result = transaction_service
+                    .cancel_record_less_transaction(message.tx_id.into())
                     .await;
                 return record_less_cancel_response(message.tx_id, result).map(Response::new);
             },
@@ -4512,19 +4511,19 @@ fn found_or_none<T>(context: &str, result: Result<T, TransactionServiceError>) -
     }
 }
 
-/// The `CancelTransaction` reply for a tx_id without a transaction record, from the output manager's cancel of it
+/// The `CancelTransaction` reply for a tx_id without a transaction record, from the release of its locked inputs
 fn record_less_cancel_response(
     tx_id: u64,
-    result: Result<(), OutputManagerError>,
+    result: Result<(), TransactionServiceError>,
 ) -> Result<tari_rpc::CancelTransactionResponse, Status> {
     match result {
         Ok(()) => Ok(tari_rpc::CancelTransactionResponse {
             is_success: true,
             failure_message: "".to_string(),
         }),
-        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {
-            Err(Status::not_found(format!("Transaction TxId:{tx_id} is not found")))
-        },
+        Err(TransactionServiceError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
+            OutputManagerStorageError::ValueNotFound,
+        ))) => Err(Status::not_found(format!("Transaction TxId:{tx_id} is not found"))),
         Err(e) => Ok(tari_rpc::CancelTransactionResponse {
             is_success: false,
             failure_message: e.to_string(),
@@ -4610,29 +4609,24 @@ mod tests {
 
     #[test]
     fn a_record_less_cancel_reports_an_unknown_tx_id_as_not_found() {
-        use minotari_wallet::output_manager_service::error::{OutputManagerError, OutputManagerStorageError};
+        use minotari_wallet::{
+            output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
+            transaction_service::error::TransactionServiceError,
+        };
         use tonic::Code;
+        let output_manager =
+            |e| TransactionServiceError::OutputManagerError(OutputManagerError::OutputManagerStorageError(e));
 
         let released = record_less_cancel_response(7, Ok(())).unwrap();
         assert!(released.is_success);
         assert!(released.failure_message.is_empty());
 
-        let unknown = record_less_cancel_response(
-            7,
-            Err(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::ValueNotFound,
-            )),
-        )
-        .unwrap_err();
+        let unknown =
+            record_less_cancel_response(7, Err(output_manager(OutputManagerStorageError::ValueNotFound))).unwrap_err();
         assert_eq!(unknown.code(), Code::NotFound);
 
-        let failed = record_less_cancel_response(
-            7,
-            Err(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::OutputAlreadySpent,
-            )),
-        )
-        .unwrap();
+        let failed =
+            record_less_cancel_response(7, Err(output_manager(OutputManagerStorageError::OutputAlreadySpent))).unwrap();
         assert!(!failed.is_success);
         assert!(!failed.failure_message.is_empty());
     }

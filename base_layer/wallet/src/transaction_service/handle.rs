@@ -231,6 +231,9 @@ pub enum TransactionServiceRequest {
         MemoField,
     ),
     CancelPendingTransaction(TxId),
+    /// Release the inputs locked under a prepared payload's tx_id, which has no transaction record until it is
+    /// submitted.
+    CancelRecordLessTransaction(TxId),
     CancelCompletedTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroMinotari,
@@ -497,6 +500,7 @@ impl fmt::Display for TransactionServiceRequest {
                 write!(f, "SendShaAtomicSwapTransaction (to {k}, {v}, {id})")
             },
             Self::CancelPendingTransaction(t) => write!(f, "CancelPendingTransaction ({t})"),
+            Self::CancelRecordLessTransaction(t) => write!(f, "CancelRecordLessTransaction ({t})"),
             Self::CancelCompletedTransaction(t) => write!(f, "CancelCompletedTransaction ({t})"),
             Self::ImportUtxoWithStatus {
                 amount,
@@ -1306,6 +1310,23 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::TransactionCancelled => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::CancelTransaction".to_string(),
+            )),
+        }
+    }
+
+    /// Releases the inputs locked under `tx_id`, which must have no transaction record. Fails with the output
+    /// manager's `ValueNotFound` if nothing is locked under it.
+    pub async fn cancel_record_less_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CancelRecordLessTransaction(tx_id))
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::CancelRecordLessTransaction({e})"),
+            )?? {
+            TransactionServiceResponse::TransactionCancelled => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::CancelRecordLessTransaction".to_string(),
             )),
         }
     }

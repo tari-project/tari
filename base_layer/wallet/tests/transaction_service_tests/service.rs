@@ -34,7 +34,7 @@ use minotari_wallet::{
         OutputManagerServiceInitializer,
         UtxoSelectionCriteria,
         config::OutputManagerServiceConfig,
-        error::OutputManagerError,
+        error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
@@ -42,7 +42,7 @@ use minotari_wallet::{
             OutputStatus,
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
-            sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
+            sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         },
     },
     storage::{
@@ -4374,24 +4374,30 @@ async fn send_multisig_utxo_locks_the_multisig_input() {
     );
 }
 
-/// Prepares and signs a one-sided payment from the wallet's single `Unspent` input `uo` to a random address, then
-/// cancels the prepared payload so the input is `Unspent` again.
-async fn signed_then_cancelled_one_sided_payload(
+/// Adds `count` `Unspent` inputs of 1 T to the wallet, then prepares and signs a one-sided payment of `amount` to a
+/// random address. Returns the inputs, the prepared payload's tx_id and the signed payload.
+async fn signed_one_sided_payload(
     ts: &mut TransactionServiceNoCommsInterface,
-) -> (WalletOutput, SignedOneSidedTransactionResult) {
-    let uo = make_input(
-        &mut rand::rng(),
-        MicroMinotari(1_000_000),
-        &OutputFeatures::default(),
-        ts.key_manager_handle.key_manager(),
-    );
-    ts.output_manager_service_handle
-        .add_output(uo.clone(), None)
-        .await
-        .unwrap();
-    ts.oms_db
-        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
-        .unwrap();
+    count: usize,
+    amount: MicroMinotari,
+) -> (Vec<WalletOutput>, TxId, SignedOneSidedTransactionResult) {
+    let mut inputs = Vec::new();
+    for _ in 0..count {
+        let uo = make_input(
+            &mut rand::rng(),
+            MicroMinotari(1_000_000),
+            &OutputFeatures::default(),
+            ts.key_manager_handle.key_manager(),
+        );
+        ts.output_manager_service_handle
+            .add_output(uo.clone(), None)
+            .await
+            .unwrap();
+        ts.oms_db
+            .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+            .unwrap();
+        inputs.push(uo);
+    }
     let bob_key_manager = create_new_random_key_manager().await.unwrap();
     let bob_address = TariAddress::new_dual_address_with_default_features(
         bob_key_manager.get_view_key().pub_key,
@@ -4403,7 +4409,7 @@ async fn signed_then_cancelled_one_sided_payload(
         .transaction_service_handle
         .prepare_one_sided_transaction_for_signing(
             bob_address,
-            MicroMinotari(100_000),
+            amount,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari(1),
@@ -4412,21 +4418,55 @@ async fn signed_then_cancelled_one_sided_payload(
         )
         .await
         .unwrap();
-    ts.output_manager_service_handle
-        .cancel_pending_transaction(prepared.tx_id)
-        .await
-        .unwrap();
-    assert_eq!(output_status(ts, &uo).await, (OutputStatus::Unspent, None));
+    assert_eq!(prepared.info.inputs.len(), count);
+    let prepared_tx_id = prepared.tx_id;
     let signed = ts
         .transaction_service_handle
         .sign_one_sided_transaction(confirmed(PayloadSummary::from_one_sided(prepared)))
         .await
         .unwrap();
+    (inputs, prepared_tx_id, signed)
+}
+
+/// Prepares and signs a one-sided payment from a single input, then cancels the prepared payload the way gRPC
+/// `CancelTransaction` does, so the input is `Unspent` again.
+async fn signed_then_cancelled_one_sided_payload(
+    ts: &mut TransactionServiceNoCommsInterface,
+) -> (WalletOutput, SignedOneSidedTransactionResult) {
+    let (mut inputs, prepared_tx_id, signed) = signed_one_sided_payload(ts, 1, MicroMinotari(100_000)).await;
+    ts.transaction_service_handle
+        .cancel_record_less_transaction(prepared_tx_id)
+        .await
+        .unwrap();
+    let uo = inputs.remove(0);
+    assert_eq!(output_status(ts, &uo).await, (OutputStatus::Unspent, None));
     (uo, signed)
 }
 
+/// Cancelling a tx_id that has no record and locks nothing is reported as not found.
+#[tokio::test]
+async fn cancelling_an_unknown_record_less_transaction_is_not_found() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let result = alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(TxId::from(99u64))
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(TransactionServiceError::OutputManagerError(
+                OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)
+            ))
+        ),
+        "{result:?}"
+    );
+}
+
 /// Submitting a signed payload whose prepared lock was cancelled locks its input again and moves it to the signed
-/// transaction, so the spent input is not left counted as available.
+/// transaction, so the spent input is not left counted as available. Submitting it again is refused and leaves that
+/// lock alone.
 #[tokio::test]
 async fn submitting_a_cancelled_payload_locks_its_input_again() {
     let factories = CryptoFactories::default();
@@ -4437,9 +4477,21 @@ async fn submitting_a_cancelled_payload_locks_its_input_again() {
 
     alice
         .transaction_service_handle
-        .broadcast_signed_one_sided_transaction(signed)
+        .broadcast_signed_one_sided_transaction(signed.clone())
         .await
         .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed)
+            .await
+            .is_err()
+    );
     assert_eq!(
         output_status(&mut alice, &uo).await,
         (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
@@ -4475,6 +4527,47 @@ async fn submitting_a_payload_whose_input_is_locked_elsewhere_is_refused() {
         output_status(&mut alice, &uo).await,
         (OutputStatus::ShortTermEncumberedToBeSpent, Some(other_tx_id))
     );
+}
+
+/// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be
+/// prepared again, and records nothing.
+#[tokio::test]
+async fn a_refused_payload_releases_its_other_inputs() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, prepared_tx_id, signed) = signed_one_sided_payload(&mut alice, 2, MicroMinotari(1_500_000)).await;
+    alice
+        .oms_db
+        .mark_outputs_as_spent(vec![SpentOutputInfoForBatch {
+            commitment: inputs[0].commitment().clone(),
+            confirmed: true,
+            mark_deleted_at_height: 1,
+            mark_deleted_in_block: FixedHash::default(),
+        }])
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &inputs[1]).await,
+        (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+    );
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        output_status(&mut alice, &inputs[1]).await,
+        (OutputStatus::Unspent, None)
+    );
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
 }
 
 /// Input selection for a multisig deposit pays for the multisig script the output really carries. One input covers
