@@ -1293,12 +1293,12 @@ mod test {
 
         signatures.push(
             charlie_key_manager
-                .sign_script_message_with_spend_key(&message[..], Some(&sender_offset_key.pub_key))
+                .sign_script_message_with_spend_key_trusted(&message[..], Some(&sender_offset_key.pub_key))
                 .unwrap(),
         );
         signatures.push(
             bob_key_manager
-                .sign_script_message_with_spend_key(&message[..], Some(&sender_offset_key.pub_key))
+                .sign_script_message_with_spend_key_trusted(&message[..], Some(&sender_offset_key.pub_key))
                 .unwrap(),
         );
 

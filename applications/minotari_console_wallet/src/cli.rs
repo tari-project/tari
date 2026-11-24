@@ -203,14 +203,22 @@ pub enum CliCommands {
     ImportPaperWallet(ImportPaperWalletArgs),
 
     GetMultisigUtxoData(GetMultisigUtxoDataArgs),
+    /// Spend a multisig UTXO with the co-signers' signatures. The signatures do not cover the recipient, amount or
+    /// fee: whoever holds enough of them decides where the funds go
     SendMultisigUtxo(SendMultisigUtxoArgs),
+    /// Create an m-of-n multisig UTXO. Co-signers' signatures will cover only its script message, so whoever later
+    /// holds enough of them decides where the funds go
     CreateMultisigUtxo(CreateMultisigUtxoArgs),
 
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListTx,
 
+    /// Prepare an m-of-n multisig deposit for offline signing. Co-signers' signatures will cover only its script
+    /// message, so whoever later holds enough of them decides where the funds go
     PrepareDepositMultisigTransaction(PrepareDepositMultisigTransactionArgs),
+    /// Prepare a multisig withdrawal for offline signing. The co-signers' signatures do not cover the recipient,
+    /// amount or fee: whoever holds enough of them decides where the funds go
     PrepareWithdrawMultisigTransaction(PrepareWithdrawMultisigTransactionArgs),
 
     PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
@@ -227,6 +235,8 @@ pub enum CliCommands {
     ClearPayloadKey,
 
     SignMessage(SignMessageArgs),
+    /// Co-sign a multisig UTXO's script message. The signature lets whoever builds the spending transaction send the
+    /// funds anywhere; confirm out of band which output (commitment, output hash) you are signing for
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),
@@ -335,9 +345,12 @@ pub struct SignMessageArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct SignScriptMessageArgs {
-    /// The message to be signed (UTF-8 string)
+    /// The 32-byte script message to be signed, in hex
     #[clap(long)]
     pub message: String,
+    /// Optional commitment of the multisig UTXO being signed for, printed before signing
+    #[clap(long, value_parser = parse_compressed_commitment)]
+    pub utxo_commitment: Option<CompressedCommitment>,
     /// Optional output file path
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,

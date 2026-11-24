@@ -325,7 +325,10 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
-    fn sign_script_message_with_spend_key(
+    /// Signs a multisig script message with the spend key, tweaked by `sender_offset_pub_key` when given and bare
+    /// otherwise. The caller is trusted: the signature authorises any spend, to any destination, of the output whose
+    /// script carries `message`, and the signer cannot see the spending transaction. See [`crate::multisig`].
+    fn sign_script_message_with_spend_key_trusted(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,

@@ -81,7 +81,7 @@ use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
-    helpers::terminal_safe::escape_bytes_for_terminal,
+    helpers::terminal_safe::{TerminalSafe, escape_bytes_for_terminal},
     key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError, wallet_types::WalletType},
     multisig::script::is_multisig_utxo,
     offline_signing::{
@@ -752,6 +752,28 @@ fn read_payload_key(args: &ImportPayloadKeyArgs) -> Result<(PrivateKey, Compress
         return Err(invalid("the private key does not match the file's public key"));
     }
     Ok((private_key, public_key))
+}
+
+/// Writes what a multisig co-signer is about to sign, so they can check it against the output they agreed to.
+fn print_script_message_to_sign(
+    out: &mut dyn Write,
+    utxo_commitment: Option<&CompressedCommitment>,
+    message: &[u8; 32],
+    sender_offset_key: Option<&CompressedPublicKey>,
+) -> io::Result<()> {
+    writeln!(out, "Signing a multisig script message:")?;
+    if let Some(commitment) = utxo_commitment {
+        writeln!(out, "  UTXO commitment:   {}", TerminalSafe(&commitment.to_hex()))?;
+    }
+    writeln!(out, "  Script message:    {}", TerminalSafe(&message.to_hex()))?;
+    match sender_offset_key {
+        Some(key) => writeln!(out, "  Sender offset key: {}", TerminalSafe(&key.to_hex()))?,
+        None => writeln!(out, "  No sender offset key given: signing with the bare spend key")?,
+    }
+    writeln!(
+        out,
+        "This signature lets whoever builds the spending transaction send the funds anywhere."
+    )
 }
 
 /// Writes the summary of an offline payload and returns it confirmed, or an error if it was not confirmed.
@@ -3170,8 +3192,15 @@ pub async fn command_runner(
                 commitment_bytes.clone_from_slice(&msg_bytes);
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
+                print_script_message_to_sign(
+                    &mut io::stdout().lock(),
+                    args.utxo_commitment.as_ref(),
+                    &commitment_bytes,
+                    sender_offset,
+                )
+                .map_err(|e| CommandError::General(e.to_string()))?;
                 let signature =
-                    key_manager_service.sign_script_message_with_spend_key(&commitment_bytes, sender_offset)?;
+                    key_manager_service.sign_script_message_with_spend_key_trusted(&commitment_bytes, sender_offset)?;
 
                 if let Some(file) = args.output_file {
                     if let Some(parent) = file.parent() {
@@ -4170,6 +4199,37 @@ mod test {
     };
 
     use super::*;
+
+    #[test]
+    fn script_message_signing_prints_commitment_message_and_offset_note() {
+        let commitment = CompressedCommitment::default();
+        let mut out = Vec::new();
+        print_script_message_to_sign(&mut out, Some(&commitment), &[0xab; 32], None).unwrap();
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains(&commitment.to_hex()), "{written}");
+        assert!(written.contains(&"ab".repeat(32)), "{written}");
+        assert!(written.contains("signing with the bare spend key"), "{written}");
+        assert!(!written.chars().any(|c| c.is_control() && c != '\n'), "{written}");
+
+        let key = CompressedPublicKey::default();
+        let mut out = Vec::new();
+        print_script_message_to_sign(&mut out, None, &[0xab; 32], Some(&key)).unwrap();
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains(&key.to_hex()), "{written}");
+        assert!(!written.contains("bare spend key"), "{written}");
+    }
+
+    #[test]
+    fn sign_script_message_refuses_a_commitment_with_control_characters() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            args: crate::cli::SignScriptMessageArgs,
+        }
+        let parsed = Wrapper::try_parse_from(["test", "--message", "00", "--utxo-commitment", "\x1b[2J"]);
+        assert!(parsed.is_err());
+    }
 
     fn import_args(index: u64, key: Option<&str>, file: Option<PathBuf>) -> ImportPayloadKeyArgs {
         ImportPayloadKeyArgs {
