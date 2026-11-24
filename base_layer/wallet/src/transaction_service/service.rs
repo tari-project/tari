@@ -4502,6 +4502,46 @@ where
         Ok(new_tx_id)
     }
 
+    /// Makes sure every input of a signed payload is locked under the payload's `tx_id`, locking again those that are
+    /// `Unspent` (the payload was cancelled, or prepared by a version that did not lock). Refuses an input this wallet
+    /// does not hold or that is spent or locked by another transaction. Returns whether anything was locked.
+    async fn lock_signed_inputs(
+        &mut self,
+        tx_id: TxId,
+        transaction: &Transaction,
+    ) -> Result<bool, TransactionServiceError> {
+        let commitments = transaction
+            .body
+            .inputs()
+            .iter()
+            .map(|input| input.commitment().cloned())
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut output_manager = self.resources.output_manager_service.clone();
+        let outputs = output_manager.get_outputs_by_commitments(commitments.clone()).await?;
+        let mut to_lock = Vec::new();
+        for commitment in commitments {
+            match outputs.iter().find(|o| o.commitment == commitment) {
+                Some(o) if o.status == OutputStatus::Unspent => to_lock.push(commitment),
+                Some(o)
+                    if matches!(
+                        o.status,
+                        OutputStatus::EncumberedToBeSpent | OutputStatus::ShortTermEncumberedToBeSpent
+                    ) && o.spent_in_tx_id == Some(tx_id) => {},
+                _ => {
+                    return Err(TransactionServiceError::Other(format!(
+                        "Input {} of the signed transaction is not available to transaction {tx_id}",
+                        commitment.to_hex()
+                    )));
+                },
+            }
+        }
+        if to_lock.is_empty() {
+            return Ok(false);
+        }
+        output_manager.encumber_outputs(tx_id, to_lock).await?;
+        Ok(true)
+    }
+
     /// Locks the `Unspent` output `commitment` as the input of `tx_id` and confirms `tx_id` with its `change`,
     /// releasing the input again if the confirm fails.
     async fn encumber_and_confirm_input(
@@ -4720,18 +4760,25 @@ where
         let payment_id = request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
         let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
+        let fee = request.signed_transaction.transaction.body.get_total_fee()?;
+        let relocked = self
+            .lock_signed_inputs(old_tx_id, &request.signed_transaction.transaction)
+            .await?;
 
         let _result = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
 
-        let fee = request.signed_transaction.transaction.body.get_total_fee()?;
-
-        self.resources
-            .output_manager_service
+        let mut output_manager = self.resources.output_manager_service.clone();
+        if let Err(e) = output_manager
             .confirm_pending_transaction(old_tx_id, Some(new_tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(new_tx_id, e.into()))?;
+        {
+            if relocked && let Err(cancel_err) = output_manager.cancel_pending_transaction(old_tx_id).await {
+                warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {old_tx_id}: {cancel_err}");
+            }
+            return Err(TransactionServiceProtocolError::new(new_tx_id, e.into()).into());
+        }
 
         let mut tx_ids = Vec::new();
         let mut completed_txs = Vec::new();

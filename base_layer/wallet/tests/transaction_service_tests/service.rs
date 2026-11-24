@@ -136,6 +136,7 @@ use tari_transaction_components::{
         OfflinePayload,
         PayloadSummary,
         PaymentRecipient,
+        models::SignedOneSidedTransactionResult,
         one_sided_signer::{multisig_pending_output, withdraw_pending_output},
         prepare_withdraw_multisig_transaction,
         present_payload_summary,
@@ -4370,6 +4371,109 @@ async fn send_multisig_utxo_locks_the_multisig_input() {
     assert_eq!(
         output_status(&mut alice, &output).await,
         (OutputStatus::EncumberedToBeSpent, Some(tx_id))
+    );
+}
+
+/// Prepares and signs a one-sided payment from the wallet's single `Unspent` input `uo` to a random address, then
+/// cancels the prepared payload so the input is `Unspent` again.
+async fn signed_then_cancelled_one_sided_payload(
+    ts: &mut TransactionServiceNoCommsInterface,
+) -> (WalletOutput, SignedOneSidedTransactionResult) {
+    let uo = make_input(
+        &mut rand::rng(),
+        MicroMinotari(1_000_000),
+        &OutputFeatures::default(),
+        ts.key_manager_handle.key_manager(),
+    );
+    ts.output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    ts.oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let prepared = ts
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            MicroMinotari(100_000),
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari(1),
+            MemoField::new_empty(),
+            None,
+        )
+        .await
+        .unwrap();
+    ts.output_manager_service_handle
+        .cancel_pending_transaction(prepared.tx_id)
+        .await
+        .unwrap();
+    assert_eq!(output_status(ts, &uo).await, (OutputStatus::Unspent, None));
+    let signed = ts
+        .transaction_service_handle
+        .sign_one_sided_transaction(confirmed(PayloadSummary::from_one_sided(prepared)))
+        .await
+        .unwrap();
+    (uo, signed)
+}
+
+/// Submitting a signed payload whose prepared lock was cancelled locks its input again and moves it to the signed
+/// transaction, so the spent input is not left counted as available.
+#[tokio::test]
+async fn submitting_a_cancelled_payload_locks_its_input_again() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    let new_tx_id = signed.signed_transaction.tx_id;
+
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+}
+
+/// A signed payload whose input has since been locked by another transaction is refused before anything is recorded.
+#[tokio::test]
+async fn submitting_a_payload_whose_input_is_locked_elsewhere_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    let other_tx_id = TxId::from(99u64);
+    alice
+        .output_manager_service_handle
+        .encumber_outputs(other_tx_id, vec![uo.commitment().clone()])
+        .await
+        .unwrap();
+
+    let result = alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await;
+    assert!(result.is_err());
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(other_tx_id))
     );
 }
 
