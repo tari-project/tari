@@ -763,7 +763,11 @@ fn print_script_message_to_sign(
 ) -> io::Result<()> {
     writeln!(out, "Signing a multisig script message:")?;
     if let Some(commitment) = utxo_commitment {
-        writeln!(out, "  UTXO commitment:   {}", TerminalSafe(&commitment.to_hex()))?;
+        writeln!(
+            out,
+            "  UTXO commitment (as given, not checked): {}",
+            TerminalSafe(&commitment.to_hex())
+        )?;
     }
     writeln!(out, "  Script message:    {}", TerminalSafe(&message.to_hex()))?;
     match sender_offset_key {
@@ -3159,11 +3163,12 @@ pub async fn command_runner(
                 }
             },
             SignMessage(args) => {
-                let mut commitment_bytes = [0u8; 32];
                 let hex_msg = args.message.trim().trim_start_matches("0x");
                 let msg_bytes = Vec::<u8>::from_hex(hex_msg)
                     .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
-                commitment_bytes.clone_from_slice(&msg_bytes);
+                let commitment_bytes: [u8; 32] = msg_bytes
+                    .try_into()
+                    .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))?;
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
 
                 let signature = key_manager_service.sign_message_with_spend_key(&commitment_bytes, sender_offset)?;
@@ -3185,11 +3190,12 @@ pub async fn command_runner(
             },
 
             SignScriptMessage(args) => {
-                let mut commitment_bytes = [0u8; 32];
                 let hex_msg = args.message.trim().trim_start_matches("0x");
                 let msg_bytes = Vec::<u8>::from_hex(hex_msg)
                     .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
-                commitment_bytes.clone_from_slice(&msg_bytes);
+                let commitment_bytes: [u8; 32] = msg_bytes
+                    .try_into()
+                    .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))?;
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
                 print_script_message_to_sign(
@@ -4220,7 +4226,7 @@ mod test {
     }
 
     #[test]
-    fn sign_script_message_refuses_a_commitment_with_control_characters() {
+    fn sign_script_message_rejects_non_hex_utxo_commitment() {
         use clap::Parser;
         #[derive(Parser)]
         struct Wrapper {
