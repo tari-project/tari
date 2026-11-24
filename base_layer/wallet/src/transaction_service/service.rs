@@ -4630,7 +4630,10 @@ where
             .enumerate()
             .any(|(i, c)| inputs.iter().take(i).any(|d| d == c))
         {
-            return refuse("repeat an output");
+            // Not the payload's inputs, whatever is locked for it
+            return Err(TransactionServiceError::Other(format!(
+                "The inputs of the signed transaction repeat an output (transaction {tx_id})"
+            )));
         }
         let mut output_manager = self.resources.output_manager_service.clone();
         let payload_outputs = output_manager

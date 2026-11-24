@@ -4651,25 +4651,39 @@ async fn submitting_a_payload_with_other_inputs_than_it_locked_is_refused() {
     let other_input = other
         .to_transaction_input(alice.key_manager_handle.key_manager())
         .unwrap();
+    // One payload naming an `Unspent` output in B's place, one naming A twice.
+    let mut repeated = signed.clone();
     let (body_inputs, _) = signed.signed_transaction.transaction.body.inputs_mut_with_outputs();
     *body_inputs
         .iter_mut()
         .find(|input| input.commitment().unwrap() == inputs[1].commitment())
         .unwrap() = other_input;
+    let (body_inputs, _) = repeated.signed_transaction.transaction.body.inputs_mut_with_outputs();
+    let first = body_inputs
+        .iter()
+        .find(|input| input.commitment().unwrap() == inputs[0].commitment())
+        .unwrap()
+        .clone();
+    *body_inputs
+        .iter_mut()
+        .find(|input| input.commitment().unwrap() == inputs[1].commitment())
+        .unwrap() = first;
 
-    assert!(
-        alice
-            .transaction_service_handle
-            .broadcast_signed_one_sided_transaction(signed)
-            .await
-            .is_err()
-    );
-    assert_eq!(output_status(&mut alice, &other).await, (OutputStatus::Unspent, None));
-    for input in &inputs {
-        assert_eq!(
-            output_status(&mut alice, input).await,
-            (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+    for payload in [signed, repeated] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
         );
+        assert_eq!(output_status(&mut alice, &other).await, (OutputStatus::Unspent, None));
+        for input in &inputs {
+            assert_eq!(
+                output_status(&mut alice, input).await,
+                (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+            );
+        }
     }
 }
 
