@@ -75,7 +75,9 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   created. It does not cover the recipient, amount or fee of the transaction that later spends the output.
   Co-signers trust whoever assembles that transaction.
 - **What that means:** Once the required number of signatures exists, the party building the transaction decides
-  where the funds go. Co-signers should confirm out of band which output they are signing for.
+  where the funds go. Co-signers should agree out of band on the output hash they are signing for; with
+  `--output-hash`, the console wallet's `sign-script-message` refuses unless its base node reports that output
+  unspent with this message and the co-signer's key in its script. A commitment alone is not bound to the message.
 - **Not covered:** Spending with fewer signatures than the threshold, using a signature for a different output's
   script message, or a non-member producing an accepted signature.
 - **Where:** `base_layer/transaction_components` (`multisig`, `key_manager`), `base_layer/wallet`,

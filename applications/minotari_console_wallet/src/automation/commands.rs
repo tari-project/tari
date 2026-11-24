@@ -78,12 +78,12 @@ use tari_common_types::{
 use tari_core::blocks::pre_mine::{get_embedded_pre_mine_json, get_pre_mine_items};
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
-use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
+use tari_script::{CompressedCheckSigSchnorrSignature, Opcode, push_pubkey_script};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
     helpers::terminal_safe::{TerminalSafe, escape_bytes_for_terminal},
     key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError, wallet_types::WalletType},
-    multisig::script::is_multisig_utxo,
+    multisig::script::{co_signer_script_public_key, is_multisig_utxo},
     offline_signing::{
         ConfirmationMode,
         ConfirmedPayload,
@@ -754,27 +754,102 @@ fn read_payload_key(args: &ImportPayloadKeyArgs) -> Result<(PrivateKey, Compress
     Ok((private_key, public_key))
 }
 
+/// Fetches the output with `output_hash` from the wallet's base node, refusing if it is unknown or spent, or if no
+/// answer comes within 30 seconds (for example while the wallet is offline).
+async fn fetch_unspent_output(
+    wallet: &WalletSqlite,
+    output_hash: &FixedHash,
+) -> Result<TransactionOutput, CommandError> {
+    let lookup = async {
+        let client = wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+        let output = client
+            .fetch_utxo(output_hash.to_vec())
+            .await
+            .map_err(|e| CommandError::General(format!("Refusing to sign: could not fetch the output: {e}")))?
+            .ok_or_else(|| CommandError::General("Refusing to sign: the base node does not know the output".into()))?;
+        let deleted = client
+            .query_deleted_utxos(vec![output_hash.to_vec()], vec![])
+            .await
+            .map_err(|e| {
+                CommandError::General(format!("Refusing to sign: could not check the output is unspent: {e}"))
+            })?;
+        match deleted.utxos.first() {
+            Some(info) if info.found_in_header.is_some() && info.spent_in_header.is_none() => Ok(output),
+            _ => Err(CommandError::General(
+                "Refusing to sign: the output is spent or not on the chain".into(),
+            )),
+        }
+    };
+    timeout(Duration::from_secs(30), lookup)
+        .await
+        .map_err(|_| CommandError::General("Refusing to sign: the base node did not answer within 30 seconds".into()))?
+}
+
+/// Checks that `output`, fetched from the base node, is the output a co-signer agreed to sign for: it has the
+/// requested hash (which commits to its script and commitment), matches `utxo_commitment` if given, and has a multisig
+/// script that carries `message` and lists `signing_key`.
+fn check_co_signed_output(
+    output: &TransactionOutput,
+    output_hash: &FixedHash,
+    utxo_commitment: Option<&CompressedCommitment>,
+    message: &[u8; 32],
+    signing_key: &CompressedPublicKey,
+) -> Result<(), CommandError> {
+    let refuse = |why: &str| Err(CommandError::General(format!("Refusing to sign: {why}")));
+    if output.hash() != *output_hash {
+        return refuse("the base node returned an output with a different hash");
+    }
+    if utxo_commitment.is_some_and(|c| *c != output.commitment) {
+        return refuse("the output's commitment is not the --utxo-commitment given");
+    }
+    let Some((keys, script_message)) = output.script.as_slice().iter().find_map(|op| match op {
+        Opcode::CheckMultiSigVerify(_, _, keys, msg) => Some((keys, msg)),
+        _ => None,
+    }) else {
+        return refuse("the output's script is not a multisig script");
+    };
+    if **script_message != *message {
+        return refuse("the output's script carries a different message");
+    }
+    if !keys.contains(signing_key) {
+        return refuse("your key (with the sender offset key given) is not one of the output's multisig keys");
+    }
+    Ok(())
+}
+
 /// Writes what a multisig co-signer is about to sign and returns whether they approved it. As for offline payloads,
 /// the operator is asked y/N on `input` when interactive and the signing is approved without asking otherwise; the
-/// decision is logged with the public values shown.
+/// decision is logged with the public values shown. `checked_output_hash` is set once [`check_co_signed_output`]
+/// passed, and `utxo_commitment` is then the checked output's commitment.
 fn confirm_script_message_signing(
     mode: ConfirmationMode,
     out: &mut dyn Write,
     input: &mut dyn BufRead,
+    checked_output_hash: Option<&FixedHash>,
     utxo_commitment: Option<&CompressedCommitment>,
     message: &[u8; 32],
     sender_offset_key: Option<&CompressedPublicKey>,
 ) -> io::Result<bool> {
     let commitment_hex = utxo_commitment.map(|c| c.to_hex());
     let offset_hex = sender_offset_key.map(|k| k.to_hex());
+    let checked = if checked_output_hash.is_some() {
+        "checked"
+    } else {
+        "not checked"
+    };
     writeln!(out, "Signing a multisig script message:")?;
-    match &commitment_hex {
-        Some(commitment) => writeln!(
-            out,
-            "  UTXO commitment (as given, not checked): {}",
-            TerminalSafe(commitment)
-        )?,
-        None => writeln!(out, "  No UTXO commitment given: the output was not checked")?,
+    match checked_output_hash {
+        Some(hash) => {
+            writeln!(out, "  Output hash:       {}", TerminalSafe(&hash.to_hex()))?;
+            writeln!(
+                out,
+                "  Checked with the base node: the output is unspent and its script carries this message and your key"
+            )?;
+        },
+        None => writeln!(out, "  No output hash given: the output was not checked")?,
+    }
+    if let Some(commitment) = &commitment_hex {
+        writeln!(out, "  UTXO commitment ({checked}): {}", TerminalSafe(commitment))?;
     }
     writeln!(out, "  Script message:    {}", TerminalSafe(&message.to_hex()))?;
     match &offset_hex {
@@ -802,9 +877,10 @@ fn confirm_script_message_signing(
     };
     info!(
         target: LOG_TARGET,
-        "Multisig script message {} {decision}: sender offset key {}, UTXO commitment {} (not checked)",
+        "Multisig script message {} {decision}: sender offset key {}, output hash {}, UTXO commitment {} ({checked})",
         message.to_hex(),
         offset_hex.as_deref().unwrap_or("none"),
+        checked_output_hash.map(|h| h.to_hex()).as_deref().unwrap_or("none"),
         commitment_hex.as_deref().unwrap_or("none"),
     );
     out.flush()?;
@@ -3231,12 +3307,29 @@ pub async fn command_runner(
                     .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))?;
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
+                let checked_commitment = match &args.output_hash {
+                    Some(hash) => {
+                        let output = fetch_unspent_output(&wallet, hash).await?;
+                        let signing_key = co_signer_script_public_key(&key_manager_service, sender_offset)
+                            .map_err(|e| CommandError::General(e.to_string()))?;
+                        check_co_signed_output(
+                            &output,
+                            hash,
+                            args.utxo_commitment.as_ref(),
+                            &commitment_bytes,
+                            &signing_key,
+                        )?;
+                        Some(output.commitment)
+                    },
+                    None => None,
+                };
                 let mode = offline_confirmation_mode(non_interactive_mode);
                 let approved = confirm_script_message_signing(
                     mode,
                     &mut offline_summary_output(mode),
                     &mut io::stdin().lock(),
-                    args.utxo_commitment.as_ref(),
+                    args.output_hash.as_ref(),
+                    checked_commitment.as_ref().or(args.utxo_commitment.as_ref()),
                     &commitment_bytes,
                     sender_offset,
                 )
@@ -4252,11 +4345,13 @@ mod test {
     #[test]
     fn script_message_signing_prints_commitment_message_and_offset_note() {
         let commitment = CompressedCommitment::default();
+        let hash = FixedHash::from([0xcd; 32]);
         let mut out = Vec::new();
         let approved = confirm_script_message_signing(
             ConfirmationMode::NonInteractive,
             &mut out,
             &mut io::empty(),
+            Some(&hash),
             Some(&commitment),
             &[0xab; 32],
             None,
@@ -4264,7 +4359,12 @@ mod test {
         .unwrap();
         assert!(approved);
         let written = String::from_utf8(out).unwrap();
-        assert!(written.contains(&commitment.to_hex()), "{written}");
+        assert!(written.contains(&hash.to_hex()), "{written}");
+        assert!(written.contains("Checked with the base node"), "{written}");
+        assert!(
+            written.contains(&format!("UTXO commitment (checked): {}", commitment.to_hex())),
+            "{written}"
+        );
         assert!(written.contains(&"ab".repeat(32)), "{written}");
         assert!(written.contains("signing with the bare spend key"), "{written}");
         assert!(written.contains("Signing without a prompt"), "{written}");
@@ -4277,6 +4377,7 @@ mod test {
             &mut out,
             &mut io::empty(),
             None,
+            Some(&commitment),
             &[0xab; 32],
             Some(&key),
         )
@@ -4284,6 +4385,7 @@ mod test {
         let written = String::from_utf8(out).unwrap();
         assert!(written.contains(&key.to_hex()), "{written}");
         assert!(written.contains("the output was not checked"), "{written}");
+        assert!(written.contains("UTXO commitment (not checked)"), "{written}");
         assert!(!written.contains("bare spend key"), "{written}");
     }
 
@@ -4296,6 +4398,7 @@ mod test {
                 &mut out,
                 &mut answer.as_bytes(),
                 None,
+                None,
                 &[0xab; 32],
                 None,
             )
@@ -4303,6 +4406,57 @@ mod test {
             assert_eq!(approved, expected, "{answer:?}");
             assert!(String::from_utf8(out).unwrap().contains("[y/N]"));
         }
+    }
+
+    fn multisig_output(keys: Vec<CompressedPublicKey>, message: [u8; 32]) -> TransactionOutput {
+        let n = u8::try_from(keys.len()).unwrap();
+        TransactionOutput {
+            script: tari_script::TariScript::new(vec![Opcode::CheckMultiSigVerify(1, n, keys, Box::new(message))])
+                .unwrap(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn co_signed_output_check_refuses_anything_but_the_agreed_output() {
+        let own_key = KeyManager::new_random().unwrap().get_spend_key().pub_key;
+        let other_key = KeyManager::new_random().unwrap().get_spend_key().pub_key;
+        let message = [0xab; 32];
+        let output = multisig_output(vec![other_key.clone(), own_key.clone()], message);
+        let hash = output.hash();
+        let check = |output: &TransactionOutput, hash: &FixedHash, commitment, message: &[u8; 32]| {
+            check_co_signed_output(output, hash, commitment, message, &own_key).map_err(|e| e.to_string())
+        };
+
+        check(&output, &hash, None, &message).unwrap();
+        check(&output, &hash, Some(&output.commitment), &message).unwrap();
+
+        let refused = |result: Result<(), String>, why: &str| {
+            let err = result.unwrap_err();
+            assert!(err.contains(why), "{err}");
+        };
+        refused(check(&output, &FixedHash::zero(), None, &message), "different hash");
+        let other_commitment = CompressedCommitment::from_hex(&other_key.to_hex()).unwrap();
+        refused(
+            check(&output, &hash, Some(&other_commitment), &message),
+            "--utxo-commitment",
+        );
+        refused(check(&output, &hash, None, &[0xcd; 32]), "different message");
+
+        let without_own_key = multisig_output(vec![other_key.clone()], message);
+        refused(
+            check(&without_own_key, &without_own_key.hash(), None, &message),
+            "not one of the output's multisig keys",
+        );
+
+        let not_multisig = TransactionOutput {
+            script: push_pubkey_script(&own_key),
+            ..Default::default()
+        };
+        refused(
+            check(&not_multisig, &not_multisig.hash(), None, &message),
+            "not a multisig script",
+        );
     }
 
     #[test]

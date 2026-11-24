@@ -35,7 +35,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     seeds::seed_words::SeedWords,
     tari_address::TariAddress,
-    types::CompressedCommitment,
+    types::{CompressedCommitment, FixedHash},
 };
 use tari_comms::multiaddr::Multiaddr;
 use tari_transaction_components::tari_amount::{self, MicroMinotari};
@@ -236,7 +236,8 @@ pub enum CliCommands {
 
     SignMessage(SignMessageArgs),
     /// Co-sign a multisig UTXO's script message. The signature lets whoever builds the spending transaction send the
-    /// funds anywhere; confirm out of band which output (commitment, output hash) you are signing for
+    /// funds anywhere. Pass the output hash you agreed on out of band, so the wallet checks with its base node that
+    /// the unspent output's script carries this message and your key before signing
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),
@@ -348,8 +349,12 @@ pub struct SignScriptMessageArgs {
     /// The 32-byte script message to be signed, in hex
     #[clap(long)]
     pub message: String,
-    /// Optional commitment of the multisig UTXO being signed for; printed before signing as given, not checked against
-    /// the message
+    /// Hash of the multisig UTXO being signed for. The wallet fetches the output from its base node and refuses to
+    /// sign unless it is unspent and its script carries this message and your key
+    #[clap(long, value_parser = parse_fixed_hash)]
+    pub output_hash: Option<FixedHash>,
+    /// Commitment of the multisig UTXO being signed for. With --output-hash it must match the fetched output;
+    /// without it, it is only printed, not checked
     #[clap(long, value_parser = parse_compressed_commitment)]
     pub utxo_commitment: Option<CompressedCommitment>,
     /// Optional output file path
@@ -715,6 +720,10 @@ pub struct FindPayRefArgs {
 // Helper function to parse CompressedCommitment from hex string
 fn parse_compressed_commitment(s: &str) -> Result<CompressedCommitment, String> {
     CompressedCommitment::from_hex(s).map_err(|e| format!("Invalid CompressedCommitment: {}", e))
+}
+
+fn parse_fixed_hash(s: &str) -> Result<FixedHash, String> {
+    FixedHash::from_hex(s).map_err(|e| format!("Invalid hash: {}", e))
 }
 
 #[derive(Debug, Args, Clone)]
