@@ -62,11 +62,13 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   non-interactively, where it signs without asking. Choosing the non-interactive mode is a deployment decision, and
   the operator is then responsible for controlling what is delivered to the signer.
 - **What that means:** In non-interactive mode there is no per-request human approval. The signer signs every
-  request that passes its own checks.
+  request that passes its own checks. The console wallet's offline-payload signing commands and
+  `sign-script-message` follow the same rule, and treat stdin that is not a terminal as non-interactive.
 - **Not covered:** The checks the signer applies in either mode must hold, the summary shown in interactive mode must
   describe everything that is signed, and the interactive mode must not be bypassable without the operator selecting
   the non-interactive mode.
-- **Where:** `applications/minotari_offline_signer`, `base_layer/transaction_components` (`offline_signing`).
+- **Where:** `applications/minotari_offline_signer`, `base_layer/transaction_components` (`offline_signing`),
+  `applications/minotari_console_wallet` (offline-payload signing commands, `sign-script-message`).
 - **Recorded:** 2026-11-17.
 
 ### A-MULTISIG-01: Multisig co-signers trust the party that builds the spending transaction
@@ -75,7 +77,10 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   created. It does not cover the recipient, amount or fee of the transaction that later spends the output.
   Co-signers trust whoever assembles that transaction.
 - **What that means:** Once the required number of signatures exists, the party building the transaction decides
-  where the funds go. Co-signers should confirm out of band which output they are signing for.
+  where the funds go. A signature is valid for every output whose script has the same message and key, so
+  co-signers should take the message from an output they know independently, not only from the party asking.
+  With `--output-hash`, the console wallet's `sign-script-message` refuses unless its base node has that output
+  unspent with this message and key; that does not tie the signature to it.
 - **Not covered:** Spending with fewer signatures than the threshold, using a signature for a different output's
   script message, or a non-member producing an accepted signature.
 - **Where:** `base_layer/transaction_components` (`multisig`, `key_manager`), `base_layer/wallet`,
@@ -122,6 +127,36 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   bodies, query parameters and response sizes must stay bounded.
 - **Where:** `applications/minotari_node` (`http`, `bootstrap.rs`, `config.rs`).
 - **Recorded:** 2026-11-17, issue #7998.
+
+### A-MCP-01: The MCP caller acts for the operator within the tools the server exposes
+
+- **Assumption:** The client of the base node and wallet MCP servers (normally an AI agent) is acting for the
+  operator, within the tools the server exposes. Read-only tools are always exposed. Control tools (submitting
+  blocks and transactions, transfers, atomic swaps, coin splits, claims and refunds) are exposed only when the
+  operator starts the server with control operations enabled (`control_enabled`). The operator is responsible for
+  who can talk to the server's stdio and for deciding whether to enable control operations.
+- **What that means:** With control operations enabled, the agent can submit blocks and transactions through the
+  node, and can move wallet funds, without a per-call human confirmation (the wallet server refuses to start with
+  `require_confirmation` and control operations both set). The agent may be prompt-injected, including by text
+  that reaches it through tool results. Text that comes from upstream (gRPC error messages, peer user agents, ban
+  reasons, addresses and protocols, wallet failure messages) is cleaned of control and invisible format characters,
+  capped in length, and quoted or labelled as untrusted (`upstream: "..."`, `untrusted_peer_claims`); it is not
+  neutralised and can still carry instructions. On the wallet side, the damage is limited by a cumulative spend
+  budget per server process (default 1,000,000 Tari) and a `fee_per_gram` ceiling (default 10,000 µT/g) on every
+  fund-moving call, both configurable. Transfers, atomic swaps and coin splits are charged their amount plus an
+  upper-bound estimate of their fee; claims and refunds are charged their fee estimate. A call that fails after funds
+  may have left the wallet is still charged, as is a call the wallet accepts but reports as failed, so failed or
+  unconfirmed attempts can also use up the budget. The budget is held in memory and a server restart resets it. It
+  only limits calls made through the MCP server: an agent or process that can reach the wallet's gRPC interface
+  directly (the MCP server does not yet authenticate to it, so it must be left open to local clients; see A-GRPC-01),
+  or that can restart the MCP server, can bypass or reset it.
+- **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
+  not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
+  configured spend budget or paying more than the fee ceiling through the MCP server, and making the server use
+  unbounded memory through upstream data (stream results and peer text must stay bounded). A single request line from
+  the client itself is not yet bounded by the stdio transport.
+- **Where:** `applications/minotari_mcp_common`, `applications/minotari_mcp_node`, `applications/minotari_mcp_wallet`.
+- **Recorded:** 2026-11-23.
 
 ## Withdrawn entries
 

@@ -90,7 +90,10 @@ impl McpResource for PaymentInfoResource {
                 offset: Some(0),
             })
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get completed transactions: {e}")))?;
+            .map_err(|e| McpError::resource_access_failed(format!(
+                "Failed to get completed transactions: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            )))?;
 
         let completed_txs = completed_response.into_inner().transactions;
 
@@ -120,7 +123,10 @@ impl McpResource for PaymentInfoResource {
         let pending_response = client
             .get_pending_inbound_transactions(grpc::GetPendingInboundTransactionsRequest {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get pending transactions: {e}")))?;
+            .map_err(|e| McpError::resource_access_failed(format!(
+                "Failed to get pending transactions: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            )))?;
 
         let pending_txs = pending_response.into_inner().transactions;
         for tx in pending_txs {

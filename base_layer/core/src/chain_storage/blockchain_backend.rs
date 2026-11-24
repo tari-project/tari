@@ -263,6 +263,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// reason to give up.
     fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError>;
 
+    /// Fetch the distinct hashes of the parents of the orphans that have no accumulated data (unlinked orphans)
+    fn fetch_parents_of_unlinked_orphans(&self) -> Result<Vec<HashOutput>, ChainStorageError>;
+
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(
         &mut self,

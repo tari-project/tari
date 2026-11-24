@@ -99,7 +99,7 @@ impl SchemaGenerator {
             .get_input_schema(method_name)
             .ok_or_else(|| SchemaError::InvalidSchema(format!("No schema found for method: {method_name}")))?;
 
-        self.validate_value(params, schema, "root")
+        Self::validate_value(params, schema, "root")
     }
 
     /// Validate output response against schema
@@ -108,7 +108,7 @@ impl SchemaGenerator {
             .get_output_schema(method_name)
             .ok_or_else(|| SchemaError::InvalidSchema(format!("No output schema found for method: {method_name}")))?;
 
-        self.validate_value(response, schema, "root")
+        Self::validate_value(response, schema, "root")
     }
 
     /// Generate MCP tool schema from gRPC method
@@ -238,14 +238,14 @@ impl SchemaGenerator {
     }
 
     /// Validate a JSON value against a schema
-    fn validate_value(&self, value: &Value, schema: &Value, path: &str) -> Result<(), SchemaError> {
+    pub fn validate_value(value: &Value, schema: &Value, path: &str) -> Result<(), SchemaError> {
         let schema_obj = schema
             .as_object()
             .ok_or_else(|| SchemaError::InvalidSchema("Schema must be an object".to_string()))?;
 
         // Check type
         if let Some(schema_type) = schema_obj.get("type") {
-            self.validate_type(value, schema_type, path)?;
+            Self::validate_type(value, schema_type, path)?;
         }
 
         // Check required properties
@@ -262,6 +262,18 @@ impl SchemaGenerator {
             }
         }
 
+        // Reject properties the schema does not list
+        if schema_obj.get("additionalProperties") == Some(&Value::Bool(false)) &&
+            let Some(value_obj) = value.as_object()
+        {
+            let known = schema_obj.get("properties").and_then(|p| p.as_object());
+            if let Some(key) = value_obj.keys().find(|k| !known.is_some_and(|p| p.contains_key(*k))) {
+                return Err(SchemaError::ValidationFailed(format!(
+                    "{path}.{key} is not an accepted argument"
+                )));
+            }
+        }
+
         // Validate properties
         if let Some(properties) = schema_obj.get("properties") &&
             let Some(props_obj) = properties.as_object() &&
@@ -270,16 +282,26 @@ impl SchemaGenerator {
             for (prop_name, prop_value) in value_obj {
                 if let Some(prop_schema) = props_obj.get(prop_name) {
                     let prop_path = format!("{path}.{prop_name}");
-                    self.validate_value(prop_value, prop_schema, &prop_path)?;
+                    Self::validate_value(prop_value, prop_schema, &prop_path)?;
                 }
             }
+        }
+
+        if let Some(array_value) = value.as_array() &&
+            let Some(max_items) = schema_obj.get("maxItems").and_then(|m| m.as_u64()) &&
+            array_value.len() as u64 > max_items
+        {
+            return Err(SchemaError::ValidationFailed(format!(
+                "{path} has {} items, at most {max_items} are allowed",
+                array_value.len()
+            )));
         }
 
         // Validate array items
         if let (Some(items_schema), Some(array_value)) = (schema_obj.get("items"), value.as_array()) {
             for (i, item) in array_value.iter().enumerate() {
                 let item_path = format!("{path}[{i}]");
-                self.validate_value(item, items_schema, &item_path)?;
+                Self::validate_value(item, items_schema, &item_path)?;
             }
         }
 
@@ -306,8 +328,16 @@ impl SchemaGenerator {
             }
         }
 
-        // Check string patterns and formats
+        // Check string length, patterns and formats
         if let Some(str_value) = value.as_str() {
+            if let Some(max_length) = schema_obj.get("maxLength").and_then(|m| m.as_u64()) &&
+                str_value.chars().count() as u64 > max_length
+            {
+                return Err(SchemaError::ValidationFailed(format!(
+                    "{path} is longer than {max_length} characters"
+                )));
+            }
+
             if let Some(pattern) = schema_obj.get("pattern") &&
                 let Some(pattern_str) = pattern.as_str() &&
                 let Ok(regex) = regex::Regex::new(pattern_str) &&
@@ -322,7 +352,7 @@ impl SchemaGenerator {
             if let Some(format) = schema_obj.get("format") &&
                 let Some(format_str) = format.as_str()
             {
-                self.validate_string_format(str_value, format_str, path)?;
+                Self::validate_string_format(str_value, format_str, path)?;
             }
         }
 
@@ -330,7 +360,7 @@ impl SchemaGenerator {
     }
 
     /// Validate JSON value type
-    fn validate_type(&self, value: &Value, schema_type: &Value, path: &str) -> Result<(), SchemaError> {
+    fn validate_type(value: &Value, schema_type: &Value, path: &str) -> Result<(), SchemaError> {
         let expected_type = schema_type
             .as_str()
             .ok_or_else(|| SchemaError::InvalidSchema("Type must be a string".to_string()))?;
@@ -362,7 +392,7 @@ impl SchemaGenerator {
     }
 
     /// Validate string format
-    fn validate_string_format(&self, value: &str, format: &str, path: &str) -> Result<(), SchemaError> {
+    fn validate_string_format(value: &str, format: &str, path: &str) -> Result<(), SchemaError> {
         match format {
             "byte" => {
                 // Validate base64 or hex string

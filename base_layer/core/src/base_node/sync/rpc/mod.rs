@@ -24,7 +24,6 @@ mod service;
 
 mod sync_utxos_task;
 pub use service::BaseNodeSyncRpcService;
-pub(crate) use service::is_on_requested_chain;
 #[cfg(test)]
 pub(crate) use sync_utxos_task::SyncUtxosTask;
 

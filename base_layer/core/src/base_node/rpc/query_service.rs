@@ -24,6 +24,7 @@ use tari_transaction_components::{
             TipInfoResponse,
             TxLocation,
             TxQueryResponse,
+            TxSubmissionRejectionReason,
         },
     },
     transaction_components::TransactionOutput,
@@ -34,7 +35,7 @@ use thiserror::Error;
 use crate::{
     base_node::{
         StateMachineHandle,
-        rpc::{BaseNodeWalletQueryService, HeightAtTimeError, height_at_time},
+        rpc::{BaseNodeWalletQueryService, HeightAtTimeError, classify_spent_rejection, height_at_time},
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
@@ -99,6 +100,13 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             mempool,
             max_utxo_chunk_size: MAX_UTXO_CHUNK_SIZE,
         }
+    }
+
+    pub async fn classify_spent_rejection(
+        &self,
+        first_kernel_sig: Option<&types::CompressedSignature>,
+    ) -> Result<TxSubmissionRejectionReason, ChainStorageError> {
+        classify_spent_rejection(&self.db, first_kernel_sig).await
     }
 
     fn state_machine(&self) -> StateMachineHandle {

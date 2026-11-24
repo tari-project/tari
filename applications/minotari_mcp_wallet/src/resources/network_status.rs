@@ -65,7 +65,10 @@ impl McpResource for NetworkStatusResource {
         let response = client
             .get_network_status(GetNetworkStatusRequest {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get network status: {e}")))?;
+            .map_err(|e| McpError::resource_access_failed(format!(
+                "Failed to get network status: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            )))?;
 
         let status = response.into_inner();
 

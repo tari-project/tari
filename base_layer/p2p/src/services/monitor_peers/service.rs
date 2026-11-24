@@ -186,7 +186,7 @@ impl MonitorPeersService {
                         tokio::select! {
                             biased;
                             _ = self.shutdown_signal.wait() => {
-                                break;
+                                return;
                             }
 
                             event = liveness_events.recv() => {
@@ -323,5 +323,75 @@ async fn update_stats_and_cull_unresponsive_connections(
             peer_liveness_stats.remove(peer.peer_node_id());
             trace!(target: LOG_TARGET, "Disconnected {} (iter, {})", peer.peer_node_id(), loop_count);
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use futures::StreamExt;
+    use tari_comms::test_utils::mocks::{create_connectivity_mock, new_peer_connection_mock_pair};
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::Shutdown;
+    use tokio::sync::broadcast;
+
+    use super::*;
+    use crate::services::liveness::{LivenessRequest, LivenessResponse};
+
+    #[tokio::test]
+    async fn shutdown_during_pong_wait_does_not_cull_peer() {
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        let connectivity_state = connectivity_mock.get_shared_state();
+        connectivity_mock.spawn();
+
+        let (_, _, outbound_conn, outbound_conn_state) = new_peer_connection_mock_pair().await;
+        connectivity_state.add_active_connection(outbound_conn).await;
+
+        let (sender, mut receiver) = reply_channel::unbounded();
+        let (publisher, _) = broadcast::channel(10);
+        let liveness_handle = LivenessHandle::new(sender, publisher);
+        let ping_rounds = Arc::new(AtomicUsize::new(0));
+        let ping_rounds_task = ping_rounds.clone();
+        tokio::spawn(async move {
+            while let Some(req_ctx) = receiver.next().await {
+                let (req, reply) = req_ctx.split();
+                if let LivenessRequest::SendPings(node_ids) = req {
+                    let nonces = (0..node_ids.len() as u64).collect();
+                    reply.send(Ok(LivenessResponse::Ok(Some(nonces)))).unwrap();
+                    ping_rounds_task.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        });
+
+        let shutdown = Shutdown::new();
+        let service = MonitorPeersService::new(
+            connectivity,
+            liveness_handle,
+            shutdown.to_signal(),
+            Duration::from_millis(15),
+        );
+        let join_handle = tokio::spawn(service.run());
+
+        // Wait until the 3rd ping round is in flight (2 prior timeouts recorded, 3rd waiting for pong).
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while ping_rounds.load(Ordering::SeqCst) < 3 {
+                tokio::task::yield_now().await;
+                time::sleep(Duration::from_millis(2)).await;
+            }
+        })
+        .await
+        .unwrap();
+
+        shutdown.trigger();
+        tokio::time::timeout(Duration::from_secs(2), join_handle)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(outbound_conn_state.call_count(), 0);
     }
 }

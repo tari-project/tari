@@ -43,7 +43,7 @@ pub use address_tools::{
 pub use atomic_swap_tools::{AtomicSwapStatusTool, ClaimHtlcRefundTool, ClaimShaAtomicSwapTool, SendShaAtomicSwapTool};
 // Balance tools
 pub use balance_tools::{BalanceAnalysisTool, BalanceMonitorTool, GetBalanceTool, GetUnspentAmountsTool};
-use minotari_mcp_common::ToolRegistry;
+use minotari_mcp_common::{ToolRegistry, wallet_rpc::SpendLimits};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 pub use simple_transfer::SimpleTransferTool;
 use tonic::transport::Channel;
@@ -64,7 +64,11 @@ pub struct WalletToolRegistry;
 impl WalletToolRegistry {
     /// Create a new wallet tool registry with all available tools
     #[allow(clippy::new_ret_no_self)] // Factory method for registry
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, control_enabled: bool) -> ToolRegistry {
+    pub fn new(
+        grpc_client: Arc<WalletGrpcClient<Channel>>,
+        control_enabled: bool,
+        limits: Arc<SpendLimits>,
+    ) -> ToolRegistry {
         let mut registry = ToolRegistry::new();
 
         // Always available tools (read-only operations)
@@ -97,14 +101,20 @@ impl WalletToolRegistry {
         if control_enabled {
             // Transaction control tools
             registry.register(Box::new(SimpleTransferTool::new(grpc_client.clone())));
-            registry.register(Box::new(TransferTool::new(grpc_client.clone())));
-            registry.register(Box::new(CoinSplitTool::new(grpc_client.clone())));
+            registry.register(Box::new(TransferTool::new(grpc_client.clone(), limits.clone())));
+            registry.register(Box::new(CoinSplitTool::new(grpc_client.clone(), limits.clone())));
             registry.register(Box::new(CancelTransactionTool::new(grpc_client.clone())));
 
             // Atomic swap control tools
-            registry.register(Box::new(SendShaAtomicSwapTool::new(grpc_client.clone())));
-            registry.register(Box::new(ClaimShaAtomicSwapTool::new(grpc_client.clone())));
-            registry.register(Box::new(ClaimHtlcRefundTool::new(grpc_client.clone())));
+            registry.register(Box::new(SendShaAtomicSwapTool::new(
+                grpc_client.clone(),
+                limits.clone(),
+            )));
+            registry.register(Box::new(ClaimShaAtomicSwapTool::new(
+                grpc_client.clone(),
+                limits.clone(),
+            )));
+            registry.register(Box::new(ClaimHtlcRefundTool::new(grpc_client.clone(), limits.clone())));
         }
 
         registry

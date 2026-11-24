@@ -48,6 +48,9 @@ pub enum McpError {
     #[error("Tool execution failed: {0}")]
     ToolExecutionFailed(String),
 
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
+
     #[error("Resource access failed: {0}")]
     ResourceAccessFailed(String),
 
@@ -97,6 +100,10 @@ impl McpError {
         Self::ToolExecutionFailed(msg.into())
     }
 
+    pub fn not_implemented(method: impl Into<String>) -> Self {
+        Self::NotImplemented(method.into())
+    }
+
     pub fn config_error(msg: impl Into<String>) -> Self {
         Self::ConfigError(msg.into())
     }
@@ -138,6 +145,7 @@ impl McpError {
             Self::SerializationError(_) => -32700, // Parse error
             Self::InvalidRequest(_) => -32600,     // Invalid Request
             Self::ToolNotFound(_) | Self::ResourceNotFound(_) | Self::PromptNotFound(_) => -32601, // Method not found
+            Self::NotImplemented(_) => -32601,     // Method not found
             Self::PermissionDenied(_) | Self::AuthenticationFailed(_) => -32603, // Internal error (authorization)
             Self::RateLimitExceeded => -32603,     // Internal error (rate limit)
             Self::ServerError(_) | Self::TransportError(_) => -32603, // Internal error
@@ -214,6 +222,7 @@ impl McpError {
             Self::ResourceNotFound(_) => "resource_not_found",
             Self::PromptNotFound(_) => "prompt_not_found",
             Self::ToolExecutionFailed(_) => "tool_execution_failed",
+            Self::NotImplemented(_) => "not_implemented",
             Self::ResourceAccessFailed(_) => "resource_access_failed",
             Self::ConfigError(_) => "config_error",
             Self::TransportError(_) => "transport_error",
