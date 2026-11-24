@@ -4519,6 +4519,26 @@ where
         Ok(new_tx_id)
     }
 
+    /// Refuses, before anything is locked, a signed payload that names a transaction this wallet already has a record
+    /// of - a prepared payload has none until it is submitted - or that does not name a sent output for each
+    /// recipient.
+    fn check_signed_payload(&self, request: &SignedOneSidedTransactionResult) -> Result<(), TransactionServiceError> {
+        for tx_id in [request.request.tx_id, request.signed_transaction.tx_id] {
+            if self.db.get_any_transaction(tx_id)?.is_some() {
+                return Err(TransactionServiceError::Other(format!(
+                    "The signed payload names transaction {tx_id}, which has already been submitted or recorded"
+                )));
+            }
+        }
+        let recipients = request.request.info.recipients.len();
+        if recipients == 0 || request.signed_transaction.sent_hashes.len() < recipients {
+            return Err(TransactionServiceError::Other(
+                "The signed payload has no recipients, or fewer sent outputs than recipients".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Releases whatever a payload that cannot be submitted still has locked under its `tx_id`, so its other inputs
     /// can be prepared again. Nothing is left under that tx_id once the payload has been submitted.
     async fn release_refused_payload(&mut self, tx_id: TxId) {
@@ -4788,36 +4808,11 @@ where
         for recipient in &request.request.info.recipients {
             self.verify_send(&recipient.address, TariAddressFeatures::create_one_sided_only())?;
         }
+        self.check_signed_payload(&request)?;
         let payment_id = request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
         let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
-        let relocked = match self
-            .lock_signed_inputs(old_tx_id, &request.signed_transaction.transaction)
-            .await
-        {
-            Ok(relocked) => relocked,
-            Err(e) => {
-                self.release_refused_payload(old_tx_id).await;
-                return Err(e);
-            },
-        };
-
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
-
-        let mut output_manager = self.resources.output_manager_service.clone();
-        if let Err(e) = output_manager
-            .confirm_pending_transaction(old_tx_id, Some(new_tx_id), change)
-            .await
-        {
-            if relocked && let Err(cancel_err) = output_manager.cancel_pending_transaction(old_tx_id).await {
-                warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {old_tx_id}: {cancel_err}");
-            }
-            return Err(TransactionServiceProtocolError::new(new_tx_id, e.into()).into());
-        }
-
         let mut tx_ids = Vec::new();
         let mut completed_txs = Vec::new();
 
@@ -4871,9 +4866,37 @@ where
             )?;
             completed_txs.push(completed_tx);
         }
-        let first_completed_tx = completed_txs.remove(0);
-        self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
-            .await?;
+        let relocked = match self
+            .lock_signed_inputs(old_tx_id, &request.signed_transaction.transaction)
+            .await
+        {
+            Ok(relocked) => relocked,
+            Err(e) => {
+                self.release_refused_payload(old_tx_id).await;
+                return Err(e);
+            },
+        };
+
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
+
+        let mut output_manager = self.resources.output_manager_service.clone();
+        if let Err(e) = output_manager
+            .confirm_pending_transaction(old_tx_id, Some(new_tx_id), change)
+            .await
+        {
+            if relocked && let Err(cancel_err) = output_manager.cancel_pending_transaction(old_tx_id).await {
+                warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {old_tx_id}: {cancel_err}");
+            }
+            return Err(TransactionServiceProtocolError::new(new_tx_id, e.into()).into());
+        }
+
+        let mut completed_txs = completed_txs.into_iter();
+        if let Some(first_completed_tx) = completed_txs.next() {
+            self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
+                .await?;
+        }
         for completed_tx in completed_txs {
             self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
         }

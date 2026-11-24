@@ -4529,6 +4529,67 @@ async fn submitting_a_payload_whose_input_is_locked_elsewhere_is_refused() {
     );
 }
 
+/// A signed payload naming no recipients is refused before anything is locked or recorded.
+#[tokio::test]
+async fn submitting_a_payload_without_recipients_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, mut signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    signed.request.info.recipients.clear();
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed)
+            .await
+            .is_err()
+    );
+    assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+}
+
+/// A signed payload whose prepared or signed tx_id names a transaction the wallet already recorded is refused before
+/// anything is locked, and that transaction keeps its inputs.
+#[tokio::test]
+async fn submitting_a_payload_that_names_a_recorded_transaction_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (sent_inputs, _, sent) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let recorded = sent.signed_transaction.tx_id;
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(sent)
+        .await
+        .unwrap();
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+
+    let mut naming_signed = signed.clone();
+    naming_signed.signed_transaction.tx_id = recorded;
+    let mut naming_prepared = signed;
+    naming_prepared.request.tx_id = recorded;
+    for payload in [naming_signed, naming_prepared] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
+        );
+        assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+        assert_eq!(
+            output_status(&mut alice, &sent_inputs[0]).await,
+            (OutputStatus::EncumberedToBeSpent, Some(recorded))
+        );
+    }
+}
+
 /// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be
 /// prepared again, and records nothing.
 #[tokio::test]
