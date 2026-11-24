@@ -754,30 +754,61 @@ fn read_payload_key(args: &ImportPayloadKeyArgs) -> Result<(PrivateKey, Compress
     Ok((private_key, public_key))
 }
 
-/// Writes what a multisig co-signer is about to sign, so they can check it against the output they agreed to.
-fn print_script_message_to_sign(
+/// Writes what a multisig co-signer is about to sign and returns whether they approved it. As for offline payloads,
+/// the operator is asked y/N on `input` when interactive and the signing is approved without asking otherwise; the
+/// decision is logged with the public values shown.
+fn confirm_script_message_signing(
+    mode: ConfirmationMode,
     out: &mut dyn Write,
+    input: &mut dyn BufRead,
     utxo_commitment: Option<&CompressedCommitment>,
     message: &[u8; 32],
     sender_offset_key: Option<&CompressedPublicKey>,
-) -> io::Result<()> {
+) -> io::Result<bool> {
+    let commitment_hex = utxo_commitment.map(|c| c.to_hex());
+    let offset_hex = sender_offset_key.map(|k| k.to_hex());
     writeln!(out, "Signing a multisig script message:")?;
-    if let Some(commitment) = utxo_commitment {
-        writeln!(
+    match &commitment_hex {
+        Some(commitment) => writeln!(
             out,
             "  UTXO commitment (as given, not checked): {}",
-            TerminalSafe(&commitment.to_hex())
-        )?;
+            TerminalSafe(commitment)
+        )?,
+        None => writeln!(out, "  No UTXO commitment given: the output was not checked")?,
     }
     writeln!(out, "  Script message:    {}", TerminalSafe(&message.to_hex()))?;
-    match sender_offset_key {
-        Some(key) => writeln!(out, "  Sender offset key: {}", TerminalSafe(&key.to_hex()))?,
+    match &offset_hex {
+        Some(key) => writeln!(out, "  Sender offset key: {}", TerminalSafe(key))?,
         None => writeln!(out, "  No sender offset key given: signing with the bare spend key")?,
     }
     writeln!(
         out,
         "This signature lets whoever builds the spending transaction send the funds anywhere."
-    )
+    )?;
+    let (approved, decision) = match mode {
+        ConfirmationMode::NonInteractive => {
+            writeln!(out, "Signing without a prompt (non-interactive mode or no terminal).")?;
+            (true, "signed without a prompt")
+        },
+        ConfirmationMode::Interactive => {
+            write!(out, "Sign this script message? [y/N]: ")?;
+            out.flush()?;
+            let mut answer = String::new();
+            input.read_line(&mut answer)?;
+            let answer = answer.trim().to_ascii_lowercase();
+            let approved = answer == "y" || answer == "yes";
+            (approved, if approved { "approved" } else { "declined" })
+        },
+    };
+    info!(
+        target: LOG_TARGET,
+        "Multisig script message {} {decision}: sender offset key {}, UTXO commitment {} (not checked)",
+        message.to_hex(),
+        offset_hex.as_deref().unwrap_or("none"),
+        commitment_hex.as_deref().unwrap_or("none"),
+    );
+    out.flush()?;
+    Ok(approved)
 }
 
 /// Writes the summary of an offline payload and returns it confirmed, or an error if it was not confirmed.
@@ -3173,19 +3204,21 @@ pub async fn command_runner(
 
                 let signature = key_manager_service.sign_message_with_spend_key(&commitment_bytes, sender_offset)?;
 
+                let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
+                    .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
                 if let Some(file) = args.output_file {
                     if let Some(parent) = file.parent() {
                         std::fs::create_dir_all(parent)
                             .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
                     }
 
-                    let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
-                        .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
                     let signature_json = serde_json::to_string(&signature_binary.to_hex())
                         .map_err(|e| CommandError::JsonFile(e.to_string()))?;
 
                     fs::write(&file, signature_json)
                         .map_err(|err| CommandError::FileWriteError { file_path: file, err })?;
+                } else {
+                    println!("Signature: {}", signature_binary.to_hex());
                 }
             },
 
@@ -3198,29 +3231,39 @@ pub async fn command_runner(
                     .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))?;
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
-                print_script_message_to_sign(
-                    &mut io::stdout().lock(),
+                let mode = offline_confirmation_mode(non_interactive_mode);
+                let approved = confirm_script_message_signing(
+                    mode,
+                    &mut offline_summary_output(mode),
+                    &mut io::stdin().lock(),
                     args.utxo_commitment.as_ref(),
                     &commitment_bytes,
                     sender_offset,
                 )
                 .map_err(|e| CommandError::General(e.to_string()))?;
+                if !approved {
+                    eprintln!("SignScriptMessage not signed: declined");
+                    continue;
+                }
                 let signature =
                     key_manager_service.sign_script_message_with_spend_key_trusted(&commitment_bytes, sender_offset)?;
+                info!(target: LOG_TARGET, "Multisig script message {} signed", commitment_bytes.to_hex());
 
+                let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
+                    .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
                 if let Some(file) = args.output_file {
                     if let Some(parent) = file.parent() {
                         std::fs::create_dir_all(parent)
                             .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
                     }
 
-                    let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
-                        .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
                     let signature_json = serde_json::to_string(&signature_binary.to_hex())
                         .map_err(|e| CommandError::JsonFile(e.to_string()))?;
 
                     fs::write(&file, signature_json)
                         .map_err(|err| CommandError::FileWriteError { file_path: file, err })?;
+                } else {
+                    println!("Signature: {}", signature_binary.to_hex());
                 }
             },
             RescanWallet(args) => {
@@ -4210,19 +4253,56 @@ mod test {
     fn script_message_signing_prints_commitment_message_and_offset_note() {
         let commitment = CompressedCommitment::default();
         let mut out = Vec::new();
-        print_script_message_to_sign(&mut out, Some(&commitment), &[0xab; 32], None).unwrap();
+        let approved = confirm_script_message_signing(
+            ConfirmationMode::NonInteractive,
+            &mut out,
+            &mut io::empty(),
+            Some(&commitment),
+            &[0xab; 32],
+            None,
+        )
+        .unwrap();
+        assert!(approved);
         let written = String::from_utf8(out).unwrap();
         assert!(written.contains(&commitment.to_hex()), "{written}");
         assert!(written.contains(&"ab".repeat(32)), "{written}");
         assert!(written.contains("signing with the bare spend key"), "{written}");
+        assert!(written.contains("Signing without a prompt"), "{written}");
         assert!(!written.chars().any(|c| c.is_control() && c != '\n'), "{written}");
 
         let key = CompressedPublicKey::default();
         let mut out = Vec::new();
-        print_script_message_to_sign(&mut out, None, &[0xab; 32], Some(&key)).unwrap();
+        confirm_script_message_signing(
+            ConfirmationMode::NonInteractive,
+            &mut out,
+            &mut io::empty(),
+            None,
+            &[0xab; 32],
+            Some(&key),
+        )
+        .unwrap();
         let written = String::from_utf8(out).unwrap();
         assert!(written.contains(&key.to_hex()), "{written}");
+        assert!(written.contains("the output was not checked"), "{written}");
         assert!(!written.contains("bare spend key"), "{written}");
+    }
+
+    #[test]
+    fn script_message_signing_asks_and_only_signs_on_yes() {
+        for (answer, expected) in [("y\n", true), ("YES\n", true), ("n\n", false), ("", false)] {
+            let mut out = Vec::new();
+            let approved = confirm_script_message_signing(
+                ConfirmationMode::Interactive,
+                &mut out,
+                &mut answer.as_bytes(),
+                None,
+                &[0xab; 32],
+                None,
+            )
+            .unwrap();
+            assert_eq!(approved, expected, "{answer:?}");
+            assert!(String::from_utf8(out).unwrap().contains("[y/N]"));
+        }
     }
 
     #[test]
