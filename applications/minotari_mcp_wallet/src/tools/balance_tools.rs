@@ -27,8 +27,8 @@
 
 use std::sync::Arc;
 
-use minotari_app_grpc::tari_rpc::{Empty, GetBalanceRequest, UserPaymentId};
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_optional_string_param, security::PermissionLevel};
+use minotari_app_grpc::tari_rpc::{Empty, GetBalanceRequest};
+use minotari_mcp_common::{McpResult, McpTool, security::PermissionLevel, wallet_rpc};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
@@ -73,59 +73,7 @@ impl McpTool for GetBalanceTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = get_optional_string_param(&params, "payment_id").map(|payment_id_str| UserPaymentId {
-            utf8_string: payment_id_str,
-            ..Default::default()
-        });
-
-        let request = Request::new(GetBalanceRequest { payment_id });
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_balance(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
-            .into_inner();
-
-        // Calculate total balance and percentages
-        let total_balance = response
-            .available_balance
-            .saturating_add(response.pending_incoming_balance)
-            .saturating_add(response.timelocked_balance);
-
-        Ok(json!({
-            "balance": {
-                "available_balance": response.available_balance,
-                "pending_incoming_balance": response.pending_incoming_balance,
-                "pending_outgoing_balance": response.pending_outgoing_balance,
-                "timelocked_balance": response.timelocked_balance,
-            },
-            "summary": {
-                "total_balance": total_balance,
-                "spendable_balance": response.available_balance,
-                "locked_balance": response.pending_outgoing_balance.saturating_add(response.timelocked_balance),
-                "incoming_balance": response.pending_incoming_balance,
-            },
-            "percentages": if total_balance > 0 {
-                json!({
-                    "available_percent": (response.available_balance as f64 / total_balance as f64 * 100.0).round(),
-                    "pending_incoming_percent": (response.pending_incoming_balance as f64 / total_balance as f64 * 100.0).round(),
-                    "timelocked_percent": (response.timelocked_balance as f64 / total_balance as f64 * 100.0).round(),
-                })
-            } else {
-                json!({
-                    "available_percent": 0.0,
-                    "pending_incoming_percent": 0.0,
-                    "timelocked_percent": 0.0,
-                })
-            },
-            "status": {
-                "has_funds": total_balance > 0,
-                "can_spend": response.available_balance > 0,
-                "has_pending": response.pending_incoming_balance > 0 || response.pending_outgoing_balance > 0,
-                "has_timelocked": response.timelocked_balance > 0,
-            }
-        }))
+        wallet_rpc::get_balance((*self.grpc_client).clone(), &params).await
     }
 }
 
@@ -164,27 +112,7 @@ impl McpTool for GetUnspentAmountsTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_unspent_amounts(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "unspent_amount": response.amount,
-            "formatted": {
-                "tari": (response.amount.first().copied().unwrap_or(0) as f64 / 1_000_000.0).round() / 1.0, // Convert from µT to T
-                "microtari": response.amount,
-            },
-            "info": {
-                "description": "Total value of all unspent transaction outputs",
-                "unit": "microTari (µT)",
-                "note": "This represents UTXOs that can potentially be spent"
-            }
-        }))
+        wallet_rpc::get_unspent_amounts((*self.grpc_client).clone()).await
     }
 }
 
@@ -233,20 +161,12 @@ impl McpTool for BalanceAnalysisTool {
         // Get balance information
         let balance_request = Request::new(GetBalanceRequest { payment_id: None });
         let mut client = (*self.grpc_client).clone();
-        let balance_response = client
-            .get_balance(balance_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
-            .into_inner();
+        let balance_response = client.get_balance(balance_request).await?.into_inner();
 
         // Get unspent amounts
         let unspent_request = Request::new(Empty {});
         let mut client2 = (*self.grpc_client).clone();
-        let unspent_response = client2
-            .get_unspent_amounts(unspent_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {e}")))?
-            .into_inner();
+        let unspent_response = client2.get_unspent_amounts(unspent_request).await?.into_inner();
 
         let requested_amount = params.get("requested_amount").and_then(|v| v.as_u64()).unwrap_or(0);
 
@@ -456,11 +376,7 @@ impl McpTool for BalanceMonitorTool {
         // Get current balance
         let balance_request = Request::new(GetBalanceRequest { payment_id: None });
         let mut client = (*self.grpc_client).clone();
-        let balance_response = client
-            .get_balance(balance_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
-            .into_inner();
+        let balance_response = client.get_balance(balance_request).await?.into_inner();
 
         let total_balance = balance_response
             .available_balance

@@ -35,7 +35,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     seeds::seed_words::SeedWords,
     tari_address::TariAddress,
-    types::CompressedCommitment,
+    types::{CompressedCommitment, FixedHash},
 };
 use tari_comms::multiaddr::Multiaddr;
 use tari_transaction_components::tari_amount::{self, MicroMinotari};
@@ -203,14 +203,22 @@ pub enum CliCommands {
     ImportPaperWallet(ImportPaperWalletArgs),
 
     GetMultisigUtxoData(GetMultisigUtxoDataArgs),
+    /// Spend a multisig UTXO with the co-signers' signatures. The signatures do not cover the recipient, amount or
+    /// fee: whoever holds enough of them decides where the funds go
     SendMultisigUtxo(SendMultisigUtxoArgs),
+    /// Create an m-of-n multisig UTXO. Co-signers' signatures will cover only its script message, so whoever later
+    /// holds enough of them decides where the funds go
     CreateMultisigUtxo(CreateMultisigUtxoArgs),
 
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListTx,
 
+    /// Prepare an m-of-n multisig deposit for offline signing. Co-signers' signatures will cover only its script
+    /// message, so whoever later holds enough of them decides where the funds go
     PrepareDepositMultisigTransaction(PrepareDepositMultisigTransactionArgs),
+    /// Prepare a multisig withdrawal for offline signing. The co-signers' signatures do not cover the recipient,
+    /// amount or fee: whoever holds enough of them decides where the funds go
     PrepareWithdrawMultisigTransaction(PrepareWithdrawMultisigTransactionArgs),
 
     PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
@@ -227,6 +235,10 @@ pub enum CliCommands {
     ClearPayloadKey,
 
     SignMessage(SignMessageArgs),
+    /// Co-sign a multisig UTXO's script message. The signature lets whoever builds the spending transaction send the
+    /// funds of any output whose script has this message and your key, anywhere. Take the message from an output you
+    /// know independently; --output-hash checks that output with the base node. Handle the signature, in the file or
+    /// on stdout, as sensitive
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),
@@ -322,7 +334,7 @@ pub struct BroadcastSignedOneSidedTransactionArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct SignMessageArgs {
-    /// The message to be signed (UTF-8 string)
+    /// The 32-byte message to be signed, in hex
     #[clap(long)]
     pub message: String,
     /// Optional output file path
@@ -335,9 +347,18 @@ pub struct SignMessageArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct SignScriptMessageArgs {
-    /// The message to be signed (UTF-8 string)
+    /// The 32-byte script message to be signed, in hex
     #[clap(long)]
     pub message: String,
+    /// Hash of the multisig UTXO being signed for. The wallet refuses to sign unless its base node has this output
+    /// unspent with this message and your key; the signature is still valid for any output with the same message and
+    /// key
+    #[clap(long, value_parser = parse_fixed_hash)]
+    pub output_hash: Option<FixedHash>,
+    /// Commitment of the multisig UTXO being signed for. With --output-hash it must match the fetched output;
+    /// without it, it is only printed, not checked
+    #[clap(long, value_parser = parse_compressed_commitment)]
+    pub utxo_commitment: Option<CompressedCommitment>,
     /// Optional output file path
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
@@ -701,6 +722,10 @@ pub struct FindPayRefArgs {
 // Helper function to parse CompressedCommitment from hex string
 fn parse_compressed_commitment(s: &str) -> Result<CompressedCommitment, String> {
     CompressedCommitment::from_hex(s).map_err(|e| format!("Invalid CompressedCommitment: {}", e))
+}
+
+fn parse_fixed_hash(s: &str) -> Result<FixedHash, String> {
+    FixedHash::from_hex(s).map_err(|e| format!("Invalid hash: {}", e))
 }
 
 #[derive(Debug, Args, Clone)]

@@ -48,6 +48,8 @@ use zeroize::Zeroizing;
 pub const LOG_TARGET: &str = "minotari_application";
 
 const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
+/// Also accepted on load: an owner-only file the operator has made read-only so it is never rewritten.
+const READ_ONLY_IDENTITY_PERMS: u32 = 0o100400;
 
 /// Loads the node identity, or creates a new one if create_id is true
 ///
@@ -57,6 +59,8 @@ const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
 /// - `create_id` - Only applies if the identity_file does not exist or is malformed. If true, a new identity will be
 ///   created, otherwise the user will be prompted to create a new ID
 /// - `peer_features` - Enables features of the base node
+/// - `persist` - If false the identity file is never written: a missing or unreadable identity is an error, and a
+///   signature or address change is kept in memory only. Lets another process share a running node's identity file.
 ///
 /// # Return
 /// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
@@ -66,6 +70,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     create_id: bool,
     peer_features: PeerFeatures,
     transport_type: TransportType,
+    persist: bool,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
     setup_node_identity_with_prompts(
         identity_file,
@@ -73,6 +78,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
         create_id,
         peer_features,
         transport_type,
+        persist,
         prompt_default_yes_on_eof,
         prompt,
     )
@@ -84,6 +90,7 @@ fn setup_node_identity_with_prompts<P, FMissing, FCorrupt>(
     create_id: bool,
     peer_features: PeerFeatures,
     transport_type: TransportType,
+    persist: bool,
     prompt_missing: FMissing,
     prompt_corrupt: FCorrupt,
 ) -> Result<Arc<NodeIdentity>, ExitError>
@@ -92,7 +99,7 @@ where
     FMissing: FnOnce(&str) -> bool,
     FCorrupt: FnOnce(&str) -> bool,
 {
-    match load_node_identity(&identity_file, transport_type) {
+    match load_node_identity(&identity_file, transport_type, persist) {
         Ok(mut id) => {
             id.set_peer_features(peer_features);
             // Filter addresses based on transport type
@@ -114,6 +121,32 @@ where
         Err(IdentityError::NotFile) => {
             let msg = format!(
                 "Node identity path '{}' is not a regular file.",
+                identity_file.as_ref().display()
+            );
+            error!(target: LOG_TARGET, "{msg}");
+            Err(ExitError::new(ExitCode::ConfigError, msg))
+        },
+        Err(e @ (IdentityError::ReadOnly(_) | IdentityError::PersistFailed { .. })) => {
+            error!(target: LOG_TARGET, "{e}");
+            Err(ExitError::new(ExitCode::ConfigError, e))
+        },
+        Err(e @ (IdentityError::NotFound | IdentityError::Malformed { .. } | IdentityError::Io(_))) if !persist => {
+            let msg = format!(
+                "Node identity file '{}' could not be loaded ({e}) and will not be created or replaced by this \
+                 process.",
+                identity_file.as_ref().display()
+            );
+            error!(target: LOG_TARGET, "{msg}");
+            Err(ExitError::new(ExitCode::ConfigError, msg))
+        },
+        Err(e @ (IdentityError::Malformed { .. } | IdentityError::Io(_)))
+            if identity_file
+                .as_ref()
+                .metadata()
+                .is_ok_and(|m| m.permissions().readonly()) =>
+        {
+            let msg = format!(
+                "Node identity file '{}' is read-only and could not be loaded ({e}); it will not be replaced.",
                 identity_file.as_ref().display()
             );
             error!(target: LOG_TARGET, "{msg}");
@@ -248,7 +281,11 @@ where
 ///
 /// ## Returns
 /// Result containing a NodeIdentity on success, string indicates the reason on failure
-fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) -> Result<NodeIdentity, IdentityError> {
+fn load_node_identity<P: AsRef<Path>>(
+    path: P,
+    transport_type: TransportType,
+    persist: bool,
+) -> Result<NodeIdentity, IdentityError> {
     check_identity_file(&path)?;
 
     let id_str = Zeroizing::new(fs::read_to_string(path.as_ref())?);
@@ -269,6 +306,8 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
             .verify(id.public_key(), id.features(), &id.public_addresses())
             .is_ok()
     });
+    // Only these changes are written back, so an unchanged file is never rewritten on the read path.
+    let mut changed = !signature_is_valid;
     if !signature_is_valid {
         warn!(
             target: LOG_TARGET,
@@ -280,6 +319,7 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
 
     let id = if transport_type == TransportType::Tcp {
         let current_addresses = id.public_addresses();
+        let current_addresses_len = current_addresses.len();
         debug!(
             target: LOG_TARGET,
             "Filtering addresses for TCP transport. Current addresses: {:?}",
@@ -296,6 +336,7 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
             filtered_addresses.len(),
             filtered_addresses
         );
+        changed |= filtered_addresses.len() != current_addresses_len;
         id.set_public_addresses(filtered_addresses);
         id
     } else {
@@ -308,7 +349,23 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
         id.public_key().to_hex(),
         id.node_id().to_hex()
     );
-    save_as_json(&path, &id)?;
+    if persist && changed {
+        // Never let a save failure reach the caller as a load error, which would back up and replace a good identity.
+        save_as_json(&path, &id).map_err(|e| {
+            let path = path.as_ref().to_path_buf();
+            let source = match e {
+                IdentityError::Io(err) => err,
+                e => io::Error::other(e),
+            };
+            if source.kind() == io::ErrorKind::ReadOnlyFilesystem ||
+                path.metadata().is_ok_and(|m| m.permissions().readonly())
+            {
+                IdentityError::ReadOnly(path)
+            } else {
+                IdentityError::PersistFailed { path, source }
+            }
+        })?;
+    }
     Ok(id)
 }
 
@@ -478,7 +535,8 @@ pub fn serialize_to_json<T: Serialize>(object: &T) -> Result<Zeroizing<String>, 
 }
 
 /// Saves the identity as json at a given path with 0600 file permissions (UNIX-only), creating it if it does not
-/// already exist.
+/// already exist. A file that already holds exactly these contents is left untouched, and a read-only file is never
+/// replaced (`PermissionDenied`).
 ///
 /// ## Parameters
 /// `path` - Path to save the file
@@ -495,34 +553,106 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
     }
     const COMMENT_HEADER: &[u8] =
         b"// This file is generated by the Minotari base node. Any changes will be overwritten.\n";
+    if let Ok(existing) = fs::read(path.as_ref()).map(Zeroizing::new) &&
+        existing.strip_prefix(COMMENT_HEADER) == Some(json.as_bytes())
+    {
+        return Ok(());
+    }
+    if path.as_ref().metadata().is_ok_and(|m| m.permissions().readonly()) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("{} is read-only", path.as_ref().display()),
+        )
+        .into());
+    }
     write_identity_file(path.as_ref(), COMMENT_HEADER, json.as_bytes())?;
     Ok(())
 }
 
-/// Writes the identity file. On unix the permissions are applied before any contents are written, so that there is
-/// never a window (as there would be with `fs::write` followed by a chmod) during which the identity is readable by
-/// other users.
+/// Writes the identity file by writing and syncing `<name>.tmp` and renaming it over `path`, so a crash at any point
+/// leaves either the old or the new file, never a partial one. Only mode 0600 and the owner carry over to the new
+/// inode: SELinux/AppArmor labels, POSIX ACLs and other xattrs on the old file are lost, and an immutable
+/// (`chattr +i`) file makes the rename fail.
 #[cfg(target_family = "unix")]
 fn write_identity_file<P: AsRef<Path>>(path: P, header: &[u8], contents: &[u8]) -> io::Result<()> {
+    // Writers in this process (e.g. the node's Tor callback and bootstrap) share the fixed temp name, so take turns.
+    // No cross-process lock: other processes (minotari_peer_sync) load without persisting.
+    static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Write next to the real file so a symlinked identity is updated rather than replaced by a regular file.
+    let path = match fs::canonicalize(path.as_ref()) {
+        Ok(real) => real,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            // A dangling symlink (e.g. into a secrets dir that is populated on first start) must be followed too.
+            let mut path = path.as_ref().to_path_buf();
+            while fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+                let target = fs::read_link(&path)?;
+                path = path.parent().unwrap_or(Path::new("")).join(target);
+            }
+            path
+        },
+        Err(err) => return Err(err),
+    };
+    let tmp = write_identity_temp_file(&path, header, contents)?;
+    if let Err(err) = fs::rename(&tmp, &path) {
+        let _unused = fs::remove_file(&tmp);
+        return Err(err);
+    }
+    // The new file is already in place, so failing to sync the directory must not be reported as a failed save.
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    if let Err(err) = fs::File::open(dir).and_then(|d| d.sync_all()) {
+        warn!(target: LOG_TARGET, "Could not sync directory '{}' after writing the identity file: {err}", dir.display());
+    }
+    Ok(())
+}
+
+/// Writes and syncs `<path>.tmp` with 0600 permissions and returns its path. The permissions are applied before any
+/// contents are written, so the secret is never readable by other users.
+#[cfg(target_family = "unix")]
+fn write_identity_temp_file(path: &Path, header: &[u8], contents: &[u8]) -> io::Result<PathBuf> {
     use std::{
         io::Write,
-        os::unix::fs::{OpenOptionsExt, PermissionsExt},
+        os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     };
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    // A temp file left by a crashed write would make `create_new` fail forever; it is never the live identity.
+    match fs::remove_file(&tmp) {
+        Err(err) if err.kind() != io::ErrorKind::NotFound => return Err(err),
+        _ => {},
+    }
     // `mode()` and `chmod` only take the permission bits, so mask off the file type bits.
     let mode = REQUIRED_IDENTITY_PERMS & 0o7777;
-    // `mode()` covers a newly created file (the process umask does not apply to it) ...
+    // `create_new` refuses to follow a symlink planted at the temp path.
     let mut file = fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .mode(mode)
-        .open(path)?;
-    // ... and it is ignored when the file already exists, so also `fchmod` an existing file that was created with
-    // wider permissions. Both happen while the file is still empty.
-    file.set_permissions(fs::Permissions::from_mode(mode))?;
-    file.write_all(header)?;
-    file.write_all(contents)?;
-    Ok(())
+        .open(&tmp)?;
+    let result = (|| {
+        // `mode()` is reduced by the umask, so set the exact permissions while the file is still empty.
+        file.set_permissions(fs::Permissions::from_mode(mode))?;
+        // The rename installs a new inode, so keep the existing file's owner (e.g. when run via sudo) or the node
+        // may no longer be able to read its own identity. The group is irrelevant at 0600 and an unprivileged owner
+        // may not be allowed to set it, so only a different owner triggers the change.
+        if let Ok(existing) = fs::metadata(path) &&
+            existing.uid() != file.metadata()?.uid()
+        {
+            std::os::unix::fs::fchown(&file, Some(existing.uid()), Some(existing.gid()))?;
+        }
+        file.write_all(header)?;
+        file.write_all(contents)?;
+        file.sync_all()
+    })();
+    if let Err(err) = result {
+        let _unused = fs::remove_file(&tmp);
+        return Err(err);
+    }
+    Ok(tmp)
 }
 
 #[cfg(target_family = "windows")]
@@ -544,7 +674,7 @@ fn check_identity_file<P: AsRef<Path>>(path: P) -> Result<(), IdentityError> {
         return Err(IdentityError::NotFile);
     }
 
-    if !has_permissions(&path, REQUIRED_IDENTITY_PERMS)? {
+    if !has_permissions(&path, REQUIRED_IDENTITY_PERMS)? && !has_permissions(&path, READ_ONLY_IDENTITY_PERMS)? {
         return Err(IdentityError::InvalidPermissions);
     }
     Ok(())
@@ -576,6 +706,13 @@ pub enum IdentityError {
     PublicKeyMismatch,
     #[error("Node id does not match public key")]
     NodeIdMismatch,
+    #[error(
+        "Identity file '{}' is read-only; a signature or address change could not be persisted",
+        .0.display()
+    )]
+    ReadOnly(PathBuf),
+    #[error("Could not persist identity file '{}': {source}", path.display())]
+    PersistFailed { path: PathBuf, source: io::Error },
     #[error(transparent)]
     Io(#[from] io::Error),
 }
@@ -601,15 +738,15 @@ mod test {
 
     use super::*;
 
-    fn temp_path(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("identity_management_test_{name}"));
-        fs::create_dir_all(&dir).unwrap();
-        dir.join("identity.json")
+    fn temp_path() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("identity.json");
+        (dir, path)
     }
 
     #[test]
     fn it_creates_the_identity_file_with_the_required_permissions() {
-        let path = temp_path("create");
+        let (_dir, path) = temp_path();
         let _unused = fs::remove_file(&path);
 
         save_as_json(&path, &"identity").unwrap();
@@ -620,7 +757,7 @@ mod test {
 
     #[test]
     fn it_tightens_the_permissions_of_an_existing_file_before_writing() {
-        let path = temp_path("existing");
+        let (_dir, path) = temp_path();
         fs::write(&path, b"old contents").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
 
@@ -633,13 +770,13 @@ mod test {
 
     #[test]
     fn malformed_identity_does_not_leak_secret_key() {
-        let path = temp_path("malformed_leak");
+        let (_dir, path) = temp_path();
         let secret_key_hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         let malformed_content = format!("// Comment line 1\n{{\"secret_key\":\"{secret_key_hex}\",\"broken_json\":");
         fs::write(&path, malformed_content.as_bytes()).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
 
-        let err = load_node_identity(&path, TransportType::Tcp).unwrap_err();
+        let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
         let err_display = err.to_string();
         assert!(
             !err_display.contains(secret_key_hex),
@@ -664,7 +801,7 @@ mod test {
 
     #[test]
     fn load_from_json_checks_permissions_and_handles_missing_file() {
-        let path = temp_path("perm_check");
+        let (_dir, path) = temp_path();
 
         // Missing file returns Ok(None)
         let _unused = fs::remove_file(&path);
@@ -744,9 +881,8 @@ mod test {
 
     #[test]
     fn truncated_identity_file_is_backed_up_and_regenerated_with_error_log() {
-        let dir = std::env::temp_dir().join("identity_management_test_truncated_backup");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
         let path = dir.join("identity.json");
 
         let original_bytes = b"// truncated identity\n{\"node_id\":\"deadbeef\"";
@@ -760,12 +896,13 @@ mod test {
                 true,
                 PeerFeatures::COMMUNICATION_NODE,
                 TransportType::Tcp,
+                true,
             )
         });
         let new_id = res.expect("setup_node_identity should back up and create a new identity");
 
         // Find the .bak file in `dir`
-        let bak_files: Vec<PathBuf> = fs::read_dir(&dir)
+        let bak_files: Vec<PathBuf> = fs::read_dir(dir)
             .unwrap()
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("bak"))
@@ -779,7 +916,7 @@ mod test {
         assert_eq!(fs::read(bak_path).unwrap(), original_bytes);
 
         // New identity file exists and loads cleanly into the newly generated identity
-        let reloaded = load_node_identity(&path, TransportType::Tcp).unwrap();
+        let reloaded = load_node_identity(&path, TransportType::Tcp, true).unwrap();
         assert_eq!(reloaded.node_id(), new_id.node_id());
         assert_eq!(reloaded.public_key(), new_id.public_key());
 
@@ -813,9 +950,8 @@ mod test {
 
     #[test]
     fn directory_at_identity_path_returns_exit_error_and_creates_nothing() {
-        let dir = std::env::temp_dir().join("identity_management_test_dir_at_path");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
         let identity_dir = dir.join("identity.json");
         fs::create_dir_all(&identity_dir).unwrap();
 
@@ -825,6 +961,7 @@ mod test {
             true,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
         )
         .unwrap_err();
         assert!(matches!(err.exit_code, ExitCode::ConfigError));
@@ -833,7 +970,7 @@ mod test {
             "directory at identity path must not be moved or replaced"
         );
 
-        let entries: Vec<PathBuf> = fs::read_dir(&dir)
+        let entries: Vec<PathBuf> = fs::read_dir(dir)
             .unwrap()
             .filter_map(|e| e.ok().map(|e| e.path()))
             .collect();
@@ -842,9 +979,8 @@ mod test {
 
     #[test]
     fn missing_identity_file_creates_new_without_backup() {
-        let dir = std::env::temp_dir().join("identity_management_test_missing_creates_new");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
         let path = dir.join("identity.json");
 
         let id = setup_node_identity(
@@ -853,13 +989,14 @@ mod test {
             true,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
         )
         .expect("missing identity file should create a new one");
         assert!(path.is_file());
-        let loaded = load_node_identity(&path, TransportType::Tcp).unwrap();
+        let loaded = load_node_identity(&path, TransportType::Tcp, true).unwrap();
         assert_eq!(loaded.node_id(), id.node_id());
 
-        let bak_files: Vec<PathBuf> = fs::read_dir(&dir)
+        let bak_files: Vec<PathBuf> = fs::read_dir(dir)
             .unwrap()
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("bak"))
@@ -872,10 +1009,8 @@ mod test {
 
     #[test]
     fn failed_backup_rename_in_unwritable_parent_dir_aborts_without_overwriting() {
-        let dir = std::env::temp_dir().join("identity_management_test_unwritable_parent");
-        let _unused = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
         let path = dir.join("identity.json");
 
         let original_bytes = b"// corrupt identity\n{broken";
@@ -891,7 +1026,7 @@ mod test {
         }
 
         // Make parent directory read+search only (0500) so renaming to .bak fails.
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o500)).unwrap();
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o500)).unwrap();
 
         let res = setup_node_identity(
             &path,
@@ -899,10 +1034,11 @@ mod test {
             true,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
         );
 
         // Restore parent directory permissions before asserting so cleanup always succeeds.
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).unwrap();
 
         let err = res.expect_err("must fail when renaming to .bak fails");
         assert!(matches!(err.exit_code, ExitCode::ConfigError));
@@ -915,9 +1051,8 @@ mod test {
 
     #[test]
     fn multiple_backups_in_same_second_do_not_overwrite_each_other() {
-        let dir = std::env::temp_dir().join("identity_management_test_same_second_backups");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
         let path = dir.join("identity.json");
 
         let first_corrupt = b"// first corrupt identity\n{first";
@@ -929,6 +1064,7 @@ mod test {
             true,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
         )
         .expect("first backup and recreate should succeed");
 
@@ -941,10 +1077,11 @@ mod test {
             true,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
         )
         .expect("second backup and recreate should succeed");
 
-        let mut bak_contents: Vec<Vec<u8>> = fs::read_dir(&dir)
+        let mut bak_contents: Vec<Vec<u8>> = fs::read_dir(dir)
             .unwrap()
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("bak"))
@@ -962,9 +1099,8 @@ mod test {
 
     #[test]
     fn missing_identity_with_eof_on_stdin_creates_identity_while_corrupt_aborts() {
-        let dir = std::env::temp_dir().join("identity_management_test_eof_stdin_split");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
         let path = dir.join("identity.json");
 
         // Missing file + create_id == false + EOF on stdin (simulated via prompt_default_yes_on_eof -> true)
@@ -975,13 +1111,14 @@ mod test {
             false,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
             |_| true,
             |_| false,
         )
         .expect("missing identity with EOF-means-yes must create identity on first start");
         assert!(path.is_file());
         assert_eq!(
-            load_node_identity(&path, TransportType::Tcp).unwrap().node_id(),
+            load_node_identity(&path, TransportType::Tcp, true).unwrap().node_id(),
             created.node_id()
         );
 
@@ -997,12 +1134,362 @@ mod test {
             false,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
             |_| true,
             |_| false,
         )
         .expect_err("corrupt identity with EOF-means-no must abort");
         assert!(matches!(err.exit_code, ExitCode::ConfigError));
         assert_eq!(fs::read(&path).unwrap(), corrupt_bytes);
+    }
+
+    fn fresh_identity_file(signed: bool) -> (tempfile::TempDir, PathBuf, NodeIdentity) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let path = dir.join("identity.json");
+        let id = NodeIdentity::with_signature_unchecked(
+            tari_comms::types::CommsSecretKey::random(&mut rand::rng()),
+            vec!["/ip4/127.0.0.1/tcp/18141".parse().unwrap()],
+            PeerFeatures::COMMUNICATION_NODE,
+            None,
+        );
+        if signed {
+            id.sign();
+        }
+        save_as_json(&path, &id).unwrap();
+        (tmp, path, id)
+    }
+
+    fn mtime_and_inode(path: &Path) -> (SystemTime, u64) {
+        use std::os::unix::fs::MetadataExt;
+        let meta = fs::metadata(path).unwrap();
+        (meta.modified().unwrap(), meta.ino())
+    }
+
+    fn tmp_path(path: &Path) -> PathBuf {
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        PathBuf::from(tmp)
+    }
+
+    #[test]
+    fn loading_an_unchanged_signed_identity_does_not_write() {
+        let (_dir, path, _id) = fresh_identity_file(true);
+        let before = mtime_and_inode(&path);
+
+        load_node_identity(&path, TransportType::Tcp, true).unwrap();
+
+        assert_eq!(mtime_and_inode(&path), before);
+    }
+
+    #[test]
+    fn loading_an_unsigned_identity_writes_via_temp_file_and_rename() {
+        let (_dir, path, id) = fresh_identity_file(false);
+        let (_, inode_before) = mtime_and_inode(&path);
+
+        let loaded = load_node_identity(&path, TransportType::Tcp, true).unwrap();
+
+        assert!(loaded.is_signed());
+        assert_eq!(loaded.public_key(), id.public_key());
+        assert_ne!(
+            mtime_and_inode(&path).1,
+            inode_before,
+            "file must be replaced by rename"
+        );
+        assert!(!tmp_path(&path).exists(), "no temp file may remain");
+        assert!(has_permissions(&path, REQUIRED_IDENTITY_PERMS).unwrap());
+    }
+
+    #[test]
+    fn crash_before_rename_leaves_original_and_stale_temp_is_replaced() {
+        let (_dir, path, _id) = fresh_identity_file(false);
+        let original = fs::read(&path).unwrap();
+
+        // Simulates dying after the temp file is written and synced, before the rename.
+        write_identity_temp_file(&path, b"", b"partial").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert!(tmp_path(&path).exists());
+
+        // The next write must not be blocked by the stale temp file.
+        load_node_identity(&path, TransportType::Tcp, true).unwrap();
+        assert!(!tmp_path(&path).exists());
+        assert_ne!(fs::read(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn read_only_identity_needing_a_signature_is_not_modified() {
+        let (_dir, path, _id) = fresh_identity_file(false);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let original = fs::read(&path).unwrap();
+        let before = mtime_and_inode(&path);
+
+        let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
+
+        assert!(matches!(&err, IdentityError::ReadOnly(p) if p == &path), "got {err:?}");
+        assert!(err.to_string().contains(&path.display().to_string()));
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert_eq!(mtime_and_inode(&path), before);
+        assert!(!tmp_path(&path).exists());
+    }
+
+    #[test]
+    fn non_persisting_setup_never_writes_the_identity_file() {
+        let (_dir, path, id) = fresh_identity_file(false);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let original = fs::read(&path).unwrap();
+        let before = mtime_and_inode(&path);
+
+        let loaded = setup_node_identity(
+            &path,
+            vec!["/ip4/127.0.0.2/tcp/18141".parse().unwrap()],
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(loaded.public_key(), id.public_key());
+        assert!(loaded.is_signed());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert_eq!(mtime_and_inode(&path), before);
+
+        // A missing identity is an error rather than being created.
+        let dir = path.parent().unwrap().to_path_buf();
+        let missing = dir.join("missing.json");
+        let err = setup_node_identity(
+            &missing,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+            false,
+        )
+        .unwrap_err();
+        assert!(matches!(err.exit_code, ExitCode::ConfigError));
+        assert!(!missing.exists());
+    }
+
+    #[test]
+    fn failed_save_during_load_is_fatal_and_never_replaces_the_identity() {
+        let (dir, path, _id) = fresh_identity_file(false);
+        let original = fs::read(&path).unwrap();
+        // A directory at the temp path makes the save fail with an error other than a read-only target.
+        fs::create_dir_all(tmp_path(&path)).unwrap();
+
+        let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
+        assert!(matches!(err, IdentityError::PersistFailed { .. }), "got {err:?}");
+
+        let err = setup_node_identity(
+            &path,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+            true,
+        )
+        .unwrap_err();
+        assert!(matches!(err.exit_code, ExitCode::ConfigError));
+        assert_eq!(fs::read(&path).unwrap(), original);
+        let bak_files: Vec<PathBuf> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("bak"))
+            .collect();
+        assert!(
+            bak_files.is_empty(),
+            "a good identity must not be backed up: {bak_files:?}"
+        );
+    }
+
+    #[test]
+    fn unwritable_directory_is_not_reported_as_read_only_file() {
+        unsafe extern "C" {
+            fn geteuid() -> u32;
+        }
+        // SAFETY: `geteuid` has no preconditions and cannot fail.
+        if unsafe { geteuid() } == 0 {
+            return;
+        }
+        let (dir, path, _id) = fresh_identity_file(false);
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o500)).unwrap();
+
+        let res = load_node_identity(&path, TransportType::Tcp, true);
+
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let err = res.unwrap_err();
+        assert!(matches!(err, IdentityError::PersistFailed { .. }), "got {err:?}");
+    }
+
+    #[test]
+    fn read_only_signed_identity_with_different_formatting_loads_without_writing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("identity.json");
+        let id = NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/127.0.0.1/tcp/18141".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        let contents = format!(
+            "// This file is generated by the Tari base node.\n\n{}\n",
+            *serialize_to_json(&id).unwrap()
+        );
+        fs::write(&path, contents.as_bytes()).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let before = mtime_and_inode(&path);
+
+        let loaded = load_node_identity(&path, TransportType::Tcp, true).unwrap();
+
+        assert_eq!(loaded.public_key(), id.public_key());
+        assert_eq!(fs::read_to_string(&path).unwrap(), contents);
+        assert_eq!(mtime_and_inode(&path), before);
+    }
+
+    #[test]
+    fn symlinked_identity_is_updated_through_the_link() {
+        let (dir, real, id) = fresh_identity_file(false);
+        let link = dir.path().join("link.json");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let loaded = load_node_identity(&link, TransportType::Tcp, true).unwrap();
+
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(!tmp_path(&link).exists() && !tmp_path(&real).exists());
+        let reloaded = load_node_identity(&real, TransportType::Tcp, false).unwrap();
+        assert_eq!(reloaded.public_key(), id.public_key());
+        assert_eq!(
+            *reloaded.identity_signature_read(),
+            *loaded.identity_signature_read(),
+            "the new signature must be written to the real file"
+        );
+    }
+
+    #[test]
+    fn dangling_symlinked_identity_is_created_at_the_link_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("secrets")).unwrap();
+        let link = tmp.path().join("identity.json");
+        let real = tmp.path().join("secrets").join("identity.json");
+        std::os::unix::fs::symlink("secrets/identity.json", &link).unwrap();
+
+        let id = setup_node_identity(
+            &link,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+            true,
+        )
+        .unwrap();
+
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(has_permissions(&real, REQUIRED_IDENTITY_PERMS).unwrap());
+        assert!(!tmp_path(&link).exists() && !tmp_path(&real).exists());
+        assert_eq!(
+            load_node_identity(&real, TransportType::Tcp, false)
+                .unwrap()
+                .public_key(),
+            id.public_key()
+        );
+    }
+
+    #[test]
+    fn concurrent_saves_in_one_process_do_not_collide() {
+        let (_dir, path) = temp_path();
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for _ in 0..10 {
+                        let id = NodeIdentity::random(
+                            &mut rand::rng(),
+                            "/ip4/127.0.0.1/tcp/18141".parse().unwrap(),
+                            PeerFeatures::COMMUNICATION_NODE,
+                        );
+                        save_as_json(&path, &id).unwrap();
+                    }
+                });
+            }
+        });
+        load_node_identity(&path, TransportType::Tcp, false).unwrap();
+        assert!(!tmp_path(&path).exists());
+    }
+
+    #[test]
+    fn tcp_load_persists_removal_of_onion_addresses() {
+        let tcp: Multiaddr = "/ip4/127.0.0.1/tcp/18141".parse().unwrap();
+        let onion: Multiaddr = "/onion3/pd6sf3mqkkkfrn4rk5odgcr2j5sn7m523a4tt7pzy5hrdvhafdgn7ydt:18141"
+            .parse()
+            .unwrap();
+        let write_signed = |path: &Path| {
+            let id = NodeIdentity::random_multiple_addresses(
+                &mut rand::rng(),
+                vec![tcp.clone(), onion.clone()],
+                PeerFeatures::COMMUNICATION_NODE,
+            );
+            save_as_json(path, &id).unwrap();
+        };
+        let (_dir, path) = temp_path();
+
+        // Non-TCP transports keep the onion address, so nothing changed and nothing is written.
+        write_signed(&path);
+        let before = mtime_and_inode(&path);
+        load_node_identity(&path, TransportType::Tor, true).unwrap();
+        assert_eq!(mtime_and_inode(&path), before);
+
+        load_node_identity(&path, TransportType::Tcp, true).unwrap();
+        assert_ne!(
+            mtime_and_inode(&path).1,
+            before.1,
+            "the filtered addresses must be persisted"
+        );
+        assert!(!tmp_path(&path).exists());
+        let reloaded = load_node_identity(&path, TransportType::Tor, false).unwrap();
+        assert_eq!(reloaded.public_addresses(), vec![tcp.clone()]);
+        reloaded
+            .identity_signature_read()
+            .as_ref()
+            .unwrap()
+            .verify(reloaded.public_key(), reloaded.features(), &reloaded.public_addresses())
+            .unwrap();
+
+        let _unused = fs::remove_file(&path);
+        write_signed(&path);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let before = mtime_and_inode(&path);
+        let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
+        assert!(matches!(err, IdentityError::ReadOnly(_)), "got {err:?}");
+        assert_eq!(mtime_and_inode(&path), before);
+    }
+
+    #[test]
+    fn read_only_corrupt_identity_is_not_replaced() {
+        for corrupt in [b"// corrupt identity\n{broken".as_slice(), b"\xff\xfe{".as_slice()] {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("identity.json");
+            fs::write(&path, corrupt).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+            let before = mtime_and_inode(&path);
+
+            let err = setup_node_identity(
+                &path,
+                Vec::new(),
+                true,
+                PeerFeatures::COMMUNICATION_NODE,
+                TransportType::Tcp,
+                true,
+            )
+            .unwrap_err();
+
+            assert!(matches!(err.exit_code, ExitCode::ConfigError));
+            assert!(err.details.unwrap().contains("read-only"));
+            assert_eq!(fs::read(&path).unwrap(), corrupt);
+            assert_eq!(mtime_and_inode(&path), before);
+            assert_eq!(
+                fs::read_dir(tmp.path()).unwrap().count(),
+                1,
+                "no backup or temp file may be created"
+            );
+        }
     }
 
     #[test]
@@ -1018,7 +1505,7 @@ mod test {
 
     #[test]
     fn public_key_mismatch_fails_to_load() {
-        let path = temp_path("pk_mismatch");
+        let (_dir, path) = temp_path();
         let node_identity = NodeIdentity::random(
             &mut rand::rng(),
             "/ip4/127.0.0.1/tcp/18141".parse().unwrap(),
@@ -1031,7 +1518,7 @@ mod test {
         let tampered = content.replace(&node_identity.public_key().to_hex(), &other_pk.to_hex());
         fs::write(&path, tampered.as_bytes()).unwrap();
 
-        let err = load_node_identity(&path, TransportType::Tcp).unwrap_err();
+        let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
         assert!(matches!(err, IdentityError::PublicKeyMismatch));
 
         let original_tampered_bytes = fs::read(&path).unwrap();
@@ -1041,6 +1528,7 @@ mod test {
             true,
             PeerFeatures::COMMUNICATION_NODE,
             TransportType::Tcp,
+            true,
         )
         .unwrap_err();
         assert!(matches!(err.exit_code, ExitCode::ConfigError));
@@ -1053,7 +1541,7 @@ mod test {
 
     #[test]
     fn node_id_mismatch_fails_to_load() {
-        let path = temp_path("node_id_mismatch");
+        let (_dir, path) = temp_path();
         let node_identity = NodeIdentity::random(
             &mut rand::rng(),
             "/ip4/127.0.0.1/tcp/18141".parse().unwrap(),
@@ -1067,13 +1555,13 @@ mod test {
         let tampered = content.replace(&node_identity.node_id().to_hex(), &other_node_id.to_hex());
         fs::write(&path, tampered.as_bytes()).unwrap();
 
-        let err = load_node_identity(&path, TransportType::Tcp).unwrap_err();
+        let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
         assert!(matches!(err, IdentityError::NodeIdMismatch));
     }
 
     #[test]
     fn invalid_stored_signature_is_replaced_without_changing_identity() {
-        let path = temp_path("invalid_signature");
+        let (_dir, path) = temp_path();
         let node_identity = NodeIdentity::random(
             &mut rand::rng(),
             "/ip4/127.0.0.1/tcp/18141".parse().unwrap(),
@@ -1087,7 +1575,7 @@ mod test {
         assert_ne!(content, tampered, "Tampered content should differ from original");
         fs::write(&path, tampered.as_bytes()).unwrap();
 
-        let loaded = load_node_identity(&path, TransportType::Tcp).unwrap();
+        let loaded = load_node_identity(&path, TransportType::Tcp, true).unwrap();
         assert_eq!(loaded.public_key(), node_identity.public_key());
         assert_eq!(loaded.node_id(), node_identity.node_id());
         assert_ne!(

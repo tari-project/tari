@@ -88,14 +88,10 @@ pub fn add_aux_data(mut response: json::Value, mut ext: json::Value) -> json::Va
     response
 }
 
-/// Append chain data to the result object. If the result object is null, a JSON object is created.
-///
-/// ## Panics
-///
-/// If response["result"] is not a JSON object type or null.
+/// Append chain data to the result object. If the result object is not a JSON object, a JSON object is created.
 pub fn append_aux_chain_data(mut response: json::Value, chain_data: json::Value) -> json::Value {
     let result = &mut response["result"];
-    if result.is_null() {
+    if !result.is_object() {
         *result = json!({});
     }
     let chains = match result[MMPROXY_AUX_KEY_NAME]["chains"].as_array_mut() {
