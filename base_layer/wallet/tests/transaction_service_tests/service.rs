@@ -4358,7 +4358,6 @@ async fn send_multisig_utxo_locks_the_multisig_input() {
         (OutputStatus::EncumberedToBeSpent, Some(tx_id))
     );
 
-    let submitted = alice.base_node_mock.submit_transaction_calls().await;
     let result = alice
         .transaction_service_handle
         .send_multisig_utxo(output.commitment().clone(), bob_address, vec![
@@ -4366,7 +4365,17 @@ async fn send_multisig_utxo_locks_the_multisig_input() {
         ])
         .await;
     assert!(result.is_err());
-    assert_eq!(alice.base_node_mock.submit_transaction_calls().await, submitted);
+    // The refused send recorded nothing to broadcast and left the input with the first transaction.
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert_eq!(completed.iter().map(|tx| tx.tx_id).collect::<Vec<_>>(), vec![tx_id]);
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(tx_id))
+    );
 }
 
 /// Input selection for a multisig deposit pays for the multisig script the output really carries. One input covers

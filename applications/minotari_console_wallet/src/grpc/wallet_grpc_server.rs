@@ -148,7 +148,7 @@ use minotari_wallet::{
     output_manager_service::{
         RangeLimit,
         UtxoSelectionCriteria,
-        error::OutputManagerError,
+        error::{OutputManagerError, OutputManagerStorageError},
         handle::OutputManagerHandle,
     },
     transaction_service::{
@@ -2494,10 +2494,32 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
         let mut transaction_service = self.get_transaction_service();
         let txn = match transaction_service.get_any_transaction(message.tx_id.into()).await {
-            Ok(txn) => txn.ok_or(Status::not_found(format!(
-                "Transaction TxId:{} is not found",
-                message.tx_id
-            )))?,
+            Ok(Some(txn)) => txn,
+            // A payload prepared for offline signing has no record until it is submitted, only the inputs locked
+            // under its tx_id. The output manager, unlike the transaction service, reports a tx_id that locks nothing.
+            Ok(None) => {
+                let response = match self
+                    .get_output_manager_service()
+                    .cancel_pending_transaction(message.tx_id.into())
+                    .await
+                {
+                    Ok(()) => tari_rpc::CancelTransactionResponse {
+                        is_success: true,
+                        failure_message: "".to_string(),
+                    },
+                    Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {
+                        return Err(Status::not_found(format!(
+                            "Transaction TxId:{} is not found",
+                            message.tx_id
+                        )));
+                    },
+                    Err(e) => tari_rpc::CancelTransactionResponse {
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                };
+                return Ok(Response::new(response));
+            },
             // A pending outbound row stored by an older version may no longer decode; the service can still cancel it
             Err(e) if is_undecodable_transaction(&e) => {
                 let response = match transaction_service

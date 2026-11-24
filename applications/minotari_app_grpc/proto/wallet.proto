@@ -421,7 +421,7 @@ service Wallet {
   // The caller must supply a valid UTXO commitment and a complete set of Schnorr signatures from all multisig participants.
   // The unsigned transaction is returned as JSON and can be submitted once fully signed.
   // The multisig UTXO stays locked under the returned `tx_id`, across restarts, until the signed transaction is
-  // submitted or the wallet's `CancelPendingTransaction(tx_id)` releases it.
+  // submitted or `CancelTransaction(tx_id)` releases it.
   //
   // ### Request Parameters:
   //
@@ -1237,6 +1237,7 @@ service Wallet {
   // The `CancelTransaction` call allows a transaction to be cancelled by its unique transaction ID (TxId).
   // If the cancellation is successful, the response will indicate success. Otherwise, the response will
   // contain a failure message with the reason for the failure.
+  // It also releases the inputs locked by a transaction prepared for offline signing that has not been submitted.
   //
   // ### Request Parameters:
   //
