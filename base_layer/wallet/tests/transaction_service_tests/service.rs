@@ -4264,7 +4264,7 @@ async fn output_status(
         .get_outputs_by_commitments(vec![output.commitment().clone()])
         .await
         .unwrap();
-    (outputs[0].status.clone(), outputs[0].spent_in_tx_id)
+    (outputs[0].status, outputs[0].spent_in_tx_id)
 }
 
 /// The multisig input of a prepared withdrawal is locked until the withdrawal is cancelled, across restarts, so it can
@@ -4714,13 +4714,24 @@ async fn submitting_a_forged_or_expired_payload_is_refused() {
     let missing_change = tampered(&signed, |json| {
         *json.pointer_mut("/signed_transaction/change_output").unwrap() = serde_json::Value::Null;
     });
+    let forged_change_hash = tampered(&signed, |json| {
+        *json
+            .pointer_mut("/signed_transaction/change_output/output_hash")
+            .unwrap() = serde_json::to_value(FixedHash::zero()).unwrap();
+    });
     let no_inputs = tampered(&signed, |json| {
         *json.pointer_mut("/signed_transaction/transaction/body/inputs").unwrap() = serde_json::json!([]);
     });
     let mut expired = signed;
     expired.request.expires_at = 1;
 
-    for payload in [forged_change_value, missing_change, no_inputs, expired] {
+    for payload in [
+        forged_change_value,
+        forged_change_hash,
+        missing_change,
+        no_inputs,
+        expired,
+    ] {
         assert!(
             alice
                 .transaction_service_handle
@@ -4837,6 +4848,44 @@ async fn a_confirmed_but_unrecorded_payload_can_be_released_and_submitted_again(
         output_status(&mut alice, &inputs[0]).await,
         (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
     );
+}
+
+/// A record-less cancel of a transaction that has a record is refused and changes nothing.
+#[tokio::test]
+async fn a_record_less_cancel_of_a_recorded_transaction_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, _, signed) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let new_tx_id = signed.signed_transaction.tx_id;
+    let change = signed.signed_transaction.change_output.clone().unwrap();
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await
+        .unwrap();
+    let statuses = async |alice: &mut TransactionServiceNoCommsInterface| {
+        alice
+            .output_manager_service_handle
+            .get_outputs_by_commitments(vec![inputs[0].commitment().clone(), change.commitment().clone()])
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|o| (o.status, o.spent_in_tx_id, o.received_in_tx_id))
+            .collect::<Vec<_>>()
+    };
+    let before = statuses(&mut alice).await;
+    assert_eq!(before.len(), 2);
+
+    let result = alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(new_tx_id)
+        .await;
+    assert!(
+        matches!(result, Err(TransactionServiceError::FailedToCancelTransaction(_))),
+        "{result:?}"
+    );
+    assert_eq!(statuses(&mut alice).await, before);
 }
 
 /// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be

@@ -4582,8 +4582,14 @@ where
         // recomputed, as the stored one is just a field of the file; the hash covers the commitment.
         match &signed.change_output {
             None if signed.change_hashes.is_empty() => {},
-            Some(change) if signed.change_hashes.contains(&change.to_transaction_output()?.hash()) => {},
-            _ => return refuse("does not carry its transaction's change output"),
+            Some(change) => {
+                // The stored hash is what the output is looked up by once it is mined
+                let hash = change.to_transaction_output()?.hash();
+                if hash != change.output_hash() || !signed.change_hashes.contains(&hash) {
+                    return refuse("does not carry its transaction's change output");
+                }
+            },
+            None => return refuse("does not carry its transaction's change output"),
         }
         let mut tx_ids = HashSet::from([request.request.tx_id]);
         for i in 0..recipients {

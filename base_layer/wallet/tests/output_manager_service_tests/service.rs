@@ -1291,8 +1291,47 @@ async fn cancel_transaction() {
     );
 }
 
+/// Adds a new `Unspent` output to the wallet, received under `tx_id` if given.
+async fn add_unspent(
+    oms: &mut TestOmsService,
+    backend: &OutputManagerSqliteDatabase,
+    tx_id: Option<TxId>,
+) -> WalletOutput {
+    let output = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(1000),
+        &OutputFeatures::default(),
+        oms.key_manager_handle.key_manager(),
+    );
+    match tx_id {
+        Some(tx_id) => {
+            oms.output_manager_handle
+                .add_output_with_tx_id(tx_id, output.clone(), None)
+                .await
+        },
+        None => oms.output_manager_handle.add_output(output.clone(), None).await,
+    }
+    .unwrap();
+    backend
+        .mark_outputs_as_unspent(vec![(output.output_hash(), true)])
+        .unwrap();
+    output
+}
+
+/// Locks `input` under `tx_id` and confirms it with `change`.
+async fn lock_with_change(oms: &mut TestOmsService, tx_id: TxId, input: &WalletOutput, change: &WalletOutput) {
+    oms.output_manager_handle
+        .encumber_outputs(tx_id, vec![input.commitment().clone()])
+        .await
+        .unwrap();
+    oms.output_manager_handle
+        .confirm_pending_transaction(tx_id, None, Some(vec![change.clone()]))
+        .await
+        .unwrap();
+}
+
 /// Releasing a transaction whose record was never written frees its inputs and removes its change, so the same
-/// transaction can be confirmed again.
+/// transaction can be confirmed again. Outputs it did not receive, or received as `Unspent`, are left alone.
 #[tokio::test]
 async fn release_unrecorded_transaction_removes_its_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -1306,23 +1345,23 @@ async fn release_unrecorded_transaction_removes_its_change() {
             oms.key_manager_handle.key_manager(),
         )
     };
-    let input = make(&oms);
-    oms.output_manager_handle.add_output(input.clone(), None).await.unwrap();
-    backend
-        .mark_outputs_as_unspent(vec![(input.output_hash(), true)])
-        .unwrap();
+    let input = add_unspent(&mut oms, &backend, None).await;
     let change = make(&oms);
     let tx_id = TxId::from(5u64);
 
+    // Bystanders: an `Unspent` output received under the same tx_id, and change cancelled under another tx_id.
+    let received = add_unspent(&mut oms, &backend, Some(tx_id)).await;
+    let other_input = add_unspent(&mut oms, &backend, None).await;
+    let other_change = make(&oms);
+    let other_tx_id = TxId::from(6u64);
+    lock_with_change(&mut oms, other_tx_id, &other_input, &other_change).await;
+    oms.output_manager_handle
+        .cancel_pending_transaction(other_tx_id)
+        .await
+        .unwrap();
+
     for _ in 0..2 {
-        oms.output_manager_handle
-            .encumber_outputs(tx_id, vec![input.commitment().clone()])
-            .await
-            .unwrap();
-        oms.output_manager_handle
-            .confirm_pending_transaction(tx_id, None, Some(vec![change.clone()]))
-            .await
-            .unwrap();
+        lock_with_change(&mut oms, tx_id, &input, &change).await;
         oms.output_manager_handle
             .release_unrecorded_transaction(tx_id)
             .await
@@ -1338,14 +1377,7 @@ async fn release_unrecorded_transaction_removes_its_change() {
     }
 
     // A plain cancel leaves the change row behind; releasing afterwards, with nothing locked, still removes it.
-    oms.output_manager_handle
-        .encumber_outputs(tx_id, vec![input.commitment().clone()])
-        .await
-        .unwrap();
-    oms.output_manager_handle
-        .confirm_pending_transaction(tx_id, None, Some(vec![change.clone()]))
-        .await
-        .unwrap();
+    lock_with_change(&mut oms, tx_id, &input, &change).await;
     oms.output_manager_handle
         .cancel_pending_transaction(tx_id)
         .await
@@ -1366,6 +1398,16 @@ async fn release_unrecorded_transaction_removes_its_change() {
             OutputManagerStorageError::ValueNotFound
         ))
     ));
+
+    let bystanders = oms
+        .output_manager_handle
+        .get_outputs_by_commitments(vec![received.commitment().clone(), other_change.commitment().clone()])
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|o| o.status)
+        .collect::<Vec<_>>();
+    assert_eq!(bystanders, vec![OutputStatus::Unspent, OutputStatus::CancelledInbound]);
 }
 
 /// `encumber_outputs` locks exactly the listed outputs, and nothing at all if any of them is unknown or not `Unspent`.
