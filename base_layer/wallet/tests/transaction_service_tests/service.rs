@@ -4191,7 +4191,7 @@ async fn prepare_deposit_multisig_transaction_refuses_an_unmeetable_threshold() 
         Network::LocalNet,
     )
     .unwrap();
-    for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 33)] {
+    for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 14), (2, 33)] {
         let err = alice_ts_interface
             .transaction_service_handle
             .prepare_deposit_multisig_transaction(

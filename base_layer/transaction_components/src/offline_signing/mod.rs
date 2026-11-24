@@ -102,7 +102,12 @@ mod test {
                 TransactionResult,
             },
             offline_signer::sign_locked_transaction,
-            one_sided_signer::{multisig_pending_output, sign_multisig_transaction, withdraw_pending_output},
+            one_sided_signer::{
+                multisig_pending_output,
+                sign_multisig_transaction,
+                validate_multisig_threshold,
+                withdraw_pending_output,
+            },
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
             prepare_withdraw_multisig_transaction,
@@ -3429,13 +3434,18 @@ mod test {
                 None,
             )
         };
-        let bad: [(u8, usize); 4] = [(0, 2), (3, 2), (1, 0), (2, 33)];
+        let bad: [(u8, usize); 6] = [(0, 2), (3, 2), (1, 0), (2, 14), (32, 32), (2, 33)];
         for (m, n) in bad {
             let err = prepare(m, n).unwrap_err().to_string();
             assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
         }
         prepare(1, 1).unwrap();
-        prepare(32, 32).unwrap();
+        // The largest script every network accepts.
+        prepare(13, 13).unwrap();
+        for (m, n) in bad {
+            assert!(validate_multisig_threshold(m, n).is_err(), "{m} of {n}");
+        }
+        validate_multisig_threshold(2, 13).unwrap();
         let valid = prepare(2, 2).unwrap();
 
         // A payload carrying a bad threshold is neither summarised for approval nor signed.

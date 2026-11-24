@@ -600,8 +600,9 @@ nothing has to follow it through a trade.
 The cost is that a deposit waits for the sweep. The wallet selects inputs largest first, then by branch and bound,
 with a cap on inputs per transaction, so sweep often and with many inputs, and escalate a credit that is still unswept
 after several sweeps. `PrepareOneSidedTransactionForSigning` has no coin control yet (a wallet follow-up), and a
-depositor can spend a `Nop` output back between prepare and broadcast, which gets the sweep cancelled: broadcast
-promptly after signing, re-prepare when that happens, and prefer deposits that have been confirmed for a long time.
+depositor can spend a `Nop` output back between prepare and broadcast. The broadcast is then refused once the wallet
+has seen that spend, or the sweep is cancelled if it has not: broadcast promptly after signing, re-prepare when that
+happens, and prefer deposits that have been confirmed for a long time.
 
 A wallet only records an outbound transaction for transactions it built or broadcast itself; when another wallet spends
 its outputs it just marks them spent. So build every sweep on the Monitoring Wallet the listener reads and broadcast it

@@ -328,7 +328,7 @@ mod test {
             None,
         )
         .unwrap();
-        for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 33)] {
+        for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 14), (2, 33)] {
             let tx_builder = TransactionBuilder::new(
                 create_consensus_manager().consensus_constants(0).clone(),
                 key_manager.clone(),
