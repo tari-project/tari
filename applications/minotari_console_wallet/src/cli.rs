@@ -237,7 +237,8 @@ pub enum CliCommands {
     SignMessage(SignMessageArgs),
     /// Co-sign a multisig UTXO's script message. The signature lets whoever builds the spending transaction send the
     /// funds of any output whose script has this message and your key, anywhere. Take the message from an output you
-    /// know independently; --output-hash checks that output with the base node
+    /// know independently; --output-hash checks that output with the base node. Handle the signature, in the file or
+    /// on stdout, as sensitive
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),

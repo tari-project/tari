@@ -160,6 +160,8 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
+/// Signing decisions go where the offline signer's do, an appender kept apart from the fast-rotating wallet logs.
+const SIGNING_LOG_TARGET: &str = "c::tx::offline_signing";
 /// How long `import-paper-wallet` waits for its temporary wallet's tasks to exit before deleting the wallet directory.
 const TEMP_WALLET_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 // Pre-mine file names
@@ -784,7 +786,13 @@ async fn fetch_unspent_output(
                 ))
             })?;
         match deleted.utxos.first() {
-            Some(info) if info.found_in_header.is_some() && info.spent_in_header.is_none() => Ok(output),
+            Some(info)
+                if info.utxo_hash == output_hash.as_slice() &&
+                    info.found_in_header.is_some() &&
+                    info.spent_in_header.is_none() =>
+            {
+                Ok(output)
+            },
             _ => Err(CommandError::General(
                 "Refusing to sign: the output is spent or not on the chain".into(),
             )),
@@ -812,12 +820,16 @@ fn check_co_signed_output(
     if utxo_commitment.is_some_and(|c| *c != output.commitment) {
         return refuse("the output's commitment is not the --utxo-commitment given");
     }
-    let Some((keys, script_message)) = output.script.as_slice().iter().find_map(|op| match op {
+    let mut multisig_ops = output.script.as_slice().iter().filter_map(|op| match op {
         Opcode::CheckMultiSigVerify(_, _, keys, msg) => Some((keys, msg)),
         _ => None,
-    }) else {
+    });
+    let Some((keys, script_message)) = multisig_ops.next() else {
         return refuse("the output's script is not a multisig script");
     };
+    if multisig_ops.next().is_some() {
+        return refuse("the output's script has more than one multisig check");
+    }
     if **script_message != *message {
         return refuse("the output's script carries a different message");
     }
@@ -842,6 +854,7 @@ fn confirm_script_message_signing(
     utxo_commitment: Option<&CompressedCommitment>,
     message: &[u8; 32],
     sender_offset_key: Option<&CompressedPublicKey>,
+    signing_key: &CompressedPublicKey,
 ) -> Result<(), CommandError> {
     let commitment_hex = utxo_commitment.map(|c| c.to_hex());
     let offset_hex = sender_offset_key.map(|k| k.to_hex());
@@ -890,9 +903,11 @@ fn confirm_script_message_signing(
         },
     };
     info!(
-        target: LOG_TARGET,
-        "Multisig script message {} {decision}: sender offset key {}, output hash {}, UTXO commitment {} ({checked})",
+        target: SIGNING_LOG_TARGET,
+        "Multisig script message {} {decision}: signing key {}, sender offset key {}, output hash {}, UTXO commitment \
+         {} ({checked})",
         message.to_hex(),
+        signing_key.to_hex(),
         offset_hex.as_deref().unwrap_or("none"),
         checked_output_hash.map(|h| h.to_hex()).as_deref().unwrap_or("none"),
         commitment_hex.as_deref().unwrap_or("none"),
@@ -3325,11 +3340,11 @@ pub async fn command_runner(
                     .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))?;
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
+                let signing_key = co_signer_script_public_key(&key_manager_service, sender_offset)
+                    .map_err(|e| CommandError::General(e.to_string()))?;
                 let checked_commitment = match &args.output_hash {
                     Some(hash) => {
                         let output = fetch_unspent_output(&wallet, hash).await?;
-                        let signing_key = co_signer_script_public_key(&key_manager_service, sender_offset)
-                            .map_err(|e| CommandError::General(e.to_string()))?;
                         check_co_signed_output(
                             &output,
                             hash,
@@ -3350,10 +3365,11 @@ pub async fn command_runner(
                     checked_commitment.as_ref().or(args.utxo_commitment.as_ref()),
                     &commitment_bytes,
                     sender_offset,
+                    &signing_key,
                 )?;
                 let signature =
                     key_manager_service.sign_script_message_with_spend_key_trusted(&commitment_bytes, sender_offset)?;
-                info!(target: LOG_TARGET, "Multisig script message {} signed", commitment_bytes.to_hex());
+                info!(target: SIGNING_LOG_TARGET, "Multisig script message {} signed", commitment_bytes.to_hex());
 
                 let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
                     .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
@@ -4371,6 +4387,7 @@ mod test {
             Some(&commitment),
             &[0xab; 32],
             None,
+            &CompressedPublicKey::default(),
         )
         .unwrap();
         let written = String::from_utf8(out).unwrap();
@@ -4395,6 +4412,7 @@ mod test {
             Some(&commitment),
             &[0xab; 32],
             Some(&key),
+            &CompressedPublicKey::default(),
         )
         .unwrap();
         let written = String::from_utf8(out).unwrap();
@@ -4416,6 +4434,7 @@ mod test {
                 None,
                 &[0xab; 32],
                 None,
+                &CompressedPublicKey::default(),
             );
             match result {
                 Ok(()) => assert!(expected, "{answer:?}"),
@@ -4467,6 +4486,19 @@ mod test {
         refused(
             check(&without_own_key, &without_own_key.hash(), None, &message),
             "not one of the output's multisig keys",
+        );
+
+        let two_checks = TransactionOutput {
+            script: tari_script::TariScript::new(vec![
+                Opcode::CheckMultiSigVerify(1, 1, vec![own_key.clone()], Box::new(message)),
+                Opcode::CheckMultiSigVerify(1, 1, vec![other_key.clone()], Box::new([0xcd; 32])),
+            ])
+            .unwrap(),
+            ..Default::default()
+        };
+        refused(
+            check(&two_checks, &two_checks.hash(), None, &message),
+            "more than one multisig check",
         );
 
         let not_multisig = TransactionOutput {
