@@ -30,11 +30,12 @@
 //!
 //! Before signing with
 //! [`sign_script_message_with_spend_key_trusted`](crate::key_manager::TransactionKeyManagerInterface::sign_script_message_with_spend_key_trusted),
-//! a co-signer should agree out of band on the output hash ([`types::GetMultisigUtxoDataOutput`]) and confirm that the
-//! unspent output with that hash carries this message and their key ([`script::co_signer_script_public_key`]) in its
-//! public script. A commitment alone does not identify what is being signed: it is not bound to the message or the
-//! sender offset key handed over with it. The console wallet's `sign-script-message --output-hash` makes this check
-//! against its base node before signing.
+//! a co-signer should take the message from an output they know independently (one they saw created, or their own
+//! record), not only from the party asking for the signature, and confirm that the unspent output with that hash
+//! ([`types::GetMultisigUtxoDataOutput`]) carries this message and their key
+//! ([`script::co_signer_script_public_key`]). The console wallet's `sign-script-message --output-hash` makes this
+//! check against its base node. Neither the check nor a commitment binds the signature to that output: it is valid
+//! for any output whose script has the same message and key.
 pub mod script;
 pub mod session;
 pub mod types;

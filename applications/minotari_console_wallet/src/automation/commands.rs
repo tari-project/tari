@@ -822,7 +822,10 @@ fn check_co_signed_output(
         return refuse("the output's script carries a different message");
     }
     if !keys.contains(signing_key) {
-        return refuse("your key (with the sender offset key given) is not one of the output's multisig keys");
+        return refuse(
+            "the key this wallet would sign with is not one of the output's multisig keys (check the sender offset \
+             key)",
+        );
     }
     Ok(())
 }
@@ -853,7 +856,8 @@ fn confirm_script_message_signing(
             writeln!(out, "  Output hash:       {}", TerminalSafe(&hash.to_hex()))?;
             writeln!(
                 out,
-                "  Checked with the base node: the output is unspent and its script carries this message and your key"
+                "  Checked with the base node: an unspent output with this hash carries this message and your key. \
+                 The signature works for any output whose script has the same message and key."
             )?;
         },
         None => writeln!(out, "  No output hash given: the output was not checked")?,

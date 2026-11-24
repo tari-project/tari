@@ -236,8 +236,8 @@ pub enum CliCommands {
 
     SignMessage(SignMessageArgs),
     /// Co-sign a multisig UTXO's script message. The signature lets whoever builds the spending transaction send the
-    /// funds anywhere. Pass the output hash you agreed on out of band, so the wallet checks with its base node that
-    /// the unspent output's script carries this message and your key before signing
+    /// funds of any output whose script has this message and your key, anywhere. Take the message from an output you
+    /// know independently; --output-hash checks that output with the base node
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),
@@ -349,8 +349,9 @@ pub struct SignScriptMessageArgs {
     /// The 32-byte script message to be signed, in hex
     #[clap(long)]
     pub message: String,
-    /// Hash of the multisig UTXO being signed for. The wallet fetches the output from its base node and refuses to
-    /// sign unless it is unspent and its script carries this message and your key
+    /// Hash of the multisig UTXO being signed for. The wallet refuses to sign unless its base node has this output
+    /// unspent with this message and your key; the signature is still valid for any output with the same message and
+    /// key
     #[clap(long, value_parser = parse_fixed_hash)]
     pub output_hash: Option<FixedHash>,
     /// Commitment of the multisig UTXO being signed for. With --output-hash it must match the fetched output;
