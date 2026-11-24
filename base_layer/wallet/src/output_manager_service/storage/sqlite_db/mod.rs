@@ -1372,16 +1372,25 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Err(OutputManagerStorageError::ValueNotFound) => false,
                 Err(e) => return Err(e),
             };
-            let removed = diesel::delete(
-                outputs::table
-                    .filter(outputs::received_in_tx_id.eq(tx_id.as_i64_wrapped()))
-                    .filter(
-                        outputs::status
-                            .eq(OutputStatus::CancelledInbound as i32)
-                            .or(outputs::status.eq(OutputStatus::EncumberedToBeReceived as i32)),
-                    ),
-            )
-            .execute(conn)?;
+            let change = outputs::table
+                .filter(outputs::received_in_tx_id.eq(tx_id.as_i64_wrapped()))
+                .filter(
+                    outputs::status
+                        .eq(OutputStatus::CancelledInbound as i32)
+                        .or(outputs::status.eq(OutputStatus::EncumberedToBeReceived as i32)),
+                )
+                .load::<OutputSql>(conn)?;
+            for output in &change {
+                info!(
+                    target: LOG_TARGET,
+                    "Removing change output with Commitment: {} - of unrecorded TxId: {}",
+                    output.commitment.to_hex(),
+                    tx_id
+                );
+            }
+            let commitments = change.iter().map(|o| o.commitment.clone()).collect::<Vec<_>>();
+            let removed =
+                diesel::delete(outputs::table.filter(outputs::commitment.eq_any(commitments))).execute(conn)?;
             if !cancelled && removed == 0 {
                 return Err(OutputManagerStorageError::ValueNotFound);
             }
