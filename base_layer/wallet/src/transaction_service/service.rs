@@ -4555,12 +4555,13 @@ where
 
     /// Makes sure every input of a signed payload is locked under the payload's `tx_id`, locking again those that are
     /// `Unspent` (the payload was cancelled, or prepared by a version that did not lock). Refuses an input this wallet
-    /// does not hold or that is spent or locked by another transaction. Returns whether anything was locked.
+    /// does not hold or that is spent or locked by another transaction. Returns whether anything was locked, or the
+    /// refusal as the inner error; the outer error is a failure to find out, which says nothing about the payload.
     async fn lock_signed_inputs(
         &mut self,
         tx_id: TxId,
         transaction: &Transaction,
-    ) -> Result<bool, TransactionServiceError> {
+    ) -> Result<Result<bool, TransactionServiceError>, TransactionServiceError> {
         let commitments = transaction
             .body
             .inputs()
@@ -4579,18 +4580,26 @@ where
                         OutputStatus::EncumberedToBeSpent | OutputStatus::ShortTermEncumberedToBeSpent
                     ) && o.spent_in_tx_id == Some(tx_id) => {},
                 _ => {
-                    return Err(TransactionServiceError::Other(format!(
+                    return Ok(Err(TransactionServiceError::Other(format!(
                         "Input {} of the signed transaction is not available to transaction {tx_id}",
                         commitment.to_hex()
-                    )));
+                    ))));
                 },
             }
         }
         if to_lock.is_empty() {
-            return Ok(false);
+            return Ok(Ok(false));
         }
-        output_manager.encumber_outputs(tx_id, to_lock).await?;
-        Ok(true)
+        match output_manager.encumber_outputs(tx_id, to_lock).await {
+            Ok(()) => Ok(Ok(true)),
+            // An input stopped being `Unspent` since it was read
+            Err(
+                e @ OutputManagerError::OutputManagerStorageError(
+                    OutputManagerStorageError::OutputAlreadySpent | OutputManagerStorageError::ValueNotFound,
+                ),
+            ) => Ok(Err(e.into())),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Locks the `Unspent` output `commitment` as the input of `tx_id` and confirms `tx_id` with its `change`,
@@ -4868,12 +4877,12 @@ where
         }
         let relocked = match self
             .lock_signed_inputs(old_tx_id, &request.signed_transaction.transaction)
-            .await
+            .await?
         {
             Ok(relocked) => relocked,
-            Err(e) => {
+            Err(refusal) => {
                 self.release_refused_payload(old_tx_id).await;
-                return Err(e);
+                return Err(refusal);
             },
         };
 
