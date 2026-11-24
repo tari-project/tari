@@ -22,7 +22,7 @@
 // infrastructure for Tari applications
 //! MCP tool definitions and registry
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -55,6 +55,44 @@ pub trait McpTool: Send + Sync {
     fn validate_params(&self, _params: &Value) -> McpResult<()> {
         // Default implementation - can be overridden
         Ok(())
+    }
+}
+
+/// Wrapper to convert Arc<dyn McpTool> to Box<dyn McpTool>
+pub struct ArcToolWrapper {
+    tool: Arc<dyn McpTool>,
+}
+
+impl ArcToolWrapper {
+    pub fn new(tool: Arc<dyn McpTool>) -> Self {
+        Self { tool }
+    }
+}
+
+#[async_trait]
+impl McpTool for ArcToolWrapper {
+    fn name(&self) -> &str {
+        self.tool.name()
+    }
+
+    fn description(&self) -> &str {
+        self.tool.description()
+    }
+
+    fn permission_level(&self) -> PermissionLevel {
+        self.tool.permission_level()
+    }
+
+    fn input_schema(&self) -> Value {
+        self.tool.input_schema()
+    }
+
+    fn validate_params(&self, params: &Value) -> McpResult<()> {
+        self.tool.validate_params(params)
+    }
+
+    async fn execute(&self, args: Value) -> McpResult<Value> {
+        self.tool.execute(args).await
     }
 }
 

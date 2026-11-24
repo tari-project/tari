@@ -63,10 +63,12 @@ impl McpResource for NetworkStatusResource {
         let mut client = self.grpc_client.as_ref().clone();
 
         // Get version info to test connectivity
-        let version_response = client
-            .get_version(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get version: {e}")))?;
+        let version_response = client.get_version(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to get version: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let version = version_response.into_inner();
 

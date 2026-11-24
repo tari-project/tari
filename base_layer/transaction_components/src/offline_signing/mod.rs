@@ -92,7 +92,14 @@ mod test {
             PayloadKeyPolicy,
             PayloadSummary,
             PaymentRecipient,
-            models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult, SignedTransaction},
+            models::{
+                ConfirmationKind,
+                PrepareOneSidedTransactionForSigningResult,
+                SignedOneSidedTransactionResult,
+                SignedTransaction,
+                SigningReceipt,
+                TransactionResult,
+            },
             offline_signer::sign_locked_transaction,
             one_sided_signer::{multisig_pending_output, withdraw_pending_output},
             prepare_deposit_multisig_transaction,
@@ -124,6 +131,28 @@ mod test {
         )
         .unwrap();
         summary.confirm(c).unwrap()
+    }
+
+    /// The receipt must name the request it was embedded with, by a hash recomputed here from its canonical bytes.
+    fn assert_receipt<P: OfflinePayload>(
+        receipt: Option<&SigningReceipt>,
+        request: &P,
+        confirmation: ConfirmationKind,
+    ) {
+        use blake2::{Blake2b, Digest};
+        use digest::consts::U32;
+        use tari_crypto::hashing::DomainSeparatedHasher;
+        use tari_hashing::OfflineSigningPayloadHashDomain;
+
+        let receipt = receipt.expect("a signed result carries a receipt");
+        let hash =
+            DomainSeparatedHasher::<Blake2b<U32>, OfflineSigningPayloadHashDomain>::new_with_label("payload_hash")
+                .chain_update(request.canonical_bytes().unwrap())
+                .finalize();
+        assert_eq!(receipt.payload_hash.as_slice(), AsRef::<[u8]>::as_ref(&hash));
+        assert_eq!(receipt.tx_id, request.tx_id());
+        assert_eq!(receipt.confirmation, confirmation);
+        assert!(receipt.signed_at > 0);
     }
 
     fn create_view_key_manager(view_wallet: ViewWallet) -> Result<KeyManager, KeyManagerError> {
@@ -233,6 +262,13 @@ mod test {
             &PayloadKeyPolicy::default(),
         )
         .unwrap();
+        assert_receipt(signed.receipt.as_ref(), &signed.request, ConfirmationKind::NoPrompt);
+        // A result written before receipts existed still loads
+        let mut json: serde_json::Value = serde_json::from_str(&signed.to_json().unwrap()).unwrap();
+        json.as_object_mut().unwrap().remove("receipt").unwrap();
+        let old = SignedOneSidedTransactionResult::from_json(&json.to_string()).unwrap();
+        assert_eq!(old.receipt, None);
+        assert_eq!(old.signed_transaction, signed.signed_transaction);
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
@@ -622,7 +658,7 @@ mod test {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn offline_sign_with_a_custom_output_is_valid() {
-        use crate::test_helpers::{TestParams, create_wallet_output_with_data};
+        use crate::test_helpers::{TestParams, UtxoTestParams};
 
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
@@ -647,16 +683,21 @@ mod test {
             .with_input(input)
             .unwrap();
 
-        // A fully formed output, signed against a sender offset key that the offline signer will replace
+        // A fully formed output carrying a covenant, signed against a sender offset key that the offline signer will
+        // replace
         let custom_value = MicroMinotari(6000);
-        let custom_output = create_wallet_output_with_data(
-            push_pubkey_script(&bob_key_manager.get_spend_key().pub_key),
-            OutputFeatures::default(),
-            &TestParams::new(&alice_key_manager),
-            custom_value,
-            &alice_view_key_manager,
-        )
-        .unwrap();
+        let covenant = crate::covenant!(identity()).unwrap();
+        let custom_output = TestParams::new(&alice_key_manager)
+            .create_output(
+                UtxoTestParams {
+                    value: custom_value,
+                    script: push_pubkey_script(&bob_key_manager.get_spend_key().pub_key),
+                    covenant: covenant.clone(),
+                    ..Default::default()
+                },
+                &alice_view_key_manager,
+            )
+            .unwrap();
         assert_ne!(
             custom_output.metadata_signature(),
             &Default::default(),
@@ -704,19 +745,43 @@ mod test {
         .unwrap();
         assert_eq!(init.info.outputs.len(), 1);
 
-        // The summary the operator approves must account for the custom output
+        // The summary the operator approves must account for the custom output and show its covenant
         let summary = PayloadSummary::from_one_sided(init.clone());
         assert_eq!(summary.total_output_amount, custom_value);
-        assert_eq!(summary.total_spend(), amount + custom_value);
+        assert_eq!(summary.total_spend(), amount.saturating_add(custom_value));
+        let mut out = Vec::new();
+        let confirmation =
+            present_payload_summary(&summary, ConfirmationMode::Interactive, &mut out, &mut "y\n".as_bytes()).unwrap();
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains("      Covenant: "), "{written}");
+        assert_eq!(written.matches("carries a covenant").count(), 1, "{written}");
+        let recap = &written[written.find("---- Recap ----").unwrap()..];
+        assert!(
+            recap.contains("(WARNING: unusual output features, see above)"),
+            "{written}"
+        );
 
         let signed = sign_locked_transaction(
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            confirmed(summary),
+            summary.confirm(confirmation).unwrap(),
             &PayloadKeyPolicy::default(),
         )
         .unwrap();
+        assert_receipt(signed.receipt.as_ref(), &signed.request, ConfirmationKind::Prompt);
+        assert_eq!(
+            signed
+                .signed_transaction
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .filter(|o| o.covenant == covenant)
+                .count(),
+            1,
+            "the signed custom output must keep its covenant"
+        );
 
         let tx = signed.signed_transaction.transaction.clone();
         // recipient + custom output + change
@@ -727,7 +792,10 @@ mod test {
         let fee = tx.body.kernels()[0].fee;
         assert_eq!(
             signed.signed_transaction.change_output.clone().unwrap().value(),
-            MicroMinotari(50000) - amount - custom_value - fee
+            MicroMinotari(50000)
+                .saturating_sub(amount)
+                .saturating_sub(custom_value)
+                .saturating_sub(fee)
         );
 
         let factories = CryptoFactories::default();
@@ -1083,6 +1151,7 @@ mod test {
             &PayloadKeyPolicy::default(),
         )
         .unwrap();
+        assert_receipt(signed.receipt.as_ref(), &signed.request, ConfirmationKind::NoPrompt);
 
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
@@ -1406,6 +1475,7 @@ mod test {
             &PayloadKeyPolicy::default(),
         )
         .unwrap();
+        assert_receipt(signed.receipt.as_ref(), &signed.request, ConfirmationKind::NoPrompt);
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
             fee + change_fee
@@ -3214,7 +3284,15 @@ mod test {
         let (spend, view) = wallets(Some(1));
         let mut payload = prepare(&spend, &view);
         payload.version = semver::Version::new(5, 0, 0);
-        let err = refusal(sign_one_sided(&spend, payload, &PayloadKeyPolicy::AcceptViewKey));
+        // Its payload hash cannot be computed, so it is refused before it can be confirmed
+        let err = present_payload_summary(
+            &PayloadSummary::from_one_sided(payload),
+            ConfirmationMode::NonInteractive,
+            &mut Vec::new(),
+            &mut std::io::empty(),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("cannot carry a payload key id"), "{err}");
     }
 
@@ -3371,5 +3449,165 @@ mod test {
         assert_payload_key_rules(&spend, prepare(&spend, &view), |payload, policy| {
             sign_one_sided(&spend, payload, policy).map(|_| ())
         });
+    }
+
+    /// Logs reach places the summary screen does not, so the confirmation and signing records carry only the
+    /// transaction id and payload hash: no address, amount or memo text. Covers the offline-signing log target only;
+    /// the transaction builder logs under its own target while signing.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn signing_logs_name_the_payload_without_its_contents() {
+        use std::{
+            cell::Cell,
+            sync::{Mutex, OnceLock},
+        };
+
+        use crate::offline_signing::payload_summary::LOG_TARGET;
+
+        thread_local! {
+            static CAPTURE: Cell<bool> = const { Cell::new(false) };
+        }
+        struct Capture(Mutex<Vec<String>>);
+        impl log::Log for Capture {
+            fn enabled(&self, metadata: &log::Metadata) -> bool {
+                metadata.target() == LOG_TARGET
+            }
+
+            fn log(&self, record: &log::Record) {
+                if self.enabled(record.metadata()) && CAPTURE.with(Cell::get) {
+                    self.0.lock().unwrap().push(record.args().to_string());
+                }
+            }
+
+            fn flush(&self) {}
+        }
+        static LOGGER: OnceLock<Capture> = OnceLock::new();
+        let logger = LOGGER.get_or_init(|| Capture(Mutex::new(Vec::new())));
+        let _unused = log::set_logger(logger);
+        log::set_max_level(log::LevelFilter::Info);
+
+        let (spend, view) = wallets(None);
+        let bob = one_sided_address(&KeyManager::new_random().unwrap());
+        let memo_text = "memo text that must stay off the log";
+        let payload = prepare_one_sided(
+            &spend,
+            &view,
+            &bob,
+            MicroMinotari(20_000),
+            MicroMinotari(5_000),
+            MemoField::new_open(memo_text.as_bytes().to_vec(), TxType::PaymentToOther).unwrap(),
+        );
+        let sender = payload.info.sender_address.clone();
+        let tx_id = payload.tx_id;
+        let refused = PayloadSummary::from_one_sided(payload.clone());
+
+        CAPTURE.with(|c| c.set(true));
+        let summary = PayloadSummary::from_one_sided(payload);
+        let payload_hash = summary.payload_hash().unwrap();
+        let confirmation = present_payload_summary(
+            &summary,
+            ConfirmationMode::Interactive,
+            &mut Vec::new(),
+            &mut "y\n".as_bytes(),
+        )
+        .unwrap();
+        sign_locked_transaction(
+            &spend,
+            create_consensus_manager().consensus_constants(0).clone(),
+            Network::LocalNet,
+            summary.confirm(confirmation).unwrap(),
+            &PayloadKeyPolicy::default(),
+        )
+        .unwrap();
+        // Signed by a wallet whose view key did not sign the payload, so it is refused after confirmation
+        let confirmation = present_payload_summary(
+            &refused,
+            ConfirmationMode::NonInteractive,
+            &mut Vec::new(),
+            &mut std::io::empty(),
+        )
+        .unwrap();
+        sign_locked_transaction(
+            &KeyManager::new_random().unwrap(),
+            create_consensus_manager().consensus_constants(0).clone(),
+            Network::LocalNet,
+            refused.confirm(confirmation).unwrap(),
+            &PayloadKeyPolicy::default(),
+        )
+        .unwrap_err();
+        CAPTURE.with(|c| c.set(false));
+
+        let records = std::mem::take(&mut *logger.0.lock().unwrap());
+        assert_eq!(records.len(), 4, "{records:#?}");
+        for record in &records {
+            assert!(record.contains(&tx_id.to_string()), "{record}");
+            assert!(record.contains(&payload_hash.to_string()), "{record}");
+            for address in [&bob, &sender] {
+                assert!(!record.contains(&address.to_base58()), "{record}");
+                assert!(!record.contains(&address.to_emoji_string()), "{record}");
+            }
+            assert!(!record.contains("µT"), "{record}");
+            assert!(!record.contains("memo text"), "{record}");
+        }
+        assert!(records[0].contains("approved"), "{records:#?}");
+        for record in &records {
+            assert!(record.contains("(one-sided payment"), "{record}");
+        }
+        assert!(
+            records[1].contains(") signed,") && records[1].ends_with(", confirmation Prompt"),
+            "{records:#?}"
+        );
+        assert!(records[2].contains("signed without a prompt"), "{records:#?}");
+        assert!(
+            records[3].contains(") not signed,") && records[3].ends_with(", confirmation NoPrompt"),
+            "{records:#?}"
+        );
+
+        // Refused after approval with an error that quotes amounts: the record must not repeat it
+        let payload = prepare_one_sided(
+            &spend,
+            &view,
+            &bob,
+            MicroMinotari(100_000),
+            MicroMinotari(1),
+            MemoField::new_empty(),
+        );
+        let tx_id = payload.tx_id;
+        CAPTURE.with(|c| c.set(true));
+        let summary = PayloadSummary::from_one_sided(payload);
+        let payload_hash = summary.payload_hash().unwrap();
+        let confirmation = present_payload_summary(
+            &summary,
+            ConfirmationMode::NonInteractive,
+            &mut Vec::new(),
+            &mut std::io::empty(),
+        )
+        .unwrap();
+        let err = sign_locked_transaction(
+            &spend,
+            create_consensus_manager().consensus_constants(0).clone(),
+            Network::LocalNet,
+            summary.confirm(confirmation).unwrap(),
+            &PayloadKeyPolicy::default(),
+        )
+        .unwrap_err();
+        CAPTURE.with(|c| c.set(false));
+        let TransactionBuilderError::FeeGreaterThanAmount { fee, sent } = err else {
+            panic!("expected the fee to be refused, got {err:?}");
+        };
+
+        let records = std::mem::take(&mut *logger.0.lock().unwrap());
+        assert_eq!(records.len(), 2, "{records:#?}");
+        let record = &records[1];
+        assert!(record.contains(") not signed,"), "{record}");
+        assert!(record.contains(&tx_id.to_string()), "{record}");
+        assert!(record.contains(&payload_hash.to_string()), "{record}");
+        assert!(!record.contains("µT"), "{record}");
+        assert!(!record.contains("greater than"), "{record}");
+        // Digits only appear inside the tx id, the hash and the expiry, never as the error's amounts
+        let words: Vec<&str> = record.split(|c: char| !c.is_ascii_alphanumeric()).collect();
+        for amount in [fee, sent] {
+            assert!(!words.contains(&amount.as_u64().to_string().as_str()), "{record}");
+        }
     }
 }

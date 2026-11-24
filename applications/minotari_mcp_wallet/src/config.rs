@@ -22,7 +22,12 @@
 // infrastructure for Tari applications
 //! Configuration for the Minotari Wallet MCP Server
 
-use minotari_mcp_common::{McpConfig, McpError, McpResult};
+use minotari_mcp_common::{
+    McpConfig,
+    McpError,
+    McpResult,
+    wallet_rpc::{DEFAULT_MAX_FEE_PER_GRAM, DEFAULT_SPEND_BUDGET},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::Cli;
@@ -64,6 +69,12 @@ pub struct WalletSecurityConfig {
 
     /// Enable transaction preview before execution
     pub enable_preview: bool,
+
+    /// Most µT the server may move out of the wallet in total per process, fees included
+    pub spend_budget: u64,
+
+    /// Highest fee_per_gram, in µT/g, any fund-moving call may use
+    pub max_fee_per_gram: u64,
 }
 
 impl WalletMcpConfig {
@@ -94,6 +105,8 @@ impl WalletMcpConfig {
             require_confirmation: cli.require_confirmation,
             max_auto_amount: 1_000_000, // 1 Tari in µT
             enable_preview: true,
+            spend_budget: cli.mcp_spend_budget,
+            max_fee_per_gram: cli.mcp_max_fee_per_gram,
         };
 
         let config = Self {
@@ -122,9 +135,15 @@ impl WalletMcpConfig {
             return Err(McpError::config_error("Wallet gRPC timeout must be greater than 0"));
         }
 
-        // Validate security configuration
-        if self.mcp.control_enabled && !self.security.require_confirmation {
-            log::warn!("Control operations enabled without required confirmation - this is potentially dangerous");
+        // There is no channel over stdio MCP to ask a person to confirm a call, so the setting cannot be honoured
+        if self.security.require_confirmation {
+            if self.mcp.control_enabled {
+                return Err(McpError::config_error(
+                    "require_confirmation is not supported by the MCP wallet server; Control tools cannot be \
+                     confirmed per call",
+                ));
+            }
+            log::debug!("require_confirmation has no effect without control operations");
         }
 
         Ok(())
@@ -162,6 +181,36 @@ impl Default for WalletSecurityConfig {
             require_confirmation: false,
             max_auto_amount: 1_000_000, // 1 Tari
             enable_preview: true,
+            spend_budget: DEFAULT_SPEND_BUDGET,
+            max_fee_per_gram: DEFAULT_MAX_FEE_PER_GRAM,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(control_enabled: bool, require_confirmation: bool) -> WalletMcpConfig {
+        WalletMcpConfig {
+            mcp: McpConfig {
+                enabled: true,
+                control_enabled,
+                ..Default::default()
+            },
+            wallet_grpc: WalletGrpcConfig::default(),
+            security: WalletSecurityConfig {
+                require_confirmation,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn require_confirmation_is_refused_with_control_operations() {
+        let err = config(true, true).validate().unwrap_err().to_string();
+        assert!(err.contains("require_confirmation is not supported"), "{err}");
+        assert!(config(false, true).validate().is_ok());
+        assert!(config(true, false).validate().is_ok());
     }
 }
