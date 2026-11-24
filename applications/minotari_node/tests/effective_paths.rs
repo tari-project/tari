@@ -97,79 +97,10 @@ fn test_effective_paths_are_logged_and_absolute() {
 }
 
 #[test]
-fn test_unset_home_emits_single_fallback_warning_unless_base_path_given() {
+fn test_unset_home_with_explicit_base_path_emits_no_warning() {
     const WARNING_PREFIX: &str = "Could not determine user home directory; falling back to current working directory: ";
 
-    // Case 1: HOME/USERPROFILE and TARI_BASE_DIR unset, no --base-path -> emits warning exactly once
     let work_dir = tempdir().unwrap();
-    let work_canonical = fs::canonicalize(work_dir.path()).unwrap_or_else(|_| work_dir.path().to_path_buf());
-    let output = Command::new(env!("CARGO_BIN_EXE_minotari_node"))
-        .current_dir(work_dir.path())
-        .env_remove("HOME")
-        .env_remove("USERPROFILE")
-        .env_remove("TARI_BASE_DIR")
-        .arg("--init")
-        .arg("--non-interactive-mode")
-        .arg("--network")
-        .arg("localnet")
-        .output()
-        .expect("failed to run minotari_node without HOME");
-
-    assert!(
-        output.status.success(),
-        "minotari_node --init without HOME failed with code {:?}\nstdout: {}\nstderr: {}",
-        output.status.code(),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
-
-    let log_file = work_dir
-        .path()
-        .join(".tari")
-        .join("localnet")
-        .join("log")
-        .join("base_node")
-        .join("base_layer.log");
-    assert!(log_file.exists(), "Expected fallback log file at {:?}", log_file);
-    let log_content = fs::read_to_string(&log_file).unwrap();
-
-    let log_warnings: Vec<_> = log_content.lines().filter(|l| l.contains(WARNING_PREFIX)).collect();
-    assert_eq!(
-        log_warnings.len(),
-        1,
-        "Expected exactly 1 fallback warning in log, found {}:\n{}",
-        log_warnings.len(),
-        log_content
-    );
-    let logged_raw = log_warnings
-        .first()
-        .expect("missing log warning")
-        .split(WARNING_PREFIX)
-        .nth(1)
-        .expect("missing path");
-    let logged_path = logged_raw
-        .rsplit_once(" // ")
-        .map_or(logged_raw, |(msg_part, _)| msg_part)
-        .trim();
-    assert!(
-        Path::new(logged_path).is_absolute(),
-        "Fallback path in log must be absolute, got {:?}",
-        logged_path
-    );
-    let logged_canonical = fs::canonicalize(logged_path).unwrap_or_else(|_| Path::new(logged_path).to_path_buf());
-    assert_eq!(logged_canonical, work_canonical);
-
-    let stderr_str = String::from_utf8_lossy(&output.stderr);
-    let stderr_warnings: Vec<_> = stderr_str.lines().filter(|l| l.contains(WARNING_PREFIX)).collect();
-    assert_eq!(
-        stderr_warnings.len(),
-        1,
-        "Expected exactly 1 fallback warning on stderr, found {}:\n{}",
-        stderr_warnings.len(),
-        stderr_str
-    );
-
-    // Case 2: HOME/USERPROFILE unset, but --base-path is provided -> no fallback warning emitted
     let explicit_dir = tempdir().unwrap();
     let explicit_output = Command::new(env!("CARGO_BIN_EXE_minotari_node"))
         .current_dir(work_dir.path())

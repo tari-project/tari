@@ -49,18 +49,8 @@ pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
     String::from(home.to_str().expect("Invalid path value"))
 }
 
-fn resolve_home_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    let home_env = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-    #[cfg(not(windows))]
-    let home_env = std::env::var_os("HOME");
-
-    home_env.filter(|v| !v.is_empty())?;
-    dirs_next::home_dir()
-}
-
 pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
-    default_path_with_home_fn(filename, base_path, resolve_home_dir, &FALLBACK_HOME_DIR)
+    default_path_with_home_fn(filename, base_path, dirs_next::home_dir, &FALLBACK_HOME_DIR)
 }
 
 pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
@@ -72,7 +62,7 @@ pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
     let mut home = base_path.cloned().unwrap_or_else(|| {
         let home_dir = home_fn().unwrap_or_else(|| {
             let fallback = PathBuf::from(".");
-            let _ = fallback_slot.set(absolute_path(&fallback));
+            fallback_slot.get_or_init(|| absolute_path(&fallback));
             fallback
         });
         [home_dir, PathBuf::from(".tari")].iter().collect()
