@@ -182,8 +182,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     ) -> Result<(), BlockHeaderSyncError> {
         match err {
             // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
-            // for now and ban the peer for the short period, but wont blacklist the block.
+            // for now and ban the peer, but wont blacklist the block. The ban is the short one if a slow local clock
+            // can explain the verdict, and the long one if the timestamp is further ahead than that.
             ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) |
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit) |
             // The RandomX seed age rule is measured against the chain being validated, and while this sync runs the
             // database still holds the chain that is about to be rewound. The chain context keeps that honest, but a
             // chain dependent verdict must not outlive the sync that made it: discard the header and ban the peer,

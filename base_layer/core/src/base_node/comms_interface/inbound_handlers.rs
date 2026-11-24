@@ -200,8 +200,13 @@ fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
 /// The error that a block refused by chain storage is reported with.
 ///
 /// The future time limit is measured from our own clock, and chain storage does not hold that verdict against the
-/// block (`classify_header_failure`). It is not held against the peer that relayed the block either: a peer whose
-/// clock is ahead of ours has accepted the block and passes it on in good faith. The block is refused all the same.
+/// block (`classify_header_failure`). Within the margin that a slow local clock can explain it is not held against the
+/// peer that relayed the block either: a peer whose clock is ahead of ours has accepted the block and passes it on in
+/// good faith. The block is refused all the same.
+///
+/// A timestamp beyond that margin (`InvalidTimestampFarBeyondFutureTimeLimit`) is not mapped here and keeps the long
+/// ban. Such a block is neither stored nor recorded as bad, so the ban is the only thing that stops the sender from
+/// sending it again and having it validated each time.
 fn refused_block_error(error: ChainStorageError, block_hash: BlockHash) -> CommsInterfaceError {
     match error {
         ChainStorageError::ValidationError {
@@ -1556,6 +1561,26 @@ where B: BlockchainBackend + 'static
             );
             return;
         }
+        // Refused on our own clock, within the margin a slow clock explains: not an invalid block, and not counted as
+        // one. A locally submitted block is still reported, so that the mempool returns its transactions.
+        if matches!(error, ChainStorageError::ValidationError {
+            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit),
+        }) {
+            warn!(
+                target: LOG_TARGET,
+                "Block #{} ({}) from {} not added: its timestamp ({}) is beyond the future time limit on our clock. \
+                 If this repeats for blocks that other nodes accept, check the local clock",
+                block.header.height,
+                block.hash().to_hex(),
+                source_peer
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "<local request>".to_string()),
+                block.header.timestamp.as_u64(),
+            );
+            self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
+            return;
+        }
         #[cfg(feature = "metrics")]
         {
             let (height, hash) = match error {
@@ -2813,10 +2838,16 @@ mod test {
         assert!(block_events.try_recv().is_err());
     }
 
-    /// A relayed block whose timestamp is beyond the future time limit on our clock is refused, and neither the block
-    /// nor the peer that relayed it is held to it: the same block is within the limit on a clock that is ahead of ours
-    #[tokio::test]
-    async fn a_relayed_block_beyond_the_future_time_limit_is_refused_without_a_ban() {
+    /// Relays a block on top of the genesis block to a node with the real header validator, so that the future time
+    /// limit is checked. `timestamp` picks the block's timestamp from the consensus constants. Returns the error the
+    /// block is refused with, the database and the block hash.
+    async fn relay_block_with_timestamp(
+        timestamp: impl FnOnce(&ConsensusConstants) -> u64,
+    ) -> (
+        CommsInterfaceError,
+        crate::chain_storage::BlockchainDatabase<crate::test_helpers::blockchain::TempDatabase>,
+        BlockHash,
+    ) {
         use tari_comms::test_utils::mocks::create_connectivity_mock;
         use tari_service_framework::reply_channel;
         use tokio::sync::{broadcast, mpsc};
@@ -2834,7 +2865,6 @@ mod test {
             validation::{DifficultyCalculator, header::HeaderFullValidator, mocks::MockValidator},
         };
 
-        // The real header validator, so that the future time limit is checked
         let rules = create_consensus_rules();
         let validators = Validators::new(
             MockValidator::new(true),
@@ -2851,14 +2881,16 @@ mod test {
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
-        // A hundred years after the genesis block
-        let far_future: u64 = 100 * 365 * 24 * 60 * 60;
+        // The block time is counted from the parent, which is the genesis block
+        let block_time = timestamp(rules.consensus_constants(1))
+            .checked_sub(genesis.header().timestamp.as_u64())
+            .unwrap();
         let (_, blocks) = create_chained_blocks(
             &db,
             vec![
                 BlockSpec::builder()
                     .with_name("1->GB")
-                    .with_block_time(far_future)
+                    .with_block_time(block_time)
                     .finish(),
             ],
             genesis,
@@ -2886,6 +2918,20 @@ mod test {
         );
 
         let err = handlers.handle_block(block, Some(NodeId::default())).await.unwrap_err();
+        (err, db, block_hash)
+    }
+
+    /// A relayed block whose timestamp is beyond the future time limit on our clock, by no more than a slow clock can
+    /// explain, is refused, and neither the block nor the peer that relayed it is held to it: the same block is within
+    /// the limit on a clock that is ahead of ours
+    #[tokio::test]
+    async fn a_relayed_block_beyond_the_future_time_limit_is_refused_without_a_ban() {
+        // Halfway between the limit and the end of the margin
+        let (err, db, block_hash) = relay_block_with_timestamp(|constants| {
+            let ftl = constants.ftl().as_u64();
+            ftl + (constants.ftl_clock_skew_limit().as_u64() - ftl) / 2
+        })
+        .await;
         assert!(
             matches!(err, CommsInterfaceError::BlockBeyondFutureTimeLimit { hash } if hash == block_hash),
             "{err:?}"
@@ -2894,6 +2940,38 @@ mod test {
         // Refused, and not recorded as bad: it can be added once its timestamp is within the limit
         assert_eq!(db.get_height().unwrap(), 0);
         assert!(!db.bad_block_exists(block_hash).unwrap().0);
+    }
+
+    /// A relayed block whose timestamp is further ahead than a slow clock can explain is refused with the long ban.
+    /// The block is not recorded as bad, so the ban is what stops its sender from sending it again.
+    #[tokio::test]
+    async fn a_relayed_block_far_beyond_the_future_time_limit_is_a_long_ban() {
+        use tari_transaction_components::BanPeriod;
+
+        // A minute past the end of the margin, and a hundred years past it
+        for past_the_margin in [60, 100 * 365 * 24 * 60 * 60] {
+            let (err, db, block_hash) =
+                relay_block_with_timestamp(|constants| constants.ftl_clock_skew_limit().as_u64() + past_the_margin)
+                    .await;
+            assert!(
+                matches!(
+                    err,
+                    CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError {
+                        source: ValidationError::BlockHeaderError(
+                            BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit
+                        ),
+                    })
+                ),
+                "{err:?}"
+            );
+            assert_eq!(
+                err.get_ban_reason().map(|r| r.ban_duration),
+                Some(BanPeriod::Long),
+                "{err:?}"
+            );
+            assert_eq!(db.get_height().unwrap(), 0);
+            assert!(!db.bad_block_exists(block_hash).unwrap().0);
+        }
     }
 
     #[tokio::test]

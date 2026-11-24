@@ -249,6 +249,21 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   does with them.
 - **Where:** `base_layer/transaction_components` (`transaction_builder`, `multisig`), `base_layer/wallet`.
 - **Recorded:** 2026-11-25.
+### A-CLOCK-01: A base node's clock is within one future time limit of honest peers
+
+- **Assumption:** A base node measures the future time limit (FTL) for block timestamps from its own clock, and its
+  ban decisions for that check rely on the clock being no more than one FTL offset (540 s on mainnet) behind the
+  clocks of honest peers. Keeping the clock right is the operator's responsibility.
+- **What that means:** A block that is beyond the limit by at most one more FTL offset is put down to clock skew: it
+  is refused but not recorded as bad, a peer that relayed it is not banned, and a sync peer that served its header is
+  banned for the short period only. A node whose clock is further behind than that refuses blocks the network
+  accepts, issues the long ban to the peers that send them, and falls out of sync until its clock is corrected.
+- **Not covered:** A peer must not be able to change a node's view of the time. A timestamp further ahead than the
+  margin keeps the long ban, so a block that is refused and not recorded as bad cannot be resent without cost. The
+  check itself is not relaxed: a block beyond the limit on the local clock is never accepted.
+- **Where:** `base_layer/core` (`validation/header`, `base_node/comms_interface`, `base_node/sync/header_sync`),
+  `base_layer/transaction_components` (`ConsensusConstants::ftl`, `ftl_clock_skew_limit`).
+- **Recorded:** 2026-11-24, pull request #8383.
 
 ## Withdrawn entries
 

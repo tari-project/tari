@@ -486,7 +486,8 @@ where B: BlockchainBackend + 'static
                             .await
                             .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {e:?}"));
                     }
-                    // A block on a chain we cannot check yet, one we already hold as bad, or one a reorg dropped
+                    // A block on a chain we cannot check yet, one we already hold as bad, one that is ahead of our
+                    // clock by no more than a slow clock explains (logged where it is refused), or one a reorg dropped
                     // without its sender being to blame (`HeldBlockInvalid`, which is not a ban), is dropped as
                     // expected.
                     let expected = matches!(
@@ -494,6 +495,7 @@ where B: BlockchainBackend + 'static
                         BaseNodeServiceError::CommsInterfaceError(
                             CommsInterfaceError::UnknownSpentOutputs { .. } |
                                 CommsInterfaceError::KnownBadBlock { .. } |
+                                CommsInterfaceError::BlockBeyondFutureTimeLimit { .. } |
                                 CommsInterfaceError::UnknownRandomXKey { .. } |
                                 CommsInterfaceError::ChainStorageError(ChainStorageError::HeldBlockInvalid { .. })
                         )

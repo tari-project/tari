@@ -139,7 +139,8 @@ impl CommsInterfaceError {
             // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
             CommsInterfaceError::KnownBadBlock { .. } |
             // The limit is measured from our own clock, so a peer whose clock is ahead of ours relays the block in
-            // good faith. The block is still refused.
+            // good faith. The block is still refused. Only for a timestamp within the margin a slow clock explains;
+            // one beyond it stays a `ChainStorageError` and a long ban.
             CommsInterfaceError::BlockBeyondFutureTimeLimit { .. } |
             // A block on a chain we do not hold completely: honest peers relay such blocks across forks, so it says
             // nothing about the peer

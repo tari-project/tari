@@ -68,8 +68,13 @@ pub enum BlockHeaderValidationError {
     InvalidChaining,
     #[error("Invalid timestamp received on the header: {0}")]
     InvalidTimestamp(String),
+    /// The timestamp is beyond the future time limit on the local clock, but within the margin that a slow local
+    /// clock can explain
     #[error("Invalid timestamp future time limit received on the header")]
     InvalidTimestampFutureTimeLimit,
+    /// The timestamp is further beyond the future time limit than a slow local clock can explain
+    #[error("Timestamp on the header is far beyond the future time limit")]
+    InvalidTimestampFarBeyondFutureTimeLimit,
     #[error("Invalid Proof of work for the header: {0}")]
     ProofOfWorkError(#[from] PowError),
     #[error("Monero seed hash too old")]
