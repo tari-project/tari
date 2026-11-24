@@ -4614,7 +4614,7 @@ where
             match self
                 .resources
                 .output_manager_service
-                .cancel_pending_transaction(tx_id)
+                .release_unrecorded_transaction(tx_id)
                 .await
             {
                 Ok(()) => {
@@ -4679,7 +4679,8 @@ where
             .fetch_outputs_by_tx_id(tx_id)
             .await?
             .into_iter()
-            .filter(|o| o.spent_in_tx_id == Some(tx_id))
+            // A row cleared back to `Unspent` keeps its `spent_in_tx_id`; it is locked again below like any other
+            .filter(|o| o.spent_in_tx_id == Some(tx_id) && o.status != OutputStatus::Unspent)
             .collect::<Vec<_>>();
         if !payload_outputs.is_empty() {
             if inputs.len() != payload_outputs.len() ||

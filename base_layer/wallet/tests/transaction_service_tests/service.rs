@@ -4738,6 +4738,38 @@ async fn submitting_a_forged_or_expired_payload_is_refused() {
     assert!(completed.is_empty());
 }
 
+/// A payload whose inputs were locked again but cleared back to `Unspent` before the confirm (the startup clean-up of
+/// short-term locks) can still be submitted.
+#[tokio::test]
+async fn submitting_a_payload_whose_relock_was_cleared_succeeds() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    alice
+        .output_manager_service_handle
+        .encumber_outputs(signed.request.tx_id, vec![uo.commitment().clone()])
+        .await
+        .unwrap();
+    alice
+        .output_manager_service_handle
+        .clear_short_term_encumberances()
+        .await
+        .unwrap();
+    assert_eq!(output_status(&mut alice, &uo).await.0, OutputStatus::Unspent);
+    let new_tx_id = signed.signed_transaction.tx_id;
+
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+}
+
 /// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be
 /// prepared again, and records nothing.
 #[tokio::test]

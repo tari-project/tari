@@ -541,6 +541,9 @@ where
             OutputManagerRequest::CancelPendingTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
+            OutputManagerRequest::ReleaseUnrecordedTransaction(tx_id) => self
+                .release_unrecorded_transaction(tx_id)
+                .map(|_| OutputManagerResponse::TransactionCancelled),
             OutputManagerRequest::CancelCompletedTransaction(tx_id) => self
                 .cancel_completed_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
@@ -1934,6 +1937,20 @@ where
             "Cancelling pending transaction outputs for TxId: {tx_id}"
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id)?)
+    }
+
+    /// Cancel a pending transaction that was never recorded or broadcast, and remove the change outputs it would have
+    /// received: they would otherwise keep their commitments, so the same transaction could not be confirmed again.
+    fn release_unrecorded_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        let db = &self.resources.db;
+        let key_manager = &self.resources.key_manager;
+        db.cancel_pending_transaction_outputs(tx_id)?;
+        for output in db.fetch_outputs_by_tx_id(tx_id, key_manager)? {
+            if output.received_in_tx_id == Some(tx_id) && output.status == OutputStatus::CancelledInbound {
+                db.remove_output_by_commitment(output.commitment, key_manager)?;
+            }
+        }
+        Ok(())
     }
 
     /// Cancel a completed transaction and place the encumbered outputs back into the unspent pool

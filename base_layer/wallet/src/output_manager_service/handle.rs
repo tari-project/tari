@@ -135,6 +135,9 @@ pub enum OutputManagerRequest {
         minimum_value_promise: MicroMinotari,
     },
     CancelPendingTransaction(TxId),
+    /// As `CancelPendingTransaction`, also removing the change outputs received under the tx_id: its transaction was
+    /// never recorded or broadcast, so they will never exist.
+    ReleaseUnrecordedTransaction(TxId),
     CancelCompletedTransaction(TxId),
     GetSpentOutputs,
     GetOutputsByQuery(OutputBackendQuery),
@@ -260,6 +263,7 @@ impl fmt::Display for OutputManagerRequest {
             GetTransactionBuilderRangeLimitedCoinJoin { .. } => write!(f, "GetTransactionBuilderRangeLimitedCoinJoin "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelPendingTransaction(v) => write!(f, "CancelPendingTransaction ({v})"),
+            ReleaseUnrecordedTransaction(v) => write!(f, "ReleaseUnrecordedTransaction ({v})"),
             CancelCompletedTransaction(v) => write!(f, "CancelCompletedTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
@@ -831,6 +835,21 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::TransactionCancelled => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::CancelPendingTransaction".to_string(),
+            )),
+        }
+    }
+
+    /// See `OutputManagerRequest::ReleaseUnrecordedTransaction`.
+    pub async fn release_unrecorded_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ReleaseUnrecordedTransaction(tx_id))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::ReleaseUnrecordedTransaction({e})"))??
+        {
+            OutputManagerResponse::TransactionCancelled => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::ReleaseUnrecordedTransaction".to_string(),
             )),
         }
     }

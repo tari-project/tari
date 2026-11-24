@@ -77,10 +77,11 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   trusted. The wallet does not verify the file's payload signature when it submits it, and that signature does not
   cover the signed transaction anyway.
 - **What that means:** Whoever can replace the file can have the wallet broadcast a different transaction that
-  spends the payload's own inputs.
-- **Not covered:** A tampered file releasing or locking outputs other than those of its own prepared tx_id, creating
-  records under tx_ids the wallet already has, or adding a wallet output whose commitment does not open to its
-  stated value.
+  spends the payload's own inputs. A file whose tx_id has nothing locked under it can lock the `Unspent` outputs its
+  transaction spends until the broadcast is rejected; verifying the payload signature at submit would close this.
+- **Not covered:** A tampered file releasing outputs other than those of its own prepared tx_id, creating records
+  under tx_ids the wallet already has, or adding a wallet output whose commitment does not open to its stated
+  value.
 - **Where:** `base_layer/wallet` (`transaction_service`), `applications/minotari_console_wallet`.
 - **Recorded:** 2026-11-24.
 

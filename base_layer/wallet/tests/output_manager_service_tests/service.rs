@@ -1291,6 +1291,53 @@ async fn cancel_transaction() {
     );
 }
 
+/// Releasing a transaction whose record was never written frees its inputs and removes its change, so the same
+/// transaction can be confirmed again.
+#[tokio::test]
+async fn release_unrecorded_transaction_removes_its_change() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+    let make = |oms: &TestOmsService| {
+        make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(1000),
+            &OutputFeatures::default(),
+            oms.key_manager_handle.key_manager(),
+        )
+    };
+    let input = make(&oms);
+    oms.output_manager_handle.add_output(input.clone(), None).await.unwrap();
+    backend
+        .mark_outputs_as_unspent(vec![(input.output_hash(), true)])
+        .unwrap();
+    let change = make(&oms);
+    let tx_id = TxId::from(5u64);
+
+    for _ in 0..2 {
+        oms.output_manager_handle
+            .encumber_outputs(tx_id, vec![input.commitment().clone()])
+            .await
+            .unwrap();
+        oms.output_manager_handle
+            .confirm_pending_transaction(tx_id, None, Some(vec![change.clone()]))
+            .await
+            .unwrap();
+        oms.output_manager_handle
+            .release_unrecorded_transaction(tx_id)
+            .await
+            .unwrap();
+        let outputs = oms
+            .output_manager_handle
+            .get_outputs_by_commitments(vec![input.commitment().clone(), change.commitment().clone()])
+            .await
+            .unwrap();
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].commitment, *input.commitment());
+        assert_eq!(outputs[0].status, OutputStatus::Unspent);
+    }
+}
+
 /// `encumber_outputs` locks exactly the listed outputs, and nothing at all if any of them is unknown or not `Unspent`.
 #[tokio::test]
 async fn encumber_outputs_is_all_or_nothing() {
