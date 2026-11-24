@@ -417,7 +417,7 @@ mod test {
             None,
         )
         .unwrap();
-        let mut session = MultisigSession::new(key_manager.clone());
+        let session = MultisigSession::new(key_manager.clone());
 
         // Excess signatures (> threshold) must be rejected before building a transaction that would fail with
         // StackNotEmpty
