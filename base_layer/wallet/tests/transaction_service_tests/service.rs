@@ -4590,6 +4590,89 @@ async fn submitting_a_payload_that_names_a_recorded_transaction_is_refused() {
     }
 }
 
+/// A signed payload whose sent outputs repeat, or are not outputs of its transaction, is refused before anything is
+/// locked or recorded.
+#[tokio::test]
+async fn submitting_a_payload_with_unmatched_sent_outputs_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+
+    let mut repeated = signed.clone();
+    let recipient = repeated.request.info.recipients[0].clone();
+    repeated.request.info.recipients.push(recipient);
+    let sent_hash = repeated.signed_transaction.sent_hashes[0];
+    repeated.signed_transaction.sent_hashes = vec![sent_hash, sent_hash];
+    let mut foreign = signed;
+    foreign.signed_transaction.sent_hashes[0] = FixedHash::zero();
+
+    for payload in [repeated, foreign] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
+        );
+        assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+    }
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+}
+
+/// A signed payload whose inputs are not the ones locked for it is refused: the payload's own inputs stay locked and
+/// the other output it names stays `Unspent`.
+#[tokio::test]
+async fn submitting_a_payload_with_other_inputs_than_it_locked_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, prepared_tx_id, mut signed) = signed_one_sided_payload(&mut alice, 2, MicroMinotari(1_500_000)).await;
+    let other = make_input(
+        &mut rand::rng(),
+        MicroMinotari(1_000_000),
+        &OutputFeatures::default(),
+        alice.key_manager_handle.key_manager(),
+    );
+    alice
+        .output_manager_service_handle
+        .add_output(other.clone(), None)
+        .await
+        .unwrap();
+    alice
+        .oms_db
+        .mark_outputs_as_unspent(vec![(other.output_hash(), true)])
+        .unwrap();
+    let other_input = other
+        .to_transaction_input(alice.key_manager_handle.key_manager())
+        .unwrap();
+    let (body_inputs, _) = signed.signed_transaction.transaction.body.inputs_mut_with_outputs();
+    *body_inputs
+        .iter_mut()
+        .find(|input| input.commitment().unwrap() == inputs[1].commitment())
+        .unwrap() = other_input;
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed)
+            .await
+            .is_err()
+    );
+    assert_eq!(output_status(&mut alice, &other).await, (OutputStatus::Unspent, None));
+    for input in &inputs {
+        assert_eq!(
+            output_status(&mut alice, input).await,
+            (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+        );
+    }
+}
+
 /// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be
 /// prepared again, and records nothing.
 #[tokio::test]

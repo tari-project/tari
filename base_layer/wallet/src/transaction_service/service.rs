@@ -1204,6 +1204,7 @@ where
                         .output_manager_service
                         .cancel_pending_transaction(tx_id)
                         .await?;
+                    info!(target: LOG_TARGET, "Released the inputs of prepared TxId: {tx_id} (record-less cancel)");
                     Ok(TransactionServiceResponse::TransactionCancelled)
                 }
                 .await
@@ -4519,22 +4520,70 @@ where
         Ok(new_tx_id)
     }
 
-    /// Refuses, before anything is locked, a signed payload that names a transaction this wallet already has a record
-    /// of - a prepared payload has none until it is submitted - or that does not name a sent output for each
-    /// recipient.
-    fn check_signed_payload(&self, request: &SignedOneSidedTransactionResult) -> Result<(), TransactionServiceError> {
-        for tx_id in [request.request.tx_id, request.signed_transaction.tx_id] {
-            if self.db.get_any_transaction(tx_id)?.is_some() {
-                return Err(TransactionServiceError::Other(format!(
-                    "The signed payload names transaction {tx_id}, which has already been submitted or recorded"
-                )));
-            }
+    /// The tx_id the record of the payload's `i`th recipient is stored under.
+    fn recipient_tx_id(
+        &self,
+        request: &SignedOneSidedTransactionResult,
+        i: usize,
+    ) -> Result<TxId, TransactionServiceError> {
+        if i == 0 {
+            return Ok(request.signed_transaction.tx_id);
         }
+        let sent_hash = request
+            .signed_transaction
+            .sent_hashes
+            .get(i)
+            .ok_or(TransactionServiceError::Other(
+                "sent_outputs index out of bounds".to_string(),
+            ))?;
+        Ok(TxId::new_deterministic(
+            self.resources
+                .transaction_key_manager_service
+                .get_private_view_key()
+                .as_bytes(),
+            sent_hash,
+        ))
+    }
+
+    /// Refuses, before anything is locked, a signed payload whose records could not all be written: one that names a
+    /// transaction this wallet already has a record of - a prepared payload has none until it is submitted - or a
+    /// recipient or change output its transaction does not carry, or that does not name a distinct sent output for
+    /// each recipient.
+    fn check_signed_payload(&self, request: &SignedOneSidedTransactionResult) -> Result<(), TransactionServiceError> {
+        let refuse = |reason: &str| Err(TransactionServiceError::Other(format!("The signed payload {reason}")));
+        let signed = &request.signed_transaction;
         let recipients = request.request.info.recipients.len();
-        if recipients == 0 || request.signed_transaction.sent_hashes.len() < recipients {
-            return Err(TransactionServiceError::Other(
-                "The signed payload has no recipients, or fewer sent outputs than recipients".to_string(),
-            ));
+        let sent_hashes = signed.sent_hashes.iter().take(recipients).collect::<HashSet<_>>();
+        if recipients == 0 || sent_hashes.len() < recipients {
+            return refuse("has no recipients, or fewer distinct sent outputs than recipients");
+        }
+        let body_hashes = signed
+            .transaction
+            .body
+            .outputs()
+            .iter()
+            .map(TransactionOutput::hash)
+            .collect::<HashSet<_>>();
+        if sent_hashes
+            .into_iter()
+            .chain(&signed.change_hashes)
+            .any(|hash| !body_hashes.contains(hash))
+        {
+            return refuse("names an output its transaction does not carry");
+        }
+        let mut tx_ids = HashSet::from([request.request.tx_id]);
+        for i in 0..recipients {
+            tx_ids.insert(self.recipient_tx_id(request, i)?);
+        }
+        if tx_ids.len() <= recipients {
+            return refuse("names the same transaction twice");
+        }
+        for tx_id in tx_ids {
+            if self.db.get_any_transaction(tx_id)?.is_some() {
+                return refuse(&format!(
+                    "names transaction {tx_id}, which has already been submitted or recorded"
+                ));
+            }
         }
         Ok(())
     }
@@ -4548,49 +4597,73 @@ where
             .cancel_pending_transaction(tx_id)
             .await
         {
-            Ok(()) | Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {},
+            Ok(()) => info!(target: LOG_TARGET, "Released the inputs of prepared TxId: {tx_id} (submit refused)"),
+            Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {},
             Err(e) => warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {tx_id}: {e}"),
         }
     }
 
-    /// Makes sure every input of a signed payload is locked under the payload's `tx_id`, locking again those that are
-    /// `Unspent` (the payload was cancelled, or prepared by a version that did not lock). Refuses an input this wallet
-    /// does not hold or that is spent or locked by another transaction. Returns whether anything was locked, or the
-    /// refusal as the inner error; the outer error is a failure to find out, which says nothing about the payload.
+    /// Makes sure the inputs of a signed payload are locked under the payload's `tx_id`. If any output is spent in
+    /// that tx_id, the inputs must be exactly those outputs, and all still locked. If none is (the payload was
+    /// cancelled, or prepared by a version that did not lock), every input must be `Unspent`, and they are locked
+    /// again. Returns whether anything was locked, or as the inner error a refusal after which the payload's inputs
+    /// should be released. The outer error leaves them alone: a failure to find out, or inputs that are not the
+    /// payload's at all.
     async fn lock_signed_inputs(
         &mut self,
         tx_id: TxId,
         transaction: &Transaction,
     ) -> Result<Result<bool, TransactionServiceError>, TransactionServiceError> {
-        let commitments = transaction
+        let refuse = |reason: &str| {
+            Ok(Err(TransactionServiceError::Other(format!(
+                "The inputs of the signed transaction {reason} (transaction {tx_id})"
+            ))))
+        };
+        let inputs = transaction
             .body
             .inputs()
             .iter()
             .map(|input| input.commitment().cloned())
             .collect::<Result<Vec<_>, _>>()?;
+        if inputs
+            .iter()
+            .enumerate()
+            .any(|(i, c)| inputs.iter().take(i).any(|d| d == c))
+        {
+            return refuse("repeat an output");
+        }
         let mut output_manager = self.resources.output_manager_service.clone();
-        let outputs = output_manager.get_outputs_by_commitments(commitments.clone()).await?;
-        let mut to_lock = Vec::new();
-        for commitment in commitments {
-            match outputs.iter().find(|o| o.commitment == commitment) {
-                Some(o) if o.status == OutputStatus::Unspent => to_lock.push(commitment),
-                Some(o)
-                    if matches!(
-                        o.status,
-                        OutputStatus::EncumberedToBeSpent | OutputStatus::ShortTermEncumberedToBeSpent
-                    ) && o.spent_in_tx_id == Some(tx_id) => {},
-                _ => {
-                    return Ok(Err(TransactionServiceError::Other(format!(
-                        "Input {} of the signed transaction is not available to transaction {tx_id}",
-                        commitment.to_hex()
-                    ))));
-                },
+        let payload_outputs = output_manager
+            .fetch_outputs_by_tx_id(tx_id)
+            .await?
+            .into_iter()
+            .filter(|o| o.spent_in_tx_id == Some(tx_id))
+            .collect::<Vec<_>>();
+        if !payload_outputs.is_empty() {
+            if inputs.len() != payload_outputs.len() ||
+                !inputs
+                    .iter()
+                    .all(|c| payload_outputs.iter().any(|o| &o.commitment == c))
+            {
+                return Err(TransactionServiceError::Other(format!(
+                    "The inputs of the signed transaction are not the outputs locked for transaction {tx_id}"
+                )));
             }
+            if payload_outputs.iter().all(|o| {
+                matches!(
+                    o.status,
+                    OutputStatus::EncumberedToBeSpent | OutputStatus::ShortTermEncumberedToBeSpent
+                )
+            }) {
+                return Ok(Ok(false));
+            }
+            return refuse("are not all still locked for it");
         }
-        if to_lock.is_empty() {
-            return Ok(Ok(false));
+        let outputs = output_manager.get_outputs_by_commitments(inputs.clone()).await?;
+        if outputs.len() != inputs.len() || outputs.iter().any(|o| o.status != OutputStatus::Unspent) {
+            return refuse("are not all available to it");
         }
-        match output_manager.encumber_outputs(tx_id, to_lock).await {
+        match output_manager.encumber_outputs(tx_id, inputs).await {
             Ok(()) => Ok(Ok(true)),
             // An input stopped being `Unspent` since it was read
             Err(
@@ -4818,31 +4891,15 @@ where
             self.verify_send(&recipient.address, TariAddressFeatures::create_one_sided_only())?;
         }
         self.check_signed_payload(&request)?;
-        let payment_id = request.request.info.payment_id;
+        let payment_id = &request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
-        let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
+        let change = request.signed_transaction.change_output.clone().map(|v| vec![v]);
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
         let mut tx_ids = Vec::new();
         let mut completed_txs = Vec::new();
 
         for (i, recipient) in request.request.info.recipients.iter().enumerate() {
-            let tx_id = if i == 0 {
-                new_tx_id
-            } else {
-                TxId::new_deterministic(
-                    self.resources
-                        .transaction_key_manager_service
-                        .get_private_view_key()
-                        .as_bytes(),
-                    request
-                        .signed_transaction
-                        .sent_hashes
-                        .get(i)
-                        .ok_or(TransactionServiceError::Other(
-                            "sent_outputs index out of bounds".to_string(),
-                        ))?,
-                )
-            };
+            let tx_id = self.recipient_tx_id(&request, i)?;
             tx_ids.push(tx_id);
             let sent_hash =
                 request
