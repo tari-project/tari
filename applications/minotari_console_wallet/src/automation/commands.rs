@@ -100,7 +100,7 @@ use tari_transaction_components::{
         present_payload_summary,
         verify_offline_payload,
     },
-    rpc::models::TxLocation,
+    rpc::models::{GetUtxosDeletedInfoResponse, TxLocation},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
         EncryptedData,
@@ -785,22 +785,58 @@ async fn fetch_unspent_output(
                     TerminalSafe(&e.to_string())
                 ))
             })?;
-        match deleted.utxos.first() {
-            Some(info)
-                if info.utxo_hash == output_hash.as_slice() &&
-                    info.found_in_header.is_some() &&
-                    info.spent_in_header.is_none() =>
-            {
-                Ok(output)
-            },
-            _ => Err(CommandError::General(
-                "Refusing to sign: the output is spent or not on the chain".into(),
-            )),
-        }
+        require_unspent(&deleted, output_hash)?;
+        Ok(output)
     };
     timeout(Duration::from_secs(30), lookup)
         .await
         .map_err(|_| CommandError::General("Refusing to sign: the base node did not answer within 30 seconds".into()))?
+}
+
+/// Accepts the base node's spent-status answer only if its entry is for `output_hash`, found on the chain and unspent.
+fn require_unspent(response: &GetUtxosDeletedInfoResponse, output_hash: &FixedHash) -> Result<(), CommandError> {
+    match response.utxos.first() {
+        Some(info)
+            if info.utxo_hash == output_hash.as_slice() &&
+                info.found_in_header.is_some() &&
+                info.spent_in_header.is_none() =>
+        {
+            Ok(())
+        },
+        _ => Err(CommandError::General(
+            "Refusing to sign: the output is spent or not on the chain".into(),
+        )),
+    }
+}
+
+/// Parses `--message` of the sign commands: 32 bytes of hex, optionally prefixed with `0x`.
+fn parse_message_32(message: &str) -> Result<[u8; 32], CommandError> {
+    let msg_bytes = Vec::<u8>::from_hex(message.trim().trim_start_matches("0x"))
+        .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
+    msg_bytes
+        .try_into()
+        .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))
+}
+
+/// Writes `signature` as JSON hex to `output_file`, creating its directory, or prints it when no file is given.
+fn output_signature<S: tari_utilities::message_format::MessageFormat>(
+    signature: &S,
+    output_file: Option<PathBuf>,
+) -> Result<(), CommandError> {
+    let signature_binary = signature
+        .to_binary()
+        .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
+    let Some(file) = output_file else {
+        println!("Signature: {}", signature_binary.to_hex());
+        return Ok(());
+    };
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
+    }
+    let signature_json =
+        serde_json::to_string(&signature_binary.to_hex()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    fs::write(&file, signature_json).map_err(|err| CommandError::FileWriteError { file_path: file, err })
 }
 
 /// Checks that `output`, fetched from the base node, is the output a co-signer agreed to sign for: it has the
@@ -3303,41 +3339,16 @@ pub async fn command_runner(
                 }
             },
             SignMessage(args) => {
-                let hex_msg = args.message.trim().trim_start_matches("0x");
-                let msg_bytes = Vec::<u8>::from_hex(hex_msg)
-                    .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
-                let commitment_bytes: [u8; 32] = msg_bytes
-                    .try_into()
-                    .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))?;
+                let commitment_bytes = parse_message_32(&args.message)?;
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
 
                 let signature = key_manager_service.sign_message_with_spend_key(&commitment_bytes, sender_offset)?;
 
-                let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
-                    .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
-                if let Some(file) = args.output_file {
-                    if let Some(parent) = file.parent() {
-                        std::fs::create_dir_all(parent)
-                            .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
-                    }
-
-                    let signature_json = serde_json::to_string(&signature_binary.to_hex())
-                        .map_err(|e| CommandError::JsonFile(e.to_string()))?;
-
-                    fs::write(&file, signature_json)
-                        .map_err(|err| CommandError::FileWriteError { file_path: file, err })?;
-                } else {
-                    println!("Signature: {}", signature_binary.to_hex());
-                }
+                output_signature(&signature, args.output_file)?;
             },
 
             SignScriptMessage(args) => {
-                let hex_msg = args.message.trim().trim_start_matches("0x");
-                let msg_bytes = Vec::<u8>::from_hex(hex_msg)
-                    .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
-                let commitment_bytes: [u8; 32] = msg_bytes
-                    .try_into()
-                    .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))?;
+                let commitment_bytes = parse_message_32(&args.message)?;
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
                 let signing_key = co_signer_script_public_key(&key_manager_service, sender_offset)
@@ -3371,22 +3382,7 @@ pub async fn command_runner(
                     key_manager_service.sign_script_message_with_spend_key_trusted(&commitment_bytes, sender_offset)?;
                 info!(target: SIGNING_LOG_TARGET, "Multisig script message {} signed", commitment_bytes.to_hex());
 
-                let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
-                    .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
-                if let Some(file) = args.output_file {
-                    if let Some(parent) = file.parent() {
-                        std::fs::create_dir_all(parent)
-                            .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
-                    }
-
-                    let signature_json = serde_json::to_string(&signature_binary.to_hex())
-                        .map_err(|e| CommandError::JsonFile(e.to_string()))?;
-
-                    fs::write(&file, signature_json)
-                        .map_err(|err| CommandError::FileWriteError { file_path: file, err })?;
-                } else {
-                    println!("Signature: {}", signature_binary.to_hex());
-                }
+                output_signature(&signature, args.output_file)?;
             },
             RescanWallet(args) => {
                 if args.from_height == 0 {
@@ -3808,10 +3804,7 @@ pub async fn command_runner(
                     }
 
                     // Check if spent
-                    match client
-                        .query_deleted_utxos(vec![output_hash], genesis_header_hash().to_vec())
-                        .await
-                    {
+                    match client.query_deleted_utxos(vec![output_hash], vec![]).await {
                         Ok(response) => {
                             if let Some(deleted_info) = response.utxos.first() {
                                 match (&deleted_info.found_in_header, &deleted_info.spent_in_header) {
@@ -4509,6 +4502,44 @@ mod test {
             check(&not_multisig, &not_multisig.hash(), None, &message),
             "not a multisig script",
         );
+    }
+
+    #[test]
+    fn unspent_check_accepts_only_an_unspent_entry_for_the_requested_hash() {
+        use tari_transaction_components::rpc::models::DeletedUtxoInfo;
+        let hash = FixedHash::from([1; 32]);
+        let header = Some((5, vec![2; 32]));
+        let response = |utxo_hash: &FixedHash, found_in_header, spent_in_header| GetUtxosDeletedInfoResponse {
+            utxos: vec![DeletedUtxoInfo {
+                utxo_hash: utxo_hash.to_vec(),
+                found_in_header,
+                spent_in_header,
+            }],
+            best_block_hash: vec![],
+            best_block_height: 0,
+        };
+
+        require_unspent(&response(&hash, header.clone(), None), &hash).unwrap();
+        let no_entry = GetUtxosDeletedInfoResponse {
+            utxos: vec![],
+            best_block_hash: vec![],
+            best_block_height: 0,
+        };
+        assert!(require_unspent(&no_entry, &hash).is_err());
+        assert!(require_unspent(&response(&FixedHash::from([3; 32]), header.clone(), None), &hash).is_err());
+        assert!(require_unspent(&response(&hash, header.clone(), header.clone()), &hash).is_err());
+        assert!(require_unspent(&response(&hash, None, None), &hash).is_err());
+    }
+
+    #[test]
+    fn sign_message_parsing_takes_exactly_32_bytes_of_hex() {
+        assert_eq!(
+            parse_message_32(&format!(" 0x{} ", "ab".repeat(32))).unwrap(),
+            [0xab; 32]
+        );
+        assert!(parse_message_32(&"ab".repeat(31)).is_err());
+        assert!(parse_message_32(&"ab".repeat(33)).is_err());
+        assert!(parse_message_32("zz").is_err());
     }
 
     #[test]
