@@ -106,8 +106,11 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 1 hour
     #[serde(with = "serializers::seconds")]
     pub on_connect_resync_ttl: Duration,
-    /// The longest one OnConnect or Discovering peer sync may take, however its peer paces the stream. A sync that
-    /// runs out is retried after the failed-sync backoff. Between 5 seconds and 5 minutes.
+    /// The longest one OnConnect or Discovering peer sync may take, however its peer paces the stream. Lowering this
+    /// for OnConnect also limits Discovering rounds (which request up to `max_peers_to_sync_per_round` peers, though
+    /// they stop early once `max_stored_per_source` is reached). A sync that runs out is retried after the failed-sync
+    /// backoff in OnConnect, whereas in Discovering the peer is skipped until `attempted_peers_ttl` passes. Between
+    /// 5 seconds and 5 minutes.
     /// Default: 30 seconds
     #[serde(with = "serializers::seconds")]
     pub on_connect_sync_timeout: Duration,

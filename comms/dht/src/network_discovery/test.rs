@@ -1651,8 +1651,8 @@ mod rebootstrap {
         assert_eq!(on_connect.prev_synced.len(), 1);
     }
 
-    /// Discovering enforces the shared per-source budget on new peers, still updates already-known peers past the
-    /// cap, and shares the budget with OnConnect so a peer cannot fill both quotas in the same window.
+    /// Discovering shares the per-source budget with OnConnect, updates known peers seen before the budget runs out,
+    /// stops reading the stream early once the budget is exhausted, and does not count a budget-cut sync as succeeded.
     #[tokio::test]
     async fn discovering_caps_new_peers_at_the_source_budget_and_updates_known_peers() {
         let (mut context, mock, _events) = context(None);
@@ -1660,48 +1660,54 @@ mod rebootstrap {
         config.network_discovery.max_stored_per_source = 3;
         context.config = Arc::new(config);
 
-        // Pre-populate one known peer so its relayed claim counts as an update rather than a new peer
-        let known_identity = make_node_identity();
+        // Pre-populate two known peers: one before the budget runs out (updated) and one after (never read).
+        let (known_before, known_after) = (make_node_identity(), make_node_identity());
         context
             .peer_manager
-            .add_or_update_peer(known_identity.to_peer())
+            .add_or_update_peer(known_before.to_peer())
+            .await
+            .unwrap();
+        context
+            .peer_manager
+            .add_or_update_peer(known_after.to_peer())
             .await
             .unwrap();
 
         let sync_identity = make_node_identity();
         let sync_peer = sync_identity.to_peer();
 
-        // First, OnConnect stores 1 new peer from `sync_peer` (charging 1 of the 3 slots)
-        let mut server_on_connect = MockRpcServer::new(
+        // 1. OnConnect stores 1 new peer from `sync_peer` (1 of 3 budget slots used)
+        let mut srv_oc = MockRpcServer::new(
             DhtService::new(FixedPeersService {
                 peers: fresh_peer_infos(1),
                 hold_open: false,
             }),
             sync_identity.clone(),
         );
-        server_on_connect.serve();
-        let on_connect_conn = server_on_connect
+        srv_oc.serve();
+        let oc_conn = srv_oc
             .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
             .await;
-        let mut on_connect = OnConnect::new(context.clone());
-        on_connect.sync_from(on_connect_conn).await;
-        // 1 pre-existing known peer + 1 new peer from OnConnect = 2
-        assert_eq!(context.peer_manager.count().await, 2);
+        OnConnect::new(context.clone()).sync_from(oc_conn).await;
+        assert_eq!(context.peer_manager.count().await, 3);
 
-        // Next, Discovering syncs 8 fresh peers plus the known peer from the same `sync_peer`: only the remaining 2
-        // budget slots may be stored as new peers, while the known peer is still updated.
-        let mut served = fresh_peer_infos(8);
-        served.push(UnvalidatedPeerInfo::from_peer_limited_claims(known_identity.to_peer(), 5, 5).into());
+        // 2. Discovering receives [known_before, fresh_1, fresh_2, fresh_3 (over budget), known_after, fresh_4..8].
+        let mut fresh = fresh_peer_infos(8);
+        let mut served = vec![UnvalidatedPeerInfo::from_peer_limited_claims(known_before.to_peer(), 5, 5).into()];
+        served.extend(fresh.drain(..3));
+        served.push(UnvalidatedPeerInfo::from_peer_limited_claims(known_after.to_peer(), 5, 5).into());
+        served.extend(fresh);
         let num_records = u32::try_from(served.len()).unwrap();
-        let mut server_discovering = MockRpcServer::new(
+
+        let mut srv_disc = MockRpcServer::new(
             DhtService::new(FixedPeersService {
                 peers: served,
                 hold_open: false,
             }),
-            sync_identity,
+            sync_identity.clone(),
         );
-        server_discovering.serve();
-        let disc_conn = server_discovering
+        srv_disc.serve();
+        let disc_conn = srv_disc
             .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
             .await;
         mock.add_active_connection(disc_conn).await;
@@ -1711,22 +1717,50 @@ mod rebootstrap {
             .await
             .unwrap();
 
-        let mut discovering = Discovering::new(
-            DiscoveryParams {
-                peers: vec![sync_peer.node_id.clone()],
-                num_peers_to_request: num_records,
-            },
-            context.clone(),
-        );
-        let event = discovering.next_event().await;
-        let StateEvent::DiscoveryComplete(stats) = event else {
-            panic!("unexpected event {event}");
+        let params = DiscoveryParams {
+            peers: vec![sync_peer.node_id.clone()],
+            num_peers_to_request: num_records,
         };
-        assert_eq!(stats.num_succeeded, 1);
+        let StateEvent::DiscoveryComplete(stats) = Discovering::new(params, context.clone()).next_event().await else {
+            panic!("expected DiscoveryComplete");
+        };
+        assert_eq!(stats.num_succeeded, 0, "a budget-cut sync must not count as succeeded");
         assert_eq!(stats.num_new_peers, 2);
-        assert_eq!(stats.num_duplicate_peers, 1);
-        // 1 known + 1 sync_peer + 3 budgeted new peers = 5 total
-        assert_eq!(context.peer_manager.count().await, 5);
+        assert_eq!(
+            stats.num_duplicate_peers, 1,
+            "Discovering must stop early on budget exhaustion instead of reading trailing records"
+        );
+        assert_eq!(context.peer_manager.count().await, 6);
+
+        // 3. A second round against the now-exhausted source yields 0 new peers and is not marked succeeded, so
+        // Ready will not mistake it for an empty successful sync and transition to OnConnectMode.
+        let mut srv_exhausted = MockRpcServer::new(
+            DhtService::new(FixedPeersService {
+                peers: fresh_peer_infos(3),
+                hold_open: false,
+            }),
+            sync_identity,
+        );
+        srv_exhausted.serve();
+        mock.remove_active_connection(&sync_peer.node_id).await;
+        mock.add_active_connection(
+            srv_exhausted
+                .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
+                .await,
+        )
+        .await;
+        let params2 = DiscoveryParams {
+            peers: vec![sync_peer.node_id],
+            num_peers_to_request: 3,
+        };
+        let StateEvent::DiscoveryComplete(stats2) = Discovering::new(params2, context.clone()).next_event().await
+        else {
+            panic!("expected DiscoveryComplete");
+        };
+        assert_eq!(stats2.num_succeeded, 0);
+        assert_eq!(stats2.num_new_peers, 0);
+        assert!(!stats2.is_success());
+        assert_eq!(context.peer_manager.count().await, 6);
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(mock.take_banned_peers().await.is_empty());
     }
@@ -1926,13 +1960,100 @@ mod rebootstrap {
         }
         assert_eq!(banned, vec![peer1, peer2, peer3]);
     }
+}
 
+mod discovering {
+    use std::sync::{Arc, Mutex};
+
+    use tari_comms::{
+        PeerConnection,
+        framing,
+        peer_manager::NodeId,
+        protocol::rpc::{Handshake, HandshakeRejectReason, RPC_MAX_FRAME_SIZE, RpcError, RpcHandshakeError},
+        test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_peer_connection_mock_pair},
+    };
+    use tokio::{io::AsyncWriteExt, sync::RwLock};
+
+    use super::*;
+    use crate::{
+        BootstrapMethod,
+        DhtConfig,
+        network_discovery::{
+            NetworkDiscoveryError,
+            admission::SourceBudget,
+            discovering::Discovering,
+            state_machine::{DiscoveryParams, NetworkDiscoveryContext},
+        },
+    };
+
+    fn discovering_context(rpc_connect_timeout: Duration) -> (NetworkDiscoveryContext, ConnectivityManagerMockState) {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.bootstrap_rpc_connect_timeout = rpc_connect_timeout;
+        let peer_manager = build_peer_manager();
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        let mock_state = connectivity_mock.get_shared_state();
+        connectivity_mock.spawn();
+        let (event_tx, _) = broadcast::channel(10);
+        let context = NetworkDiscoveryContext {
+            config: Arc::new(config),
+            peer_manager,
+            connectivity,
+            node_identity: make_node_identity(),
+            num_rounds: Default::default(),
+            all_attempted_peers: Default::default(),
+            event_tx,
+            last_round: Default::default(),
+            bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
+            bootstrap_started_at: Default::default(),
+            seed_peer_provider: None,
+            inbound_learned: Default::default(),
+            pool_peers: Default::default(),
+            source_budget: Arc::new(Mutex::new(SourceBudget::default())),
+        };
+        (context, mock_state)
+    }
+
+    async fn dialled_peer_with_handshake_action<F, Fut>(
+        action: F,
+    ) -> (NodeId, PeerConnection, tokio::task::JoinHandle<()>)
+    where
+        F: FnOnce(tari_comms::Substream) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let local_peer = make_node_identity().to_peer();
+        let remote_peer = make_node_identity().to_peer();
+        let remote_id = remote_peer.node_id.clone();
+        let (_, remote_mock, dialled_conn, _) = create_peer_connection_mock_pair(remote_peer, local_peer).await;
+        let task = tokio::spawn(async move {
+            if let Some(substream) = remote_mock.next_incoming_substream().await {
+                action(substream).await;
+            }
+        });
+        (remote_id, dialled_conn, task)
+    }
+
+    async fn reject_handshake(
+        discovering: &mut Discovering,
+        reason: HandshakeRejectReason,
+    ) -> (NodeId, NetworkDiscoveryError) {
+        let (peer_id, conn, task) = dialled_peer_with_handshake_action(move |substream| async move {
+            let mut framed = framing::canonical(substream, 4096);
+            Handshake::new(&mut framed).reject_with_reason(reason).await.unwrap();
+        })
+        .await;
+        let err = discovering.request_from_peers(conn.clone(), false).await.unwrap_err();
+        assert!(!conn.is_connected());
+        task.await.unwrap();
+        (peer_id, err)
+    }
+
+    /// A freshly dialled peer (`was_connected == false`) rejecting `connect_rpc` with `NoServerSessionsAvailable`,
+    /// `UnsupportedVersion`, or timing out during the handshake is hung up without being banned, while a peer sending
+    /// an oversized handshake frame (`FrameTooLarge`) is banned and hung up.
     #[tokio::test]
     async fn dialled_peer_rejecting_connect_rpc_with_no_sessions_is_not_banned() {
-        use tari_comms::protocol::rpc::{HandshakeRejectReason, RpcHandshakeError};
-
-        let (context, mock, _events) = context(None);
-        let discovering = Discovering::new(
+        let (context, mock) = discovering_context(Duration::from_millis(200));
+        let mut discovering = Discovering::new(
             DiscoveryParams {
                 peers: vec![],
                 num_peers_to_request: 10,
@@ -1940,21 +2061,62 @@ mod rebootstrap {
             context,
         );
 
-        let busy_peer = NodeId::from_public_key(make_node_identity().public_key());
-        let no_sessions: NetworkDiscoveryError = RpcError::HandshakeError(RpcHandshakeError::Rejected(
+        let (busy_peer, err) = reject_handshake(
+            &mut discovering,
             HandshakeRejectReason::NoServerSessionsAvailable("busy"),
-        ))
-        .into();
+        )
+        .await;
+        assert!(matches!(
+            err,
+            NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::NoServerSessionsAvailable(_)
+            )))
+        ));
+
+        let (version_peer, err) = reject_handshake(&mut discovering, HandshakeRejectReason::UnsupportedVersion).await;
+        assert!(matches!(
+            err,
+            NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::UnsupportedVersion
+            )))
+        ));
+
+        let (slow_peer, slow_conn, slow_task) = dialled_peer_with_handshake_action(|substream| async move {
+            let _keep_open = substream;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        })
+        .await;
+        let err = discovering
+            .request_from_peers(slow_conn.clone(), false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NetworkDiscoveryError::Timeout { ref operation, .. } if operation == "connect_rpc"));
+        assert!(!slow_conn.is_connected());
+        slow_task.abort();
+
+        let handshake_timeout_peer = NodeId::from_public_key(make_node_identity().public_key());
+        let handshake_timed_out: NetworkDiscoveryError = RpcError::HandshakeError(RpcHandshakeError::TimedOut).into();
         discovering
-            .ban_on_connect_rpc_offence(busy_peer.clone(), &no_sessions)
+            .ban_on_connect_rpc_offence(handshake_timeout_peer.clone(), &handshake_timed_out)
             .await;
 
-        let bad_peer = NodeId::from_public_key(make_node_identity().public_key());
-        let oversized_handshake: NetworkDiscoveryError =
-            RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { max: 1024 }).into();
-        discovering
-            .ban_on_connect_rpc_offence(bad_peer.clone(), &oversized_handshake)
-            .await;
+        let (bad_peer, bad_conn, bad_task) = dialled_peer_with_handshake_action(|mut substream| async move {
+            let declared = u32::try_from(RPC_MAX_FRAME_SIZE).unwrap();
+            let _ignore = substream.write_all(&declared.to_be_bytes()).await;
+            let _ignore = substream.flush().await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        })
+        .await;
+        let err = discovering
+            .request_from_peers(bad_conn.clone(), false)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { .. }))
+        ));
+        assert!(!bad_conn.is_connected());
+        bad_task.abort();
 
         let mut banned = Vec::new();
         for _ in 0..50 {
@@ -1966,5 +2128,8 @@ mod rebootstrap {
         }
         assert_eq!(banned, vec![bad_peer]);
         assert!(!banned.contains(&busy_peer));
+        assert!(!banned.contains(&version_peer));
+        assert!(!banned.contains(&slow_peer));
+        assert!(!banned.contains(&handshake_timeout_peer));
     }
 }

@@ -129,7 +129,7 @@ impl Discovering {
                     self.stats.sync_peers.push(peer_node_id.clone());
                     debug!(target: LOG_TARGET, "Discovering: Attempting to sync from peer `{peer_node_id}`" );
 
-                    if self.request_from_peers(conn, was_connected).await.is_ok() {
+                    if matches!(self.request_from_peers(conn, was_connected).await, Ok(false)) {
                         self.stats.num_succeeded = self.stats.num_succeeded.saturating_add(1);
                     }
                 },
@@ -159,12 +159,13 @@ impl Discovering {
 
     /// `was_connected` is true if the connection existed before this round dialled it. Only a connection this round
     /// created is hung up, and not if it has since become a DHT pool peer (or is strongly held): anything else belongs
-    /// to someone else.
+    /// to someone else. Returns `Ok(true)` if the sync stopped early because the peer used up its per-source budget
+    /// for new peers.
     pub(super) async fn request_from_peers(
         &mut self,
         mut conn: PeerConnection,
         was_connected: bool,
-    ) -> Result<(), NetworkDiscoveryError> {
+    ) -> Result<bool, NetworkDiscoveryError> {
         let created_here = !was_connected;
         if !conn.is_connected() {
             debug!(
@@ -342,7 +343,12 @@ impl Discovering {
             })
     }
 
-    async fn request_peers(&mut self, sync_peer: &NodeId, client: rpc::DhtClient) -> Result<(), NetworkDiscoveryError> {
+    /// Returns `Ok(true)` if the sync stopped early because `sync_peer` used up its budget for new peers.
+    async fn request_peers(
+        &mut self,
+        sync_peer: &NodeId,
+        client: rpc::DhtClient,
+    ) -> Result<bool, NetworkDiscoveryError> {
         debug!(
             target: LOG_TARGET,
             "Discovering: Requesting {} peers from `{}`",
@@ -352,6 +358,7 @@ impl Discovering {
         let mut stream = self.get_stream(client, sync_peer).await?;
         let mut counter = 0u32;
         let mut hostile_claims = 0usize;
+        let mut budget_used_up = false;
         #[allow(clippy::mutable_key_type)]
         let mut peers_received = HashSet::new();
         while let Some(resp) = self.get_peer_response(&mut stream, sync_peer).await? {
@@ -394,7 +401,15 @@ impl Discovering {
                 return Err(err);
             }
             match self.validate_and_add_peer(sync_peer, new_peer).await {
-                Ok(()) => {},
+                Ok(Some(())) => {},
+                Ok(None) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Discovering: Sync peer `{sync_peer}` has relayed its share of new peers. Ending the sync"
+                    );
+                    budget_used_up = true;
+                    break;
+                },
                 Err(err) => match classify_relay_failure(&err) {
                     // A sync peer merely relays signed claims. Skip a bad or unusable claim without
                     // truncating the rest of the stream; otherwise the same entry can permanently
@@ -431,18 +446,20 @@ impl Discovering {
             }
         }
 
-        Ok(())
+        Ok(budget_used_up)
     }
 
+    /// Validates and stores a peer relayed by `sync_peer`, charging a new peer to `sync_peer`'s budget. Returns
+    /// `Ok(None)` (storing nothing) if that budget is used up.
     async fn validate_and_add_peer(
         &mut self,
         sync_peer: &NodeId,
         new_peer: UnvalidatedPeerInfo,
-    ) -> Result<(), NetworkDiscoveryError> {
+    ) -> Result<Option<()>, NetworkDiscoveryError> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
         if self.context.node_identity.node_id() == &node_id {
             debug!(target: LOG_TARGET, "Discovering: Received our own node from peer sync. Ignoring.");
-            return Ok(());
+            return Ok(Some(()));
         }
 
         let maybe_existing_peer = self.find_by_public_key(new_peer.public_key.clone()).await?;
@@ -456,7 +473,7 @@ impl Discovering {
                 .lock()
                 .is_ok_and(|budget| budget.has_headroom(sync_peer, Instant::now(), discovery_config))
         {
-            return Ok(());
+            return Ok(None);
         }
 
         let peer_validator = PeerValidator::new(self.config());
@@ -465,14 +482,14 @@ impl Discovering {
             if !self.context.source_budget.lock().is_ok_and(|mut budget| {
                 budget.try_charge(sync_peer, &valid_peer.node_id, Instant::now(), discovery_config)
             }) {
-                return Ok(());
+                return Ok(None);
             }
             self.stats.num_new_peers = self.stats.num_new_peers.saturating_add(1);
         } else {
             self.stats.num_duplicate_peers = self.stats.num_duplicate_peers.saturating_add(1);
         }
         self.add_peer(valid_peer).await?;
-        Ok(())
+        Ok(Some(()))
     }
 
     /// Bans `peer` on `connect_rpc` failure only for malformed/oversized handshake frames, never for ordinary
@@ -556,8 +573,10 @@ pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
             RpcError::MaxResponseSizeExceeded { .. } |
             RpcError::HandshakeError(RpcHandshakeError::DecodeError(_) | RpcHandshakeError::FrameTooLarge { .. }),
         ) => true,
-        // `RpcClientWorker` converts oversized streamed responses (`MaxResponseSizeExceeded`) and invalid response
-        // headers/flags into `RpcStatusCode::ProtocolError` on the response channel.
+        // `RpcClientWorker` surfaces wire-level violations such as oversized streamed responses
+        // (`MaxResponseSizeExceeded`) and invalid streaming response headers/request IDs as
+        // `RpcStatusCode::ProtocolError` on the response channel (`convert_to_result` maps `resp.flags()` errors to
+        // `General`, which is not banned here).
         NetworkDiscoveryError::RpcStatus(status) => is_protocol_violation_status(status),
         _ => false,
     }
@@ -677,7 +696,7 @@ mod test {
             peer: "abc".to_string(),
             duration: "30s".to_string(),
         };
-        assert_eq!(timeout, timeout);
+        assert!(offence_severity(&timeout).is_none());
         assert!(!is_bad_data_offence(&timeout));
     }
 
