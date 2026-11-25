@@ -1388,6 +1388,70 @@ async fn a_peer_configured_for_more_transactions_still_syncs() {
     }
 }
 
+/// Spawns a responder limited to `initial_sync_max_transactions` of 2 over an empty mempool, sends it an inventory of
+/// `num_items` unknown transactions and returns our end of the substream, its task and the indexes it asked for
+async fn responder_limited_to_two(
+    num_items: usize,
+) -> (
+    CanonicalFraming<MemorySocket>,
+    task::JoinHandle<Result<(), MempoolProtocolError>>,
+    Vec<u32>,
+) {
+    let (mempool, _) = new_mempool_with_transactions(0).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let config = MempoolServiceConfig {
+        initial_sync_max_transactions: 2,
+        ..Default::default()
+    };
+    let responder = task::spawn(async move {
+        MempoolPeerProtocol::new(
+            config,
+            framing::canonical(sock_in, MAX_FRAME_SIZE),
+            MAX_FRAME_SIZE,
+            peer.node_id().clone(),
+            mempool,
+        )
+        .start_responder()
+        .await
+    });
+
+    let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let inventory = proto::TransactionInventory {
+        items: (0..num_items).map(|i| vec![u8::try_from(i).unwrap(); 32]).collect(),
+    };
+    write_message(&mut framed, inventory).await;
+    let stop: proto::TransactionItem = read_message(&mut framed).await;
+    assert!(stop.transaction.is_none());
+    let missing: proto::InventoryIndexes = read_message(&mut framed).await;
+    (framed, responder, missing.indexes)
+}
+
+/// The responder only asks for the part of a longer inventory that is within its own limit
+#[tokio::test]
+async fn responder_asks_only_for_its_limit_of_a_longer_inventory() {
+    let (mut framed, responder, indexes) = responder_limited_to_two(4).await;
+    assert_eq!(indexes, vec![0, 1]);
+    write_message(&mut framed, proto::TransactionItem::empty()).await;
+    responder.await.unwrap().unwrap();
+}
+
+/// The responder takes no more transactions than it asked for
+#[tokio::test]
+async fn responder_rejects_more_transactions_than_it_asked_for() {
+    let (mut framed, responder, indexes) = responder_limited_to_two(2).await;
+    assert_eq!(indexes.len(), 2);
+    for txn in &create_transactions(3) {
+        // The responder may already have closed the substream before the last one
+        framed.send(transaction_item(txn).to_encoded_bytes().into()).await.ok();
+    }
+    let result = responder.await.unwrap();
+    assert!(
+        matches!(result, Err(MempoolProtocolError::TooManyTransactions { max: 2, .. })),
+        "unexpected result: {result:?}"
+    );
+}
+
 /// A skipped transaction does not use up one of the `initial_sync_max_transactions` slots
 #[tokio::test]
 async fn skipped_transactions_do_not_count_towards_the_send_cap() {

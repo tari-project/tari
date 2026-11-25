@@ -625,7 +625,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
         self.write_message(inventory).await?;
 
-        self.read_and_insert_transactions_until_complete().await?;
+        self.read_and_insert_transactions_until_complete(self.config.initial_sync_max_transactions, true)
+            .await?;
 
         let missing_items: proto::InventoryIndexes = self.read_message(INVENTORY_INDEXES_MAX_DECODE_ITEMS).await?;
         debug!(
@@ -809,18 +810,23 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
         if num_missing_items > 0 {
             debug!(target: LOG_TARGET, "Waiting for missing transactions");
-            self.read_and_insert_transactions_until_complete().await?;
+            // We asked for exactly these, so more is a protocol violation rather than a peer configured for more
+            self.read_and_insert_transactions_until_complete(num_missing_items, false)
+                .await?;
         }
 
         Ok(())
     }
 
-    async fn read_and_insert_transactions_until_complete(&mut self) -> Result<(), MempoolProtocolError> {
+    /// Receives and inserts up to `max_recv` transactions. With `discard_excess`, further frames are discarded
+    /// undecoded until the terminator, up to `MAX_STREAM_FRAMES` in total; without it, they are an error.
+    async fn read_and_insert_transactions_until_complete(
+        &mut self,
+        max_recv: usize,
+        discard_excess: bool,
+    ) -> Result<(), MempoolProtocolError> {
         let mut num_recv = 0usize;
         let mut num_frames = 0usize;
-        // A peer configured for more than our `initial_sync_max_transactions` may send more. Past our limit the rest
-        // are discarded undecoded, and `MAX_STREAM_FRAMES` keeps a peer from streaming forever.
-        let max_recv = self.config.initial_sync_max_transactions;
         // Bounded per item: an unbounded read here parks forever against a peer that neither sends
         // the terminator nor closes the substream — which pins this node's mempool, and with it the
         // blockchain database and its LMDB file lock, for the life of the process.
@@ -842,6 +848,13 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                     );
                     break;
                 }
+                if !discard_excess {
+                    return Err(MempoolProtocolError::TooManyTransactions {
+                        peer: self.peer_node_id.clone(),
+                        max: max_recv,
+                    });
+                }
+                // A peer configured for more than our `initial_sync_max_transactions` may send more
                 if num_frames > MAX_STREAM_FRAMES {
                     return Err(MempoolProtocolError::TooManyTransactions {
                         peer: self.peer_node_id.clone(),
