@@ -191,8 +191,9 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   returns an error status with a JSON body, or a template the proxy rejects, stays selected. The client that
   forwards requests to monerod does not follow redirects, so monerod cannot point it at other hosts. Monerod cannot
   change the Tari coinbase or reward destination, but with `submit_to_origin` on (the default) a found block goes to
-  monerod first, so a selected monerod can stop found Tari blocks from being submitted; running your own monerod or
-  setting `submit_to_origin = false` avoids this. The Monero side is exposed: monerod builds the Monero block
+  monerod first, so a selected monerod can stop found Tari blocks from being submitted; running your own monerod
+  avoids this, and setting `submit_to_origin = false` keeps the block from being sent to monerod (submission still
+  waits for, and can fail on, monerod selection). The Monero side is exposed: monerod builds the Monero block
   template, so an untrusted or on-path monerod can pay the Monero block reward to someone else, and it sees
   `monerod_username`/`monerod_password` when `monerod_use_auth` is set (in cleartext over `http://`, and over
   `https://` too because certificates are not checked). Operators who care should run their own monerod (see the
