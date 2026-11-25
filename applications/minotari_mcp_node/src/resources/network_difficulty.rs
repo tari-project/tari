@@ -63,10 +63,12 @@ impl McpResource for NetworkDifficultyResource {
         let mut client = self.grpc_client.as_ref().clone();
 
         // Get chain metadata for difficulty info
-        let metadata_response = client
-            .get_tip_info(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get metadata: {e}")))?;
+        let metadata_response = client.get_tip_info(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to get metadata: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let tip_info = metadata_response.into_inner();
 

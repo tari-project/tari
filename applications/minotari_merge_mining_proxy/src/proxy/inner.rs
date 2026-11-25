@@ -246,8 +246,7 @@ impl InnerService {
                 .pow
                 .as_mut()
                 .ok_or(MmProxyError::UnexpectedMissingData("tari_block.header.pow".to_string()))?;
-            BorshSerialize::serialize(&monero_data, &mut pow_mut.pow_data)
-                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
+            replace_pow_data(&mut pow_mut.pow_data, &monero_data)?;
             let tari_header = tari_header_mut
                 .clone()
                 .try_into()
@@ -1062,5 +1061,28 @@ impl InnerService {
                 Err(e)
             },
         }
+    }
+}
+
+fn replace_pow_data<T: BorshSerialize>(pow_data: &mut Vec<u8>, monero_data: &T) -> Result<(), MmProxyError> {
+    pow_data.clear();
+    BorshSerialize::serialize(monero_data, pow_data).map_err(|err| MmProxyError::ConversionError(err.to_string()))
+}
+
+#[cfg(test)]
+mod test {
+    use tari_utilities::ByteArray;
+
+    use super::*;
+
+    #[test]
+    fn replace_pow_data_overwrites_existing_template_bytes() {
+        let monero_data = FixedByteArray::from_canonical_bytes(&[6, 7, 8]).unwrap();
+        let mut expected = Vec::new();
+        BorshSerialize::serialize(&monero_data, &mut expected).unwrap();
+
+        let mut pow_data = vec![0xde, 0xad, 0xbe, 0xef];
+        replace_pow_data(&mut pow_data, &monero_data).unwrap();
+        assert_eq!(pow_data, expected);
     }
 }

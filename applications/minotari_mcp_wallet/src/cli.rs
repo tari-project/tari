@@ -26,7 +26,13 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_mcp_common::{CliConfigBuilder, CliConfigExtractor, LaunchCliConfig, WalletArgumentBuilder};
+use minotari_mcp_common::{
+    CliConfigBuilder,
+    CliConfigExtractor,
+    LaunchCliConfig,
+    WalletArgumentBuilder,
+    wallet_rpc::{DEFAULT_MAX_FEE_PER_GRAM, DEFAULT_SPEND_BUDGET},
+};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_utilities::SafePassword;
 
@@ -72,9 +78,18 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_GRPC_TIMEOUT", default_value = "10")]
     pub wallet_grpc_timeout: u64,
 
-    /// Require user confirmation for all value transfers
+    /// Not supported: the server cannot ask a person to confirm a call, so this is refused together with
+    /// --mcp-control-enabled
     #[clap(long, env = "MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION")]
     pub require_confirmation: bool,
+
+    /// Most µT the server may move out of the wallet in total per process, fees included
+    #[clap(long, env = "MINOTARI_WALLET_MCP_SPEND_BUDGET", default_value_t = DEFAULT_SPEND_BUDGET)]
+    pub mcp_spend_budget: u64,
+
+    /// Highest fee_per_gram, in µT/g, any fund-moving call may use
+    #[clap(long, env = "MINOTARI_WALLET_MCP_MAX_FEE_PER_GRAM", default_value_t = DEFAULT_MAX_FEE_PER_GRAM)]
+    pub mcp_max_fee_per_gram: u64,
 
     // Wallet-specific flags for auto-launch (prefixed to avoid conflicts)
     /// Wallet: Password for the console wallet
@@ -170,11 +185,11 @@ impl Cli {
         if self.mcp_control_enabled {
             log::warn!("WALLET MCP control operations are ENABLED - this allows AI agents to spend funds");
             log::warn!("Only enable control operations in fully trusted environments");
-            log::warn!("Consider using --require-confirmation for additional safety");
-        }
-
-        if self.require_confirmation && self.mcp_control_enabled {
-            log::info!("User confirmation required for all value transfers");
+            log::warn!(
+                "Spending is limited to {} µT per server process, at most {} µT/g fee",
+                self.mcp_spend_budget,
+                self.mcp_max_fee_per_gram
+            );
         }
 
         Ok(())

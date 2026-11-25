@@ -73,6 +73,11 @@ features, any other outputs, the fee, total spend and change, then any memo text
 escaped), and finally a recap. When run from a terminal it then asks `Sign this transaction? [y/N]` and signs only on
 `y` or `yes`. When stdin is not a terminal it prints the summary and signs without a prompt.
 
+The signed file carries a `receipt`: the transaction id, a hash of the payload that was approved, whether it was
+approved at a prompt (`Prompt`) or signed without one (`NoPrompt`), and when it was signed (unix seconds). The receipt
+is not signed, so anyone handling the file can change it: it is not proof of approval and nothing should trust it as
+such. Files written by older signers have no receipt.
+
 The signer only signs transactions that leave a change output. A payload where what is left after the outputs and
 the fee is no more than a change output would cost, such as a send-all or sweep, is refused, because with no change
 output the script offset of the signed transaction, together
@@ -82,6 +87,93 @@ to treat the online wallet as untrusted in general, because a view key holder ca
 verification. Check every recipient, amount and "Other outputs" entry, and the fee, total spend and change, in the
 summary before approving.
 
+### Payload Keys and Strict Mode
+
+The online wallet signs each payload it prepares so the signer can tell whether it was changed on the way. By default
+it signs with the wallet's view key, which is also held by view-only wallets, auditors and explorers, so anyone with
+the view key could produce a payload the signer accepts. A payload key closes that gap: it is derived from the spend
+key on the signer, so only the signer can create it, and only the wallet it is given to can sign with it.
+
+Nothing changes unless you set it up; payloads signed with the view key, and older version 5 payloads, keep working
+until the signer exports its first payload key.
+Upgrade the signer before the online wallet: an older signer cannot read the version 6 payloads a new online wallet
+prepares, while a new signer signs version 5 payloads and returns the result as version 5, which an older online
+wallet can broadcast.
+To set it up:
+
+1. On the signer, export payload key 1 (any index works; a key is retired with `retire-payload-key`):
+
+   ```bash
+   minotari_offline_signer export-payload-key --index 1 --output payload_key.json
+   ```
+
+   The file holds the private payload key. On Unix it is created readable by the owner only; on other platforms its
+   permissions are not restricted (the signer warns), so keep it in a private location. `--stdout` prints the key
+   instead (one of the two is required). Move the key to the online wallet over a separate trusted channel, never
+   the medium you move payloads on, and delete it once imported. The signer prints the key's public key at export;
+   check that the wallet prints the same public key when it imports it.
+
+   The signer records each index it exports. From then on `sign` requires a payload key with one of those indices,
+   so it refuses version 5 payloads and payloads signed with the view key.
+
+2. On the online (view) wallet, import it:
+
+   ```bash
+   minotari_console_wallet import-payload-key --index 1 --file payload_key.json
+   ```
+
+   or `import-payload-key --index 1 --key <hex>` (the key is then visible in shell history and `ps`, so prefer
+   `--file`). The key is stored in the wallet's database, encrypted with the wallet passphrase. Importing again
+   replaces it; `clear-payload-key` removes it. From then on every prepared payload is signed with it, whether it is
+   prepared from the command line or over gRPC, so enable gRPC authentication once a key is imported (the wallet
+   warns at startup if it is not). The import prints the key's public key and a reminder to delete the file, and on
+   Unix warns if other users can read it.
+
+   The online wallet's database now holds a credential for preparing payloads, not just the view key. Do not copy the
+   database and passphrase to other view-only instances as if it were a view key. If the payload key may have
+   leaked, export a new index and import it, then retire the old one on the signer:
+
+   ```bash
+   minotari_offline_signer retire-payload-key --index 1
+   ```
+
+   From then on a plain `sign` refuses payloads signed with it (passing the index explicitly with
+   `--payload-key-index` still accepts it for that run). Retiring the last index does not turn strict mode off: the
+   signer then refuses every payload until another key is exported. Exporting a retired index again brings back the same
+   key, so after a leak always export a new index.
+
+   The signer holds the spend key, so it derives the payload key itself and needs no import. A wallet that prepares
+   payloads needs the import to know which index to sign with: a view wallet signs with the imported key, while a
+   wallet holding the spend key ignores the imported key and signs with its own derived key for that index.
+
+3. Sign as before:
+
+   ```bash
+   minotari_offline_signer sign --input-file unsigned_transaction.json --output-file signed_transaction.json
+   ```
+
+   The signer accepts only payloads signed with a payload key whose index it exported.
+   `--payload-key-index <n>` (repeatable) accepts the given indices instead for that run.
+   `--require-payload-key` turns the same check on before any key has been exported (with no index, it refuses
+   everything). `--allow-view-key` accepts view key payloads again for one run, and cannot be combined with the other
+   two; once a payload key has been exported, a payload signed with a payload key the signer retired or never
+   exported is still refused. A console wallet that signs offline payloads does the same with
+   `require_payload_key = true` and `accepted_payload_key_indices = [1]` in its `[wallet.transactions]` config;
+   setting the indices alone turns it on.
+
+Before showing the summary the signer checks the payload's expiry, checks its signing key against these settings,
+and verifies its signature, so a payload it would refuse is never shown for approval. The summary then says which key
+signed the payload: `payload key #<index>`, or `view key (shared key)` followed by a warning that anyone holding the
+view key could have prepared it.
+
+### Payload Expiry
+
+A payload prepared by this version expires 24 hours after it was prepared, or after `--payload-expiry-hours <n>` on
+the console wallet's `prepare-*` commands (`payload_expiry_hours` over gRPC), at most 168 hours (7 days). The signer
+refuses an expired payload, and one that claims to stay valid for more than 7 days plus an hour of clock skew, before
+showing its summary, and the summary shows the expiry in UTC and the time left. The signer's own clock is used, so keep
+it roughly right. Version 5 payloads have no expiry.
+
 ### Clear Stored Keys
 
 Remove all keys from the keystore:
@@ -90,6 +182,10 @@ Remove all keys from the keystore:
 minotari_offline_signer clear
 ```
 
+This also removes the recorded payload key indices, so after `clear` and `init` the signer accepts view key payloads
+again, and payload keys retired before the clear are accepted again too, because the record of them is gone. Export
+a payload key again (or pass `--require-payload-key`) to turn strict mode back on.
+
 ## Commands
 
 | Command              | Description |
@@ -97,6 +193,8 @@ minotari_offline_signer clear
 | `init keys`          | Initialize the signer with spend and view keys directly |
 | `init seed-words`    | Initialize the signer with seed words (mnemonic phrase) |
 | `sign`               | Sign a one-sided transaction using stored keys |
+| `export-payload-key` | Export a payload key for the online wallet |
+| `retire-payload-key` | Stop accepting payloads signed with an exported payload key |
 | `status`             | Check if the signer has been initialized |
 | `clear`              | Clear all stored keys from the keystore |
 
@@ -120,6 +218,25 @@ minotari_offline_signer clear
 - `--output-file, -o`: Path where the signed transaction will be written
 - `--passphrase`: Passphrase to decrypt the keys (will prompt if not provided, can also be set via `TARI_PASSPHRASE` env var)
 - `--network, -n`: Network to use (mainnet, nextnet, esmeralda, localnet). Default: mainnet
+- `--require-payload-key`: Refuse any payload not signed with an accepted payload key (the default once a payload key
+  has been exported)
+- `--payload-key-index`: A payload key index to accept, in place of the exported ones; repeat for more. Implies
+  `--require-payload-key`
+- `--allow-view-key`: Accept payloads signed with the view key even after a payload key has been exported (once a
+  payload key has been exported, a retired or never-exported payload key is still refused)
+
+### `export-payload-key` Command
+
+- `--index`: The payload key index
+- `--output, -o`: Write the key to this new file (owner-only on Unix)
+- `--stdout`: Print the key instead (one of `--output` and `--stdout` is required). Only the key goes to stdout, so it
+  can be redirected into a file for `import-payload-key --file`; status lines go to stderr
+- `--passphrase`: Passphrase to decrypt the keys (can also be set via `TARI_PASSPHRASE` env var)
+
+### `retire-payload-key` Command
+
+- `--index`: The recorded payload key index to stop accepting
+- `--passphrase`: Passphrase to decrypt the keys (can also be set via `TARI_PASSPHRASE` env var)
 
 ## Security
 
@@ -146,7 +263,9 @@ This provides defense-in-depth: even if the OS keystore is compromised, the keys
 
 - **Key protection**: When initializing, avoid passing keys or seed words via command line arguments as they may be visible in shell history. Use the interactive prompt or environment variables instead.
 
-- **Verify before signing**: Always verify the transaction details before signing: every recipient address, every amount, every "Other outputs" entry, and the fee, total spend and change (a payload can keep a dust change while sending the rest to the miner as fee). Anyone holding the view key can produce a payload that passes the integrity check, and the change-output rule above only closes one known way of recovering the spend key, so the summary is the check that matters.
+- **Verify before signing**: Always verify the transaction details before signing: every recipient address, every amount, every "Other outputs" entry, and the fee, total spend and change (a payload can keep a dust change while sending the rest to the miner as fee). Unless the signer requires a payload key, anyone holding the view key can produce a payload that passes the integrity check, and the change-output rule above only closes one known way of recovering the spend key, so the summary is the check that matters.
+
+- **No log file**: The offline signer keeps no log. It reports a refused payload (expired, signed with the view key under strict mode, an index that is not accepted, or a failed integrity check) and every signing result on the terminal only. If you need an audit trail on the signing machine, record the terminal output yourself. The console wallet's signing commands do write these events to its `offline_signing` log.
 
 ## Building
 

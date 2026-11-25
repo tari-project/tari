@@ -28,7 +28,6 @@ pub mod auto_registry;
 pub mod cli_integration;
 pub mod config;
 pub mod connection_manager;
-pub mod conversion_registry_factory;
 pub mod error;
 pub mod executable_finder;
 pub mod grpc_client_implementations;
@@ -38,8 +37,7 @@ pub mod grpc_executor;
 pub mod health_checker;
 pub mod health_monitor;
 pub mod input_sanitizer;
-pub mod method_implementations;
-pub mod parameter_converter;
+pub mod node_rpc;
 pub mod process_launcher;
 pub mod process_manager;
 pub mod prompts;
@@ -55,6 +53,7 @@ pub mod tool_macros;
 pub mod tool_metadata;
 pub mod tools;
 pub mod transport;
+pub mod wallet_rpc;
 // pub mod protobuf_integration; // Disabled pending API compatibility fixes
 
 pub use auto_registry::{AutoDiscoveryConfig, AutoDiscoveryRegistry, RegistryStatistics, ServerType, ToolOverride};
@@ -75,12 +74,18 @@ pub use connection_manager::{
     ConnectionPoolConfig,
     ManagedConnection,
 };
-pub use conversion_registry_factory::ConversionRegistryFactory;
 pub use error::{McpError, McpResult};
 pub use executable_finder::{ExecutableFinder, TariExecutables};
 pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
 pub use grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery, base_node_methods, wallet_methods};
-pub use grpc_error_mapper::{ErrorCategory, ErrorContext, ErrorSeverity, GrpcErrorMapper};
+pub use grpc_error_mapper::{
+    ErrorCategory,
+    ErrorContext,
+    ErrorSeverity,
+    GrpcErrorMapper,
+    clean_upstream_text,
+    sanitize_upstream_message,
+};
 pub use grpc_executor::{ExecutorStatus, GrpcExecutor, NodeGrpcClient, WalletGrpcClient};
 pub use health_checker::{
     GrpcHealthChecker,
@@ -90,9 +95,7 @@ pub use health_checker::{
     HealthStatus as GrpcHealthStatus,
 };
 pub use health_monitor::{HealthCheckResult, HealthMonitor, HealthStatus, ServiceHealthMonitors};
-pub use input_sanitizer::{InputSanitizer, ValidationPatterns, sanitize_tool_input};
-pub use method_implementations::{register_node_converters, register_wallet_converters};
-pub use parameter_converter::{ConversionError, ConversionRegistry, JsonParameterExtractor, ParameterConverter};
+pub use input_sanitizer::{InputSanitizer, MAX_ENCODED_BLOCK_HEX_LEN, ValidationPatterns, sanitize_tool_input};
 pub use process_launcher::{
     HealthCheckConfig,
     LaunchConfig,
@@ -138,6 +141,7 @@ pub use tool_metadata::{
     ToolRiskLevel,
 };
 pub use tools::{
+    ArcToolWrapper,
     McpTool,
     ToolRegistry,
     get_optional_string_param,
