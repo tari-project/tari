@@ -1636,6 +1636,7 @@ where
                         challenge,
                         public_keys,
                         commitment: selected_utxo.commitment.clone(),
+                        output_hash: selected_utxo.hash,
                         sender_offset_pub_key: CompressedPublicKey::new_from_pk(sender_offset_pub_key),
                     };
 

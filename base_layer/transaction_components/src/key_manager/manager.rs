@@ -1751,7 +1751,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(CompressedCheckSigSchnorrSignature::new_from_schnorr(signature))
     }
 
-    fn sign_script_message_with_spend_key(
+    fn sign_script_message_with_spend_key_trusted(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,

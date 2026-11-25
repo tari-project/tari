@@ -409,7 +409,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 target: LOG_TARGET,
                 "Sync peer `{node_id}` was disconnected before RPC negotiation could begin"
             );
-            return Err(HorizonSyncError::RpcError(RpcError::ClientClosed));
+            return Err(HorizonSyncError::SyncPeerUnavailable(RpcError::ClientClosed));
         }
 
         let config = RpcClient::builder()
