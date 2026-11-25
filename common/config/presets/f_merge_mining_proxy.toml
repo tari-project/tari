@@ -23,7 +23,9 @@
 # (default: The 'monerod_url = [ # mainnet ...' list below)
 # SECURITY: the proxy builds Monero block templates from the monerod it talks to. A public or untrusted monerod can
 # return a template that pays the Monero block reward to someone else; run your own monerod if you can. Credentials
-# (monerod_username / monerod_password) sent to an http:// URL travel in cleartext; use https:// for remote nodes.
+# (monerod_username / monerod_password) sent to an http:// URL travel in cleartext. https:// only hides them from
+# passive observers, because certificates are not checked; they are only safe to a monerod on loopback, a private
+# network or a verified tunnel.
 
 #monerod_url = [# stagenet
 #    "http://stagenet.xmr-tw.org:38081",
