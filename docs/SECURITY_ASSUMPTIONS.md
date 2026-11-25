@@ -182,12 +182,13 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 
 - **Assumption:** The `monerod_url` entries, including the public defaults (many of them plain `http://`), are
   untrusted third parties. TLS to monerod deliberately skips certificate checks (PR #7060) so the proxy can fall back
-  to raw IP addresses. The Tari coinbase and reward come from the local base node over gRPC, never from monerod. The
-  listener (loopback by default) serves trusted miners; exposing it is the operator's choice.
+  to raw IP addresses. The Tari coinbase and reward come over gRPC from the operator-configured base node, or from the
+  p2pool node when `p2pool_enabled` is set (the proxy checks that its coinbase pays the configured wallet address),
+  never from monerod. The listener (loopback by default) serves trusted miners; exposing it is the operator's choice.
 - **What that means:** A monerod node can serve bad or stale templates or withhold responses, which costs
   merge-mining availability. The proxy moves on to another configured monerod when a request times out or fails, or
   when the response body is too large or not valid JSON; a monerod that returns error statuses or templates the proxy
-  rejects stays selected. Tari funds are not at risk, because the Tari coinbase and reward come from the base node.
+  rejects stays selected. Tari funds are not at risk, because monerod has no say in the Tari coinbase or reward.
   The Monero side is exposed: monerod builds the Monero block template, so an untrusted or on-path monerod can pay the
   Monero block reward to someone else, and it sees `monerod_username`/`monerod_password` when `monerod_use_auth` is
   set (in cleartext over `http://`, and over `https://` too because certificates are not checked). Operators who care
