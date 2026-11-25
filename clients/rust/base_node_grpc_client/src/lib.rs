@@ -151,14 +151,21 @@ pub fn endpoint(addr: &str, cfg: &GrpcClientConfig) -> Result<Endpoint, GrpcClie
     if let Some(timeout) = cfg.request_timeout {
         endpoint = endpoint.timeout(timeout);
     }
+    let is_https = endpoint.uri().scheme_str() == Some("https");
     let tls_config = match &cfg.tls {
+        // tonic only uses TLS for an https URI and would otherwise connect in plaintext without telling anyone.
+        Some(_) if !is_https => {
+            return Err(GrpcClientError::Tls(
+                "TLS is configured but the address uses http://; use https://".to_string(),
+            ));
+        },
         Some(tls) => Some(
             ClientTlsConfig::new()
                 .ca_certificate(Certificate::from_pem(&tls.ca_cert_pem))
                 .domain_name(&tls.domain_name),
         ),
         // Public-CA nodes; this crate enables tonic's `tls-native-roots`, so the root store is never empty.
-        None if endpoint.uri().scheme_str() == Some("https") => Some(ClientTlsConfig::new().with_enabled_roots()),
+        None if is_https => Some(ClientTlsConfig::new().with_enabled_roots()),
         None => None,
     };
     if let Some(tls_config) = tls_config {
@@ -188,9 +195,9 @@ fn warn_if_plaintext_remote(uri: &tonic::codegen::http::Uri) {
     if uri.scheme_str() == Some("http") && !is_loopback_host(host) {
         warn!(
             target: LOG_TARGET,
-            "Connecting to base node {host} over plaintext gRPC. Templates and blocks can be altered and any Basic \
-             credentials read by anyone on the network path. Set base_node_grpc_tls_domain_name and \
-             base_node_grpc_ca_cert_filename to use TLS."
+            "Connecting to {host} over plaintext gRPC. Templates and blocks can be altered and any Basic credentials \
+             read by anyone on the network path. Configure TLS (CA certificate and domain name) and use an https:// \
+             address."
         );
     }
 }
@@ -239,6 +246,21 @@ mod test {
     fn https_without_ca_uses_system_roots() {
         let endpoint = endpoint("https://10.0.0.1:18142", &GrpcClientConfig::default()).unwrap();
         assert_eq!(endpoint.uri().scheme_str(), Some("https"));
+    }
+
+    #[test]
+    fn tls_with_http_address_is_refused() {
+        let cfg = GrpcClientConfig {
+            tls: Some(GrpcTlsConfig {
+                ca_cert_pem: Vec::new(),
+                domain_name: "localhost".to_string(),
+            }),
+            ..Default::default()
+        };
+        for addr in ["http://10.0.0.1:18142", "http://127.0.0.1:18142"] {
+            let err = endpoint(addr, &cfg).unwrap_err();
+            assert!(matches!(err, GrpcClientError::Tls(_)), "{addr}: {err:?}");
+        }
     }
 
     struct ThreadLocalLogger;

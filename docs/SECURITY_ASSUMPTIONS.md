@@ -110,6 +110,23 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Where:** `applications/minotari_app_grpc`, `applications/minotari_node`, `applications/minotari_console_wallet`.
 - **Recorded:** 2026-11-17.
 
+### A-GRPC-02: The miner, merge-mining proxy and node MCP server trust the base node they connect to
+
+- **Assumption:** The base node a miner, merge-mining proxy or node MCP server connects to over gRPC is the operator's
+  own, and so is the network path to it unless TLS is configured. These clients do not re-verify the block templates
+  and blocks the node returns, including the coinbase and the merge-mining hash.
+- **What that means:** A node the operator does not control, or anyone on a plaintext network path, can redirect
+  mining rewards and read Basic credentials. Plaintext to a non-loopback host is allowed and logs a warning on each
+  connect; it is never refused. An `https://` address with no CA configured is verified against the system root
+  store, so any certificate authority the system trusts can vouch for the node.
+- **Not covered:** Sending credentials to a party they were not configured for: the merge-mining proxy's p2pool node
+  receives only the `p2pool_grpc_*` credentials and TLS settings, never the base node's. Connecting in plaintext when
+  TLS is configured. Unbounded memory from node responses (messages are capped at 8 MiB by default). Blocks returned
+  by a p2pool node, which are still checked for the configured coinbase address.
+- **Where:** `clients/rust/base_node_grpc_client`, `applications/minotari_miner`,
+  `applications/minotari_merge_mining_proxy`, `applications/minotari_mcp_node`, `applications/minotari_app_utilities`.
+- **Recorded:** 2026-11-25, in the pull request that added the base node gRPC client constructor.
+
 ### A-HTTP-01: The base node wallet query HTTP service is a public, unauthenticated service
 
 - **Assumption:** The base node's wallet query HTTP service exists so that wallets can query a base node over the
@@ -149,7 +166,8 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   unconfirmed attempts can also use up the budget. The budget is held in memory and a server restart resets it. It
   only limits calls made through the MCP server: an agent or process that can reach the wallet's gRPC interface
   directly (the MCP server does not yet authenticate to it, so it must be left open to local clients; see A-GRPC-01),
-  or that can restart the MCP server, can bypass or reset it.
+  or that can restart the MCP server, can bypass or reset it. The node MCP server, unlike the wallet one, can
+  authenticate to its base node (Basic credentials from the environment or a password file, and TLS); see A-GRPC-02.
 - **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
   not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
   configured spend budget or paying more than the fee ceiling through the MCP server, and making the server use

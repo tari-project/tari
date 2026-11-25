@@ -220,7 +220,8 @@ impl NodeMcpServer {
         let port = CliIntegrationUtils::extract_port_from_address(&config.node_grpc.address).unwrap_or(18142);
 
         // Check if already running using proper health monitor
-        let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address);
+        let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address)
+            .with_grpc_endpoint(endpoint(&config.node_grpc_url(), &config.grpc_client_config()?)?);
         if health_monitor.is_service_ready().await {
             log::info!("Base node already running and healthy on port {port}");
             return Ok(None); // No process launched by us

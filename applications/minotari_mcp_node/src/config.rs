@@ -139,6 +139,12 @@ impl NodeMcpConfig {
             ));
         }
 
+        if self.node_grpc.tls_domain_name.is_some() && self.node_grpc.address.starts_with("http://") {
+            return Err(McpError::config_error(
+                "Node gRPC TLS is configured but the address uses http://; use https://",
+            ));
+        }
+
         Ok(())
     }
 
@@ -313,6 +319,19 @@ mod test {
     #[test]
     fn tls_domain_requires_ca_cert() {
         let cli = cli(&["--node-grpc-tls-domain-name", "localhost"]);
+        assert!(NodeMcpConfig::load_with_env(&cli, |_| None).is_err());
+    }
+
+    #[test]
+    fn tls_with_explicit_http_address_is_an_error() {
+        let cli = cli(&[
+            "--node-grpc-address",
+            "http://10.0.0.1:18142",
+            "--node-grpc-tls-domain-name",
+            "localhost",
+            "--node-grpc-ca-cert",
+            "/tmp/node_ca.pem",
+        ]);
         assert!(NodeMcpConfig::load_with_env(&cli, |_| None).is_err());
     }
 
