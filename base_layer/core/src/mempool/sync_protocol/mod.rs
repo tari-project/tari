@@ -105,6 +105,7 @@ use crate::mempool::metrics;
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     chain_storage::BlockAddResult,
+    common::inbound_backpressure::PendingByPeer,
     mempool::{Mempool, MempoolServiceConfig, proto, unconfirmed_pool::MAX_BLOCK_TEMPLATE_BODY_BYTES},
     proto as shared_proto,
 };
@@ -170,6 +171,15 @@ const PROTOCOL_TIMEOUT: Duration = Duration::from_secs(300);
 const TASK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
+/// Responder exchanges one peer may run with us at once. An honest peer initiates one at a time.
+const MAX_INBOUND_SYNCS_PER_PEER: usize = 1;
+/// A backstop on responder exchanges from all peers together.
+const MAX_INBOUND_SYNCS_TOTAL: usize = 16;
+
+/// Frames a peer may stream to us in one transaction stream once we have received our own
+/// `initial_sync_max_transactions` and are discarding the rest undecoded.
+const MAX_STREAM_FRAMES: usize = shared_proto::MESSAGE_MAX_DECODE_ITEMS;
+
 /// Report the outcome of a bounded `close()`. Closing is always best effort — the exchange is over
 /// either way — but the reason is worth keeping, including the inner IO error.
 fn log_close_outcome(result: Result<Result<(), std::io::Error>, time::error::Elapsed>) {
@@ -208,6 +218,7 @@ pub struct MempoolSyncProtocol<TSubstream> {
     mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
+    inbound_syncs: PendingByPeer,
     connectivity: ConnectivityRequester,
     block_event_stream: BlockEventReceiver,
     shutdown_signal: ShutdownSignal,
@@ -235,6 +246,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
+            inbound_syncs: PendingByPeer::new(
+                MAX_INBOUND_SYNCS_PER_PEER,
+                MAX_INBOUND_SYNCS_TOTAL,
+                "mempool sync",
+                LOG_TARGET,
+            ),
             connectivity,
             block_event_stream,
             shutdown_signal,
@@ -491,9 +508,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
     }
 
     fn spawn_inbound_handler(&mut self, node_id: NodeId, substream: TSubstream) {
+        // Over the limit, dropping the substream closes it; `try_accept` logs the drop
+        let Some(guard) = self.inbound_syncs.try_accept(&node_id) else {
+            return;
+        };
         let mempool = self.mempool.clone();
         let config = self.config.clone();
         self.tasks.spawn(async move {
+            // Released when the task finishes, however it finishes
+            let _guard = guard;
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
             let mut protocol = MempoolPeerProtocol::new(config, framed, MAX_FRAME_SIZE, node_id.clone(), mempool);
             // Aggregate deadline, as for the initiator: a responder holds no permit, but an
@@ -581,10 +604,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let transactions = self.mempool.snapshot().await?;
+        let mut transactions = self.mempool.snapshot().await?;
+        // Only the advertised transactions may be requested
+        transactions.truncate(self.config.initial_sync_max_transactions);
         let items = transactions
             .iter()
-            .take(self.config.initial_sync_max_transactions)
             .filter_map(|txn| txn.first_kernel_excess_sig())
             .map(|excess| excess.get_signature().to_vec())
             .collect();
@@ -616,6 +640,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             return Err(MempoolProtocolError::TooManyInventoryIndexes {
                 peer: self.peer_node_id.clone(),
                 count: missing_items.indexes.len(),
+                max: num_inventory_items,
+            });
+        }
+        if let Some(&index) = missing_items
+            .indexes
+            .iter()
+            .find(|idx| **idx as usize >= num_inventory_items)
+        {
+            return Err(MempoolProtocolError::InventoryIndexOutOfRange {
+                peer: self.peer_node_id.clone(),
+                index,
                 max: num_inventory_items,
             });
         }
@@ -678,7 +713,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let inventory: proto::TransactionInventory = self.read_message(shared_proto::MESSAGE_MAX_DECODE_ITEMS).await?;
+        let mut inventory: proto::TransactionInventory =
+            self.read_message(shared_proto::MESSAGE_MAX_DECODE_ITEMS).await?;
 
         debug!(
             target: LOG_TARGET,
@@ -686,6 +722,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str(),
             inventory.items.len()
         );
+        // A peer configured for more may send a longer inventory; we only take up to our own limit of its transactions
+        inventory.items.truncate(self.config.initial_sync_max_transactions);
 
         // Every item is a kernel excess signature scalar. Reject anything else up front rather than
         // carrying it through the lookup below where it could never match.
@@ -779,8 +817,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
     async fn read_and_insert_transactions_until_complete(&mut self) -> Result<(), MempoolProtocolError> {
         let mut num_recv = 0usize;
-        // The sender caps what it will send (`.take(initial_sync_max_transactions)`); the receiver
-        // enforces the same limit, so a peer cannot keep the exchange alive by streaming forever.
+        let mut num_frames = 0usize;
+        // A peer configured for more than our `initial_sync_max_transactions` may send more. Past our limit the rest
+        // are discarded undecoded, and `MAX_STREAM_FRAMES` keeps a peer from streaming forever.
         let max_recv = self.config.initial_sync_max_transactions;
         // Bounded per item: an unbounded read here parks forever against a peer that neither sends
         // the terminator nor closes the substream — which pins this node's mempool, and with it the
@@ -790,17 +829,32 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
         {
             let bytes = result?;
+            num_frames = num_frames.saturating_add(1);
+            if num_recv >= max_recv {
+                // The terminator, an empty `TransactionItem`, encodes to an empty frame
+                if bytes.is_empty() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Received {} transaction(s) from peer `{}` and discarded {} over our limit",
+                        num_recv,
+                        self.peer_node_id.short_str(),
+                        num_frames.saturating_sub(num_recv).saturating_sub(1)
+                    );
+                    break;
+                }
+                if num_frames > MAX_STREAM_FRAMES {
+                    return Err(MempoolProtocolError::TooManyTransactions {
+                        peer: self.peer_node_id.clone(),
+                        max: MAX_STREAM_FRAMES,
+                    });
+                }
+                continue;
+            }
             let item: proto::TransactionItem =
                 decode_frame(bytes, shared_proto::MESSAGE_MAX_DECODE_ITEMS, &self.peer_node_id)?;
 
             match item.transaction {
                 Some(txn) => {
-                    if num_recv >= max_recv {
-                        return Err(MempoolProtocolError::TooManyTransactions {
-                            peer: self.peer_node_id.clone(),
-                            max: max_recv,
-                        });
-                    }
                     self.validate_and_insert_transaction(txn).await?;
                     num_recv = num_recv.saturating_add(1);
                 },

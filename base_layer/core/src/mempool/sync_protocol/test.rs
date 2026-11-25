@@ -73,6 +73,8 @@ use crate::{
         sync_protocol::{
             INVENTORY_INDEXES_MAX_DECODE_ITEMS,
             MAX_FRAME_SIZE,
+            MAX_INBOUND_SYNCS_TOTAL,
+            MAX_STREAM_FRAMES,
             MEMPOOL_SYNC_PROTOCOL,
             MempoolPeerProtocol,
             MempoolProtocolError,
@@ -489,14 +491,11 @@ impl<T: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for StallingClose<T
     }
 }
 
-/// A peer that keeps streaming transactions past the limit both sides agreed on must be cut off.
-///
-/// The per-frame deadline cannot do this on its own: it restarts for every frame, so a peer that
-/// trickles items — even slowly, as here — holds the exchange, and with it the single initiator
-/// permit, open indefinitely. The sender already caps what it will send; this asserts the receiver
-/// enforces the same cap. Time is paused, so the 100s between items costs nothing to run.
-#[tokio::test(start_paused = true)]
-async fn initiator_cuts_off_a_peer_that_streams_past_the_agreed_limit() {
+/// Past our own `initial_sync_max_transactions`, further frames are discarded without being decoded, but a peer that
+/// never sends the terminator is still cut off after `MAX_STREAM_FRAMES`. The per-frame deadline cannot do this on its
+/// own: it restarts for every frame.
+#[tokio::test]
+async fn initiator_cuts_off_a_peer_that_streams_past_the_frame_ceiling() {
     let (mempool, _transactions) = new_mempool_with_transactions(0).await;
     let peer_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
@@ -515,26 +514,29 @@ async fn initiator_cuts_off_a_peer_that_streams_past_the_agreed_limit() {
     });
 
     let _inventory: proto::TransactionInventory = read_message(&mut peer).await;
-
-    // Trickle transactions, never sending the terminator. The gap is under the per-frame deadline,
-    // so only the item cap can stop this.
-    let transactions = create_transactions(3);
-    for txn in &transactions {
-        tokio::time::sleep(Duration::from_secs(100)).await;
-        let item = proto::TransactionItem {
-            transaction: Some(txn.clone().try_into().unwrap()),
-        };
-        write_message(&mut peer, item).await;
+    for txn in &create_transactions(2) {
+        write_message(&mut peer, transaction_item(txn)).await;
     }
+    // Not a valid `TransactionItem`, so the initiator only gets past it by not decoding it. With the two transactions
+    // above this is one frame over the ceiling.
+    for _ in 2..=MAX_STREAM_FRAMES {
+        peer.feed(Bytes::from_static(&[0])).await.unwrap();
+    }
+    peer.flush().await.unwrap();
 
-    let result = tokio::time::timeout(Duration::from_secs(3600), initiator)
+    let result = tokio::time::timeout(Duration::from_secs(60), initiator)
         .await
-        .expect("initiator never returned — a trickling peer is unbounded again")
+        .expect("initiator never returned")
         .unwrap();
-
     assert!(
-        matches!(result, Err(MempoolProtocolError::TooManyTransactions { max: 2, .. })),
-        "expected the item cap to fire, got {result:?}"
+        matches!(
+            result,
+            Err(MempoolProtocolError::TooManyTransactions {
+                max: MAX_STREAM_FRAMES,
+                ..
+            })
+        ),
+        "expected the frame ceiling to fire, got {result:?}"
     );
 }
 
@@ -633,15 +635,7 @@ async fn park_responder_awaiting_transactions(
     protocol_notif: &ProtocolNotificationTx<MemorySocket>,
     peer: &tari_comms::NodeIdentity,
 ) -> CanonicalFraming<MemorySocket> {
-    let (sock_in, sock_out) = MemorySocket::new_pair();
-    protocol_notif
-        .send(ProtocolNotification::new(
-            MEMPOOL_SYNC_PROTOCOL.clone(),
-            ProtocolEvent::NewInboundSubstream(peer.node_id().clone(), sock_in),
-        ))
-        .await
-        .unwrap();
-    let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let mut framed = open_inbound_substream(protocol_notif, peer).await;
 
     let unknown = create_transactions(1);
     let inventory = proto::TransactionInventory {
@@ -663,6 +657,36 @@ async fn park_responder_awaiting_transactions(
     let indexes: proto::InventoryIndexes = read_message(&mut framed).await;
     assert_eq!(indexes.indexes, vec![0]);
     framed
+}
+
+/// Hands the protocol a new inbound substream from `peer` and returns our end of it
+async fn open_inbound_substream(
+    protocol_notif: &ProtocolNotificationTx<MemorySocket>,
+    peer: &tari_comms::NodeIdentity,
+) -> CanonicalFraming<MemorySocket> {
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    protocol_notif
+        .send(ProtocolNotification::new(
+            MEMPOOL_SYNC_PROTOCOL.clone(),
+            ProtocolEvent::NewInboundSubstream(peer.node_id().clone(), sock_in),
+        ))
+        .await
+        .unwrap();
+    framing::canonical(sock_out, MAX_FRAME_SIZE)
+}
+
+/// Asserts the protocol closed this substream without answering. A responder that ran would answer the inventory with
+/// at least the terminator.
+async fn assert_closed_unanswered(framed: &mut CanonicalFraming<MemorySocket>) {
+    // Sending may fail once the substream is already closed
+    framed
+        .send(proto::TransactionInventory::default().to_encoded_bytes().into())
+        .await
+        .ok();
+    let next = tokio::time::timeout(Duration::from_secs(5), framed.next())
+        .await
+        .expect("the substream was left open");
+    assert!(next.is_none(), "expected the substream to be closed, got {next:?}");
 }
 
 /// Trickle items just inside the per-frame deadline until our end of the substream is closed,
@@ -821,6 +845,38 @@ async fn a_second_initiator_declines_instead_of_queueing_for_the_permit() {
         !matches!(opened, Ok(Some(_))),
         "second initiator opened a substream once the permit was released; it queued instead of declining"
     );
+}
+
+/// A peer gets one responder exchange at a time: a second concurrent substream is closed, and the first still completes
+#[tokio::test]
+async fn a_second_concurrent_responder_from_the_same_peer_is_closed() {
+    let (protocol_notif, _, mempool, _transactions, _shutdown) = setup(1).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let mut first = park_responder_awaiting_transactions(&protocol_notif, &peer).await;
+
+    let mut second = open_inbound_substream(&protocol_notif, &peer).await;
+    assert_closed_unanswered(&mut second).await;
+
+    let txn = create_transactions(1).remove(0);
+    write_message(&mut first, transaction_item(&txn)).await;
+    write_message(&mut first, proto::TransactionItem::empty()).await;
+    assert!(first.next().await.is_none());
+    assert!(get_snapshot(&mempool).await.contains(&txn));
+}
+
+/// Responder exchanges from all peers together are capped
+#[tokio::test]
+async fn a_responder_over_the_total_limit_is_closed() {
+    let (protocol_notif, _, _, _transactions, _shutdown) = setup(1).await;
+    let mut parked = Vec::new();
+    for _ in 0..MAX_INBOUND_SYNCS_TOTAL {
+        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        parked.push(park_responder_awaiting_transactions(&protocol_notif, &peer).await);
+    }
+
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let mut over_limit = open_inbound_substream(&protocol_notif, &peer).await;
+    assert_closed_unanswered(&mut over_limit).await;
 }
 
 fn excess_sig_bytes(txn: &Transaction) -> Vec<u8> {
@@ -1143,6 +1199,20 @@ async fn the_initiator_sends_each_requested_transaction_once() {
     assert_eq!(sent.len(), 1);
 }
 
+/// An index past the advertised inventory is rejected, and nothing is sent
+#[tokio::test]
+async fn the_initiator_rejects_an_index_it_did_not_advertise() {
+    let (result, sent) = initiator_answering_indexes(2, vec![2]).await;
+    assert!(
+        matches!(
+            result,
+            Err(MempoolProtocolError::InventoryIndexOutOfRange { index: 2, max: 2, .. })
+        ),
+        "unexpected result: {result:?}"
+    );
+    assert!(sent.is_empty());
+}
+
 /// A reply asking for more indexes than inventory items were sent is rejected, and nothing is sent
 #[tokio::test]
 async fn the_initiator_rejects_more_indexes_than_it_sent_items() {
@@ -1229,18 +1299,32 @@ fn transaction_encoding_larger_than(size: usize) -> Transaction {
 
 /// Runs a full exchange between two mempools whose substream and protocol both use `max_frame_size`
 async fn sync_with_frame_size(initiator: Mempool, responder: Mempool, max_frame_size: usize) {
+    sync_with_configs(
+        (initiator, Default::default()),
+        (responder, Default::default()),
+        max_frame_size,
+    )
+    .await;
+}
+
+/// Runs a full exchange between two mempools, each with its own config
+async fn sync_with_configs(
+    (initiator, initiator_config): (Mempool, MempoolServiceConfig),
+    (responder, responder_config): (Mempool, MempoolServiceConfig),
+    max_frame_size: usize,
+) {
     let initiator_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let responder_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (sock_in, sock_out) = MemorySocket::new_pair();
     let mut responder = MempoolPeerProtocol::new(
-        Default::default(),
+        responder_config,
         framing::canonical(sock_in, max_frame_size),
         max_frame_size,
         initiator_node.node_id().clone(),
         responder,
     );
     let initiator = MempoolPeerProtocol::new(
-        Default::default(),
+        initiator_config,
         framing::canonical(sock_out, max_frame_size),
         max_frame_size,
         responder_node.node_id().clone(),
@@ -1274,6 +1358,33 @@ async fn a_transaction_over_the_frame_limit_is_skipped_and_the_sync_completes() 
         let in_a = get_snapshot(&mempool_a).await;
         assert_eq!(in_a.len(), 5, "a_initiates: {a_initiates}");
         assert!(normal_b.iter().all(|tx| in_a.contains(tx)));
+    }
+}
+
+/// A peer configured for twice our `initial_sync_max_transactions` still syncs with us, whichever side initiates: we
+/// ask for only our limit of its inventory as the responder, discard the rest of its stream as the initiator, and take
+/// in at most our limit either way
+#[tokio::test]
+async fn a_peer_configured_for_more_transactions_still_syncs() {
+    const OUR_MAX: usize = 2;
+    let config = |initial_sync_max_transactions| MempoolServiceConfig {
+        initial_sync_max_transactions,
+        ..Default::default()
+    };
+    for we_initiate in [true, false] {
+        let (ours, _) = new_mempool_with_transactions(0).await;
+        let (theirs, their_txns) = new_mempool_with_transactions(2 * OUR_MAX).await;
+        let us = (ours.clone(), config(OUR_MAX));
+        let them = (theirs, config(2 * OUR_MAX));
+        if we_initiate {
+            sync_with_configs(us, them, MAX_FRAME_SIZE).await;
+        } else {
+            sync_with_configs(them, us, MAX_FRAME_SIZE).await;
+        }
+
+        let in_ours = get_snapshot(&ours).await;
+        assert_eq!(in_ours.len(), OUR_MAX, "we_initiate: {we_initiate}");
+        assert!(in_ours.iter().all(|tx| their_txns.contains(tx)));
     }
 }
 
