@@ -1029,7 +1029,10 @@ mod sync_headers {
         for name in &fork_names {
             db.add_block(fork.get(name).unwrap().to_arc_block()).unwrap();
         }
-        assert_eq!(db.fetch_block(200, true).unwrap().hash(), fork.get("G200").unwrap().hash());
+        assert_eq!(
+            db.fetch_block(200, true).unwrap().hash(),
+            fork.get("G200").unwrap().hash()
+        );
 
         let mut responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
         let err = responses.pop().unwrap().unwrap_err();
@@ -1040,7 +1043,7 @@ mod sync_headers {
     #[tokio::test]
     async fn it_sends_conflict_when_headers_are_rewound_mid_stream() {
         let (service, db, rpc_request_mock) = setup();
-        let _ = create_chain_longer_than_two_header_chunks(&db);
+        let (_names, _chain) = create_chain_longer_than_two_header_chunks(&db);
         let genesis = db.fetch_header(0).unwrap().unwrap();
 
         let msg = SyncHeadersRequest {
