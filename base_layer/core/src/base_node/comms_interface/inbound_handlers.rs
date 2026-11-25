@@ -83,7 +83,7 @@ use crate::{
         inputs_and_outputs_match_header,
     },
     consensus::BaseNodeConsensusManager,
-    mempool::{Mempool, MempoolLastSeen},
+    mempool::{Mempool, MempoolLastSeen, select_disjoint_kernel_cover},
     proof_of_work::{
         AdjustedTarget,
         cuckaroo_pow::{check_cuckaroo_pow_data, cuckaroo_difficulty},
@@ -727,9 +727,21 @@ where B: BlockchainBackend + 'static
                 let vn = self.blockchain_db.get_validator_node(sidechain_id, public_key).await?;
                 Ok(NodeCommsResponse::GetValidatorNode(vn))
             },
-            NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
-                let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
-                Ok(NodeCommsResponse::TransactionOutputs(utxos))
+            NodeCommsRequest::FetchOutputsInBlockAndHeaderPair {
+                block_hash,
+                first_height,
+                second_height,
+            } => {
+                let (outputs, first_header, second_header, best_block_height) = self
+                    .blockchain_db
+                    .fetch_outputs_in_block_and_header_pair(block_hash, first_height, second_height)
+                    .await?;
+                Ok(NodeCommsResponse::OutputsInBlockAndHeaderPair {
+                    outputs,
+                    first_header: Box::new(first_header),
+                    second_header: Box::new(second_header),
+                    best_block_height,
+                })
             },
             NodeCommsRequest::FetchMinedInfoByPayRef(payref) => {
                 let output_info = self.blockchain_db.fetch_mined_info_by_payref(payref).await?;
@@ -981,8 +993,9 @@ where B: BlockchainBackend + 'static
     /// validators, which run against the block's real, linked height.
     ///
     /// Being stricter here does reject announcements, and bans for them: `verify_header_at_rules_height` returns
-    /// `Err` when the announcement does not satisfy the selected rules - on the `pow_data` wire format, and on
-    /// the depth 0 `aux_chain_merkle_proof` rule - and both of those are a long ban. The rules the max picks are
+    /// `Err` when the announcement does not satisfy the selected rules - on the `pow_data` wire format, on the
+    /// depth 0 `aux_chain_merkle_proof` rule, and on strict merge mining parameter decoding - and all three of
+    /// those are a long ban. The rules the max picks are
     /// only ever the *newer* ones, so the announcements this costs are exactly those written under the pre-fork
     /// rules and announced to a node whose own chain has already passed the fork. A block like that cannot
     /// become our tip by being announced anyway; if it is genuinely part of a better chain, that chain arrives
@@ -1236,7 +1249,7 @@ where B: BlockchainBackend + 'static
                 not_found,
             } = self
                 .outbound_nci
-                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs)
+                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs.clone())
                 .await?;
 
             // Only keep transactions that we actually asked for. Anything else is dropped before it reaches the mempool
@@ -1277,6 +1290,9 @@ where B: BlockchainBackend + 'static
                 return Ok(block);
             }
 
+            // Overlapping transactions would duplicate kernels in the block. A signature this leaves uncovered fails
+            // the MMR root check below, which falls back to the full block.
+            let (transactions, _) = select_disjoint_kernel_cover(transactions, vec![], &missing_excess_sigs);
             builder = builder.with_transactions(
                 transactions
                     .into_iter()
@@ -2825,6 +2841,36 @@ mod test {
                 .unwrap(),
             NodeCommsResponse::InputMinedInfo(None)
         ));
+
+        let b1 = chain.get_block_and_smt_by_name("1").unwrap();
+        let b2 = chain.get_block_and_smt_by_name("2").unwrap();
+        let b1_hash = b1.block().hash();
+        let b2_hash = b2.block().hash();
+        match handlers
+            .handle_request(NodeCommsRequest::FetchOutputsInBlockAndHeaderPair {
+                block_hash: b1_hash,
+                first_height: b1.block().header.height,
+                second_height: b2.block().header.height,
+            })
+            .await
+            .unwrap()
+        {
+            NodeCommsResponse::OutputsInBlockAndHeaderPair {
+                outputs,
+                first_header,
+                second_header,
+                best_block_height,
+            } => {
+                assert_eq!(outputs.len(), b1.block().body.outputs().len());
+                for expected in b1.block().body.outputs() {
+                    assert!(outputs.contains(expected));
+                }
+                assert_eq!(first_header.unwrap().hash(), b1_hash);
+                assert_eq!(second_header.unwrap().hash(), b2_hash);
+                assert!(best_block_height >= b2.block().header.height);
+            },
+            other => panic!("Unexpected response: {other}"),
+        }
     }
 
     /// A header on `prev` mined with `algo` whose target difficulty is `target`

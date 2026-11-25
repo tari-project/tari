@@ -25,6 +25,7 @@ use crate::{
             BaseNodeWalletService,
             HeightAtTimeError,
             MAX_ALLOWED_QUERY_SIZE,
+            classify_spent_rejection,
             height_at_time,
             sync_utxos_by_block_task::SyncUtxosByBlockTask,
         },
@@ -191,6 +192,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredValidatorNodeSlotTaken |
+            TxStorageResponse::NotStoredMempoolPolicy(_) |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored as i32,
                 best_block_hash: vec![],
@@ -254,6 +256,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 rejection_reason: TxSubmissionRejectionReason::TimeLocked.into(),
                 is_synced,
             },
+            TxStorageResponse::NotStoredMempoolPolicy(_) => TxSubmissionResponse {
+                accepted: false,
+                rejection_reason: TxSubmissionRejectionReason::MempoolPolicy.into(),
+                is_synced,
+            },
             TxStorageResponse::NotStoredConsensus(_) | TxStorageResponse::NotStored(_) => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::ValidationFailed.into(),
@@ -262,34 +269,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             TxStorageResponse::NotStoredAlreadySpent |
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredAlreadyMined => {
-                // Is this transaction a double spend or has this transaction been mined?
-                match transaction.first_kernel_excess_sig() {
-                    None => TxSubmissionResponse {
-                        accepted: false,
-                        rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
-                        is_synced,
-                    },
-                    Some(s) => {
-                        // Check to see if the kernel exists in the blockchain db in which case this exact transaction
-                        // already exists in the chain, otherwise it is a double spend
-                        let db = self.db();
-                        match db
-                            .fetch_kernel_by_excess_sig(s.clone())
-                            .await
-                            .rpc_status_internal_error(LOG_TARGET)?
-                        {
-                            None => TxSubmissionResponse {
-                                accepted: false,
-                                rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
-                                is_synced,
-                            },
-                            Some(_) => TxSubmissionResponse {
-                                accepted: false,
-                                rejection_reason: TxSubmissionRejectionReason::AlreadyMined.into(),
-                                is_synced,
-                            },
-                        }
-                    },
+                let reason = classify_spent_rejection(&self.db, transaction.first_kernel_excess_sig())
+                    .await
+                    .rpc_status_internal_error(LOG_TARGET)?;
+                TxSubmissionResponse {
+                    accepted: false,
+                    rejection_reason: match reason {
+                        tari_transaction_components::rpc::models::TxSubmissionRejectionReason::AlreadyMined => {
+                            TxSubmissionRejectionReason::AlreadyMined
+                        },
+                        _ => TxSubmissionRejectionReason::DoubleSpend,
+                    }
+                    .into(),
+                    is_synced,
                 }
             },
         };

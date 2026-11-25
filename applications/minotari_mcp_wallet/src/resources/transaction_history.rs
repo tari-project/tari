@@ -69,21 +69,30 @@ impl McpResource for TransactionHistoryResource {
                 offset: Some(0),
             })
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get completed transactions: {e}")))?;
+            .map_err(|e| McpError::resource_access_failed(format!(
+                "Failed to get completed transactions: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            )))?;
 
         // Get pending transactions
         let pending_response = client
             .get_pending_inbound_transactions(grpc::GetPendingInboundTransactionsRequest {})
             .await
             .map_err(|e| {
-                McpError::resource_access_failed(format!("Failed to get pending inbound transactions: {e}"))
+                McpError::resource_access_failed(format!(
+                "Failed to get pending inbound transactions: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
             })?;
 
         let outbound_pending_response = client
             .get_pending_outbound_transactions(grpc::GetPendingOutboundTransactionsRequest {})
             .await
             .map_err(|e| {
-                McpError::resource_access_failed(format!("Failed to get pending outbound transactions: {e}"))
+                McpError::resource_access_failed(format!(
+                "Failed to get pending outbound transactions: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
             })?;
 
         let completed_txs = completed_response.into_inner().transactions;

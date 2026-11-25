@@ -27,7 +27,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
-use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
+use tari_node_components::blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate};
 use tari_service_framework::{Service, reply_channel::SenderService};
 use tari_transaction_components::{
     tari_proof_of_work::PowAlgorithm,
@@ -352,17 +352,29 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Fetches UTXOs that are not spent for the given block hash up to the current chain tip.
-    pub async fn fetch_unspent_utxos_in_block(
+    /// Fetches all outputs in `block_hash` together with the main-chain headers at `first_height` and `second_height`
+    /// and the current `best_block_height` under a single database read lock.
+    pub async fn fetch_outputs_in_block_and_header_pair(
         &mut self,
         block_hash: BlockHash,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        first_height: u64,
+        second_height: u64,
+    ) -> Result<(Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>, u64), CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash })
+            .call(NodeCommsRequest::FetchOutputsInBlockAndHeaderPair {
+                block_hash,
+                first_height,
+                second_height,
+            })
             .await??
         {
-            NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
+            NodeCommsResponse::OutputsInBlockAndHeaderPair {
+                outputs,
+                first_header,
+                second_header,
+                best_block_height,
+            } => Ok((outputs, *first_header, *second_header, best_block_height)),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

@@ -127,6 +127,7 @@ where
                             .revalidate_rejected_transactions()
                             .await;
                     }
+                    self.num_retries = 0;
                     self.finalize(sync_result).await?;
 
                     return Ok(());
@@ -140,11 +141,17 @@ where
                         target: LOG_TARGET,
                         "Failed to scan UTXO's from base node: {e}"
                     );
+                    // `num_retries` counts consecutive failed attempts in this round, starting at 1 for the first
+                    self.num_retries = self.num_retries.saturating_add(1);
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                         num_retries: self.num_retries,
                         retry_limit: self.retry_limit,
                         error: e.to_string(),
                     });
+                    // Give up on this round; the service's next `scanning_interval` tick starts a fresh one
+                    if self.num_retries >= self.retry_limit {
+                        return Err(e);
+                    }
                     // Wait a bit of time otherwise we spam the node with requests, but do not hold the shutdown drain
                     // for it
                     tokio::select! {
@@ -210,19 +217,10 @@ where
         wallet_service_client: &TWalletClientFactory::Client,
     ) -> Result<ScannedBlock, anyhow::Error> {
         if let Some(last_scanned_block) = last_scanned_block {
-            let mut height = last_scanned_block.height;
-            let mut next_header;
-            // Keep going backwards until we find a header that is known to the base node
-            loop {
-                next_header = wallet_service_client
-                    .get_header_by_height(height.saturating_add(1))
-                    .await?;
-                if next_header.is_some() {
-                    break;
-                }
-                height = height.saturating_sub(1);
-            }
-            let next_header = next_header.expect("we check this above");
+            let next_header = find_next_header_to_scan(last_scanned_block.height, |h| {
+                wallet_service_client.get_header_by_height(h)
+            })
+            .await?;
             let next_header_hash = next_header.hash;
 
             Ok(ScannedBlock {
@@ -506,37 +504,16 @@ where
                         stopped_by_shutdown = true;
                         break 'pages;
                     }
-                    if let Some(previous_block) = &prev_scanned_block {
-                        if response.height < previous_block.height {
-                            // We do not accept blocks that go backwards in height - fork block re-validation forced.
-                            return Err(anyhow!(
-                                "Non-monotonic block heights received during UTXO scan: {} followed by {}",
-                                previous_block.height,
-                                response.height
-                            ));
-                        }
-                        if response.height > previous_block.height.saturating_add(1) {
-                            // Missing block(s) detected between previous_block and response height - fork block
-                            // re-validation forced.
-                            return Err(anyhow!(
-                                "Non-consecutive block heights received during UTXO scan: {} followed by {}",
-                                previous_block.height,
-                                response.height
-                            ));
-                        }
-                        if response.height == previous_block.height &&
-                            response.header_hash != previous_block.header_hash.to_vec()
-                        {
-                            // Conflicting block detected for the same height - fork block re-validation forced.
-                            return Err(anyhow!(
-                                "Conflicting blocks for same height {} during UTXO scan: response {} vs expected {}",
-                                response.height,
-                                BlockHash::try_from(response.header_hash).unwrap_or_default(),
-                                previous_block.header_hash,
-                            ));
-                        }
+                    // A block with more outputs than the base node's chunk size arrives as consecutive entries with
+                    // the same height and hash; every chunk must be searched, but the block is only counted once
+                    if validate_next_block_sequence(
+                        prev_scanned_block.as_ref(),
+                        response.height,
+                        &response.header_hash,
+                    )? == BlockSequence::NewBlock
+                    {
+                        blocks_scanned = blocks_scanned.saturating_add(1);
                     }
-                    blocks_scanned = blocks_scanned.saturating_add(1);
                     let current_height = response.height;
                     let current_header_hash = response.header_hash;
                     let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
@@ -610,13 +587,14 @@ where
                         if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                             debug!(
                                 target: LOG_TARGET,
-                                "Scanned up to block {current_height} with a current tip_height of {tip_height}"
+                                "Scanned up to block {} with a current tip_height of {tip_height}",
+                                scanned_block.height
                             );
 
                             let latency = client.get_last_request_latency().await.unwrap_or_default();
                             let node = client.get_address().await;
                             self.publish_event(UtxoScannerEvent::Progress {
-                                current_height,
+                                current_height: scanned_block.height,
                                 tip_height,
                                 current_node: node,
                                 latency,
@@ -633,12 +611,12 @@ where
             }
             // We need to update the last one
             if let Some(scanned_block) = prev_scanned_block.clone() {
+                if last_saved_hash != Some(scanned_block.header_hash) {
+                    self.resources.db.save_scanned_block(scanned_block.clone())?;
+                }
                 self.resources
                     .db
                     .apply_sparse_scanned_blocks_schedule(scanned_block.height)?;
-                if last_saved_hash != Some(scanned_block.header_hash) {
-                    self.resources.db.save_scanned_block(scanned_block)?;
-                }
             }
 
             if stopped_by_shutdown {
@@ -973,6 +951,89 @@ fn is_birthday_in_the_future(birthday: u16, now: u64) -> bool {
     get_birthday_from_unix_epoch_in_seconds(birthday, 0) > now
 }
 
+/// The most header requests made when looking for the next block to scan after the last scanned block
+pub(crate) const MAX_BACKTRACK_HEADERS: u64 = 100;
+
+/// Find the first header after `last_scanned_height` that the base node knows, stepping back one height at a time.
+///
+/// The base node not knowing the header after a block it confirmed a moment ago is a temporary race (a reorg to a
+/// shorter chain between calls, or a load-balanced URL switching servers), so this fails the attempt rather than
+/// falling back to genesis, which would start a full rescan that ignores the wallet birthday.
+async fn find_next_header_to_scan<THeader, F, Fut>(
+    last_scanned_height: u64,
+    mut fetch_header: F,
+) -> Result<THeader, anyhow::Error>
+where
+    F: FnMut(u64) -> Fut,
+    Fut: Future<Output = Result<Option<THeader>, anyhow::Error>>,
+{
+    let mut height = last_scanned_height;
+    for _ in 0..MAX_BACKTRACK_HEADERS {
+        if let Some(header) = fetch_header(height.saturating_add(1)).await? {
+            return Ok(header);
+        }
+        if height == 0 {
+            return Err(anyhow!(
+                "Base node has no header at height 1 while looking for the next block to scan after height \
+                 {last_scanned_height}"
+            ));
+        }
+        height = height.saturating_sub(1);
+    }
+    Err(anyhow!(
+        "Base node has none of the headers at heights {}..={} while looking for the next block to scan",
+        height.saturating_add(2),
+        last_scanned_height.saturating_add(1),
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockSequence {
+    /// The entry starts a block that has not been seen in this stream yet
+    NewBlock,
+    /// The entry is a further chunk of the previous block (same height and hash)
+    SameBlock,
+}
+
+fn validate_next_block_sequence(
+    previous_block: Option<&ScannedBlock>,
+    response_height: u64,
+    response_header_hash: &[u8],
+) -> Result<BlockSequence, anyhow::Error> {
+    let Some(previous_block) = previous_block else {
+        return Ok(BlockSequence::NewBlock);
+    };
+    if response_height < previous_block.height {
+        // We do not accept blocks that go backwards in height - fork block re-validation forced.
+        return Err(anyhow!(
+            "Non-monotonic block heights received during UTXO scan: {} followed by {}",
+            previous_block.height,
+            response_height
+        ));
+    }
+    if response_height > previous_block.height.saturating_add(1) {
+        // Missing block(s) detected between previous_block and response height - fork block re-validation forced.
+        return Err(anyhow!(
+            "Non-consecutive block heights received during UTXO scan: {} followed by {}",
+            previous_block.height,
+            response_height
+        ));
+    }
+    if response_height == previous_block.height {
+        if response_header_hash != previous_block.header_hash.as_slice() {
+            // Conflicting block detected for the same height - fork block re-validation forced.
+            return Err(anyhow!(
+                "Conflicting blocks for same height {} during UTXO scan: response {} vs expected {}",
+                response_height,
+                BlockHash::try_from(response_header_hash).unwrap_or_default(),
+                previous_block.header_hash,
+            ));
+        }
+        return Ok(BlockSequence::SameBlock);
+    }
+    Ok(BlockSequence::NewBlock)
+}
+
 struct HeightHash {
     height: u64,
     header_hash: HashOutput,
@@ -1001,12 +1062,258 @@ where F: Future<Output = Result<T, anyhow::Error>> {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::seeds::{
-        cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
-        seed_words::get_birthday_from_unix_epoch_in_seconds,
+    use std::{
+        collections::HashMap,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
     };
 
-    use super::is_birthday_in_the_future;
+    use anyhow::{Error, anyhow};
+    use chrono::Utc;
+    use minotari_node_wallet_client::BaseNodeWalletClient;
+    use tari_common_types::{
+        chain_metadata::ChainMetadata,
+        seeds::{cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH, seed_words::get_birthday_from_unix_epoch_in_seconds},
+        tari_address::TariAddress,
+        types::{CompressedCommitment, FixedHash},
+    };
+    use tari_node_components::blocks::BlockHeader as NodeBlockHeader;
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::{Shutdown, ShutdownSignal};
+    use tari_transaction_components::{
+        rpc::models::{
+            self,
+            BlockHeader,
+            FeePerGramStat,
+            GenerateBurnOutputProofResponse,
+            GetUtxosDeletedInfoResponse,
+            GetUtxosMinedInfoResponse,
+            SyncUtxosByBlockResponseV0,
+            TxSubmissionResponse,
+        },
+        transaction_components::{Transaction, TransactionOutput},
+    };
+    use tari_transaction_key_manager::legacy_key_manager::{MemoryKeyManager, create_new_random_key_manager};
+    use tari_utilities::SafePassword;
+    use tokio::{
+        sync::{broadcast, mpsc},
+        time::timeout,
+    };
+    use url::Url;
+
+    use super::{
+        BlockSequence,
+        MAX_BACKTRACK_HEADERS,
+        ScannedBlock,
+        UtxoScannerTask,
+        is_birthday_in_the_future,
+        validate_next_block_sequence,
+    };
+    use crate::{
+        client::http_client_factory::HttpClientFactory,
+        output_manager_service::handle::OutputManagerHandle,
+        storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
+        test_utils::make_wallet_database_memory_connection,
+        transaction_service::handle::TransactionServiceHandle,
+        utxo_scanner_service::{
+            handle::UtxoScannerEvent,
+            service::{UtxoScannerResources, UtxoScannerService},
+            uxto_scanner_service_builder::UtxoScannerMode,
+        },
+    };
+
+    /// A base node that knows the headers in `headers` and, when `tip` is set, reports it as the chain tip. Without a
+    /// tip every `get_tip_info` fails, like an unreachable node.
+    #[derive(Clone, Default)]
+    struct MockBaseNode {
+        tip: Option<NodeBlockHeader>,
+        headers: HashMap<u64, NodeBlockHeader>,
+        header_requests: Arc<AtomicUsize>,
+    }
+
+    impl MockBaseNode {
+        fn header_requests(&self) -> usize {
+            self.header_requests.load(Ordering::SeqCst)
+        }
+    }
+
+    fn header_at(height: u64) -> NodeBlockHeader {
+        let mut header = NodeBlockHeader::new(0);
+        header.height = height;
+        header
+    }
+
+    #[async_trait::async_trait]
+    impl BaseNodeWalletClient for MockBaseNode {
+        async fn get_address(&self) -> String {
+            "mock".to_string()
+        }
+
+        async fn is_online(&self) -> bool {
+            self.tip.is_some()
+        }
+
+        async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error> {
+            let tip = self.tip.as_ref().ok_or_else(|| anyhow!("base node unreachable"))?;
+            Ok(models::TipInfoResponse {
+                metadata: Some(ChainMetadata::new(tip.height, tip.hash(), 0, 0, 1.into(), 0)?),
+                is_synced: true,
+            })
+        }
+
+        async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, Error> {
+            self.header_requests.fetch_add(1, Ordering::SeqCst);
+            Ok(self.headers.get(&height).cloned().map(BlockHeader::from))
+        }
+
+        async fn get_height_at_time(&self, _epoch_time: u64) -> Result<u64, Error> {
+            unimplemented!()
+        }
+
+        async fn get_utxos_by_block(&self, _header_hash: Vec<u8>) -> Result<models::GetUtxosByBlockResponse, Error> {
+            unimplemented!()
+        }
+
+        async fn sync_utxos_by_block(
+            &self,
+            _start_header_hash: Vec<u8>,
+            _shutdown: ShutdownSignal,
+        ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponseV0, Error>>, Error> {
+            unimplemented!()
+        }
+
+        async fn get_last_request_latency(&self) -> Option<Duration> {
+            None
+        }
+
+        async fn get_utxos_mined_info(
+            &self,
+            _hashes: Vec<Vec<u8>>,
+            _version: u32,
+        ) -> Result<GetUtxosMinedInfoResponse, Error> {
+            unimplemented!()
+        }
+
+        async fn fetch_utxo(&self, _hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
+            unimplemented!()
+        }
+
+        async fn query_deleted_utxos(
+            &self,
+            _hashes: Vec<Vec<u8>>,
+            _must_include_header: Vec<u8>,
+        ) -> Result<GetUtxosDeletedInfoResponse, Error> {
+            unimplemented!()
+        }
+
+        async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
+            unimplemented!()
+        }
+
+        async fn transaction_query(
+            &self,
+            _excess_sig_nonce: Vec<u8>,
+            _excess_sig_sig: Vec<u8>,
+        ) -> Result<models::TxQueryResponse, Error> {
+            unimplemented!()
+        }
+
+        async fn get_mempool_fee_per_gram_stats(&self, _count: u64) -> Result<FeePerGramStat, Error> {
+            unimplemented!()
+        }
+
+        async fn get_burn_output_proof(
+            &self,
+            _commitment: &CompressedCommitment,
+        ) -> Result<GenerateBurnOutputProofResponse, Error> {
+            unimplemented!()
+        }
+    }
+
+    #[derive(Clone)]
+    struct MockClientFactory(MockBaseNode);
+
+    impl HttpClientFactory for MockClientFactory {
+        type Client = MockBaseNode;
+
+        fn create_http_client(&self) -> Self::Client {
+            self.0.clone()
+        }
+
+        fn new(_node_url: Url, _seed_url: Url) -> Self {
+            Self(MockBaseNode::default())
+        }
+    }
+
+    type TestTask = UtxoScannerTask<WalletSqliteDatabase, MemoryKeyManager, MockClientFactory>;
+
+    struct TestScanner {
+        task: TestTask,
+        events: broadcast::Receiver<UtxoScannerEvent>,
+        db: WalletDatabase<WalletSqliteDatabase>,
+        _shutdown: Shutdown,
+    }
+
+    /// A scanning-mode task built the way the service builds one for each round. The output manager and transaction
+    /// services are not running, so their requests fail at once; the scanner treats the validation it asks of them
+    /// after a round as best effort.
+    async fn scanning_task(base_node: MockBaseNode, retry_limit: usize) -> TestScanner {
+        let db = WalletDatabase::new(
+            WalletSqliteDatabase::new(
+                make_wallet_database_memory_connection(),
+                SafePassword::from("utxo scanner test passphrase"),
+            )
+            .unwrap(),
+        );
+        let (oms_sender, _) = reply_channel::unbounded();
+        let (oms_events, _) = broadcast::channel(1);
+        let (tms_sender, _) = reply_channel::unbounded();
+        let (tms_events, _) = broadcast::channel(1);
+        let resources = UtxoScannerResources {
+            db: db.clone(),
+            output_manager_service: OutputManagerHandle::new(oms_sender, oms_events),
+            transaction_service: TransactionServiceHandle::new(tms_sender, tms_events),
+            one_sided_tari_address: TariAddress::default(),
+            birthday_offset: 0,
+            client_factory: MockClientFactory(base_node),
+        };
+        let shutdown = Shutdown::new();
+        let (event_sender, events) = broadcast::channel(100);
+        let service = UtxoScannerService::new(
+            retry_limit,
+            UtxoScannerMode::Scanning,
+            resources,
+            shutdown.to_signal(),
+            60,
+            event_sender,
+            create_new_random_key_manager().await.unwrap(),
+        );
+        TestScanner {
+            task: service.create_task(shutdown.to_signal()),
+            events,
+            db,
+            _shutdown: shutdown,
+        }
+    }
+
+    fn drain(events: &mut broadcast::Receiver<UtxoScannerEvent>) -> Vec<UtxoScannerEvent> {
+        let mut drained = Vec::new();
+        while let Ok(event) = events.try_recv() {
+            drained.push(event);
+        }
+        drained
+    }
+
+    fn scanned_block(height: u64, header_hash: FixedHash) -> ScannedBlock {
+        ScannedBlock {
+            header_hash,
+            height,
+            timestamp: Utc::now().naive_utc(),
+        }
+    }
 
     #[test]
     fn a_birthday_after_now_is_in_the_future() {
@@ -1016,5 +1323,153 @@ mod test {
         assert!(is_birthday_in_the_future(101, now));
         assert!(is_birthday_in_the_future(u16::MAX, now));
         assert_eq!(get_birthday_from_unix_epoch_in_seconds(100, 0), now);
+    }
+
+    #[tokio::test]
+    async fn run_returns_an_error_once_the_retry_limit_is_reached() {
+        let TestScanner {
+            task,
+            mut events,
+            _shutdown,
+            ..
+        } = scanning_task(MockBaseNode::default(), 2).await;
+
+        let result = timeout(Duration::from_secs(30), task.run())
+            .await
+            .expect("run() must stop retrying at the retry limit");
+
+        assert!(result.is_err());
+        let failures = drain(&mut events)
+            .into_iter()
+            .map(|event| match event {
+                UtxoScannerEvent::ScanningRoundFailed {
+                    num_retries,
+                    retry_limit,
+                    ..
+                } => (num_retries, retry_limit),
+                other => panic!("unexpected event {other:?}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(failures, vec![(1, 2), (2, 2)]);
+    }
+
+    #[tokio::test]
+    async fn a_successful_round_publishes_progress_and_completed() {
+        let tip = header_at(7);
+        let base_node = MockBaseNode {
+            tip: Some(tip.clone()),
+            headers: HashMap::from([(7, tip.clone())]),
+            ..Default::default()
+        };
+        let TestScanner {
+            task,
+            mut events,
+            db,
+            _shutdown,
+        } = scanning_task(base_node, 2).await;
+        db.save_scanned_block(scanned_block(7, tip.hash())).unwrap();
+
+        task.run().await.unwrap();
+
+        let events = drain(&mut events);
+        assert!(
+            matches!(events.as_slice(), [
+                UtxoScannerEvent::Progress {
+                    current_height: 7,
+                    tip_height: 7,
+                    ..
+                },
+                UtxoScannerEvent::Completed { final_height: 7, .. },
+            ]),
+            "{events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_next_block_lookup_stops_stepping_back_at_height_zero() {
+        let base_node = MockBaseNode {
+            tip: Some(header_at(10)),
+            ..Default::default()
+        };
+        let scanner = scanning_task(base_node.clone(), 2).await;
+
+        let result = timeout(
+            Duration::from_secs(5),
+            scanner
+                .task
+                .determine_next_block_to_scan(&Some(scanned_block(5, FixedHash::zero())), &base_node),
+        )
+        .await
+        .expect("the lookup must not hang once it reaches height 0");
+
+        assert!(result.is_err());
+        // Heights 6 down to 1
+        assert_eq!(base_node.header_requests(), 6);
+    }
+
+    #[tokio::test]
+    async fn the_next_block_lookup_steps_back_at_most_max_backtrack_headers() {
+        let base_node = MockBaseNode {
+            tip: Some(header_at(1_000)),
+            ..Default::default()
+        };
+        let scanner = scanning_task(base_node.clone(), 2).await;
+
+        let result = timeout(
+            Duration::from_secs(5),
+            scanner
+                .task
+                .determine_next_block_to_scan(&Some(scanned_block(900, FixedHash::zero())), &base_node),
+        )
+        .await
+        .expect("the lookup must not hang");
+
+        assert!(result.is_err());
+        assert_eq!(
+            base_node.header_requests(),
+            usize::try_from(MAX_BACKTRACK_HEADERS).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_next_block_lookup_does_not_fall_back_to_genesis() {
+        let base_node = MockBaseNode {
+            tip: Some(header_at(10)),
+            headers: HashMap::from([(0, header_at(0))]),
+            ..Default::default()
+        };
+        let scanner = scanning_task(base_node.clone(), 2).await;
+
+        let result = scanner
+            .task
+            .determine_next_block_to_scan(&Some(scanned_block(0, FixedHash::zero())), &base_node)
+            .await;
+
+        assert!(result.is_err(), "must not restart the scan from the genesis header");
+        assert_eq!(base_node.header_requests(), 1);
+    }
+
+    #[test]
+    fn a_further_chunk_of_the_previous_block_is_part_of_that_block() {
+        let hash_a = FixedHash::from([0x11; FixedHash::byte_size()]);
+        let hash_b = FixedHash::from([0x22; FixedHash::byte_size()]);
+        let prev = scanned_block(10, hash_a);
+
+        assert_eq!(
+            validate_next_block_sequence(None, 0, hash_a.as_slice()).unwrap(),
+            BlockSequence::NewBlock
+        );
+        assert_eq!(
+            validate_next_block_sequence(Some(&prev), 11, hash_b.as_slice()).unwrap(),
+            BlockSequence::NewBlock
+        );
+        assert_eq!(
+            validate_next_block_sequence(Some(&prev), 10, hash_a.as_slice()).unwrap(),
+            BlockSequence::SameBlock
+        );
+
+        assert!(validate_next_block_sequence(Some(&prev), 9, hash_b.as_slice()).is_err());
+        assert!(validate_next_block_sequence(Some(&prev), 12, hash_b.as_slice()).is_err());
+        assert!(validate_next_block_sequence(Some(&prev), 10, hash_b.as_slice()).is_err());
     }
 }

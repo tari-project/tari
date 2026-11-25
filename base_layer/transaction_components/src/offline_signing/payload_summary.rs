@@ -24,12 +24,13 @@
 //!
 //! # Why this exists
 //!
-//! The `PayloadIntegritySignature` carried by a `Prepare*` result is produced with the wallet's **view key**. The view
-//! key is a *shareable* key by design — it is handed to view-only wallets, auditors, exchanges and block explorers so
-//! that they can see incoming payments. It follows that the integrity signature only proves that the payload was not
-//! mangled by a party that has *no* view access; it proves nothing at all against anyone who holds the view key. Such
-//! a party can build a payload that pays themselves, sign it with the view key, and the air-gapped signer will verify
-//! it as authentic.
+//! Unless the online wallet has imported a payload key and the signer requires one (see
+//! [`crate::offline_signing::PayloadKeyPolicy`]), the `PayloadIntegritySignature` carried by a `Prepare*` result is
+//! produced with the wallet's **view key**. The view key is a *shareable* key by design — it is handed to view-only
+//! wallets, auditors, exchanges and block explorers so that they can see incoming payments. It follows that the
+//! integrity signature only proves that the payload was not mangled by a party that has *no* view access; it proves
+//! nothing at all against anyone who holds the view key. Such a party can build a payload that pays themselves, sign it
+//! with the view key, and the air-gapped signer will verify it as authentic.
 //!
 //! The only defence that holds against a view-key holder is for the human operating the air-gapped signer to check
 //! what is about to be signed. This module produces the summary that is shown to them, so that the rendering lives
@@ -47,24 +48,48 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use blake2::Blake2b;
+use digest::{Digest, consts::U32};
 use log::info;
-use tari_common_types::{tari_address::TariAddress, transaction::TxId};
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
+use tari_crypto::hashing::DomainSeparatedHasher;
+use tari_hashing::OfflineSigningPayloadHashDomain;
 use tari_script::TariScript;
 use tari_utilities::hex::Hex;
 
 use crate::{
     MicroMinotari,
+    TransactionBuilderError,
     fee::Fee,
     helpers::terminal_safe::TerminalSafe,
     key_manager::TariKeyId,
-    offline_signing::models::{
-        OneSidedMultisigTransactionInfo,
-        OneSidedTransactionInfo,
-        PrepareDepositMultisigTransactionResult,
-        PrepareOneSidedTransactionForSigningResult,
-        PrepareWithdrawMultisigTransactionResult,
+    offline_signing::{
+        models::{
+            ConfirmationKind,
+            HasVersion,
+            OneSidedMultisigTransactionInfo,
+            OneSidedTransactionInfo,
+            PayloadIntegritySignature,
+            PrepareDepositMultisigTransactionResult,
+            PrepareOneSidedTransactionForSigningResult,
+            PrepareWithdrawMultisigTransactionResult,
+            SigningReceipt,
+            borsh_canonical_multisig,
+            borsh_canonical_one_sided,
+            has_payload_auth_fields,
+        },
+        offline_signer::{check_payload_expiry, unix_now},
+        one_sided_signer::validate_multisig_threshold,
     },
-    transaction_components::{MemoField, OutputFeatures, OutputType, RangeProofType, WalletOutput},
+    transaction_components::{
+        MemoField,
+        OutputFeatures,
+        OutputType,
+        RangeProofType,
+        TransactionError,
+        WalletOutput,
+        covenants::Covenant,
+    },
     weight::TransactionWeight,
 };
 
@@ -74,19 +99,67 @@ const MEMO_LINE_WIDTH: usize = 48;
 const RECAP_HEADER: &str = "---------------------------- Recap ----------------------------";
 const RECAP_FOOTER: &str = "---------------------------------------------------------------";
 
+/// `secs` (unix time) as `YYYY-MM-DD HH:MM:SS UTC`.
+pub(crate) fn format_unix_time(secs: u64) -> String {
+    i64::try_from(secs)
+        .ok()
+        .and_then(|secs| chrono::DateTime::from_timestamp(secs, 0))
+        .map_or_else(
+            || format!("{secs} (unix time)"),
+            |t| t.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        )
+}
+
 mod sealed {
     pub trait Sealed {}
 }
 
 /// A payload that can be signed offline. Implemented only for the three `Prepare*` results.
-pub trait OfflinePayload: sealed::Sealed + Clone + std::fmt::Debug + Send + Sync + 'static {}
+pub trait OfflinePayload: sealed::Sealed + HasVersion + Clone + std::fmt::Debug + Send + Sync + 'static {
+    /// The canonical bytes the payload signature covers.
+    fn canonical_bytes(&self) -> Result<Vec<u8>, TransactionError>;
+    fn tx_id(&self) -> TxId;
+    fn payload_key_id(&self) -> Option<&TariKeyId>;
+    fn expires_at(&self) -> u64;
+    fn payload_signature(&self) -> &PayloadIntegritySignature;
+}
 
-impl sealed::Sealed for PrepareOneSidedTransactionForSigningResult {}
-impl OfflinePayload for PrepareOneSidedTransactionForSigningResult {}
-impl sealed::Sealed for PrepareDepositMultisigTransactionResult {}
-impl OfflinePayload for PrepareDepositMultisigTransactionResult {}
-impl sealed::Sealed for PrepareWithdrawMultisigTransactionResult {}
-impl OfflinePayload for PrepareWithdrawMultisigTransactionResult {}
+macro_rules! impl_offline_payload {
+    ($payload:ty, $canonical:ident) => {
+        impl sealed::Sealed for $payload {}
+        impl OfflinePayload for $payload {
+            fn canonical_bytes(&self) -> Result<Vec<u8>, TransactionError> {
+                $canonical(
+                    &self.version,
+                    self.tx_id,
+                    &self.info,
+                    self.payload_key_id.as_ref(),
+                    self.expires_at,
+                )
+            }
+
+            fn tx_id(&self) -> TxId {
+                self.tx_id
+            }
+
+            fn payload_key_id(&self) -> Option<&TariKeyId> {
+                self.payload_key_id.as_ref()
+            }
+
+            fn expires_at(&self) -> u64 {
+                self.expires_at
+            }
+
+            fn payload_signature(&self) -> &PayloadIntegritySignature {
+                &self.payload_signature
+            }
+        }
+    };
+}
+
+impl_offline_payload!(PrepareOneSidedTransactionForSigningResult, borsh_canonical_one_sided);
+impl_offline_payload!(PrepareDepositMultisigTransactionResult, borsh_canonical_multisig);
+impl_offline_payload!(PrepareWithdrawMultisigTransactionResult, borsh_canonical_one_sided);
 
 /// Which kind of payload a summary describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,7 +201,19 @@ pub struct OutputSummary {
     pub amount: MicroMinotari,
     pub script: TariScript,
     pub features: OutputFeatures,
+    pub covenant: Covenant,
     pub payment_id: MemoField,
+}
+
+impl OutputSummary {
+    /// [`unusual_features`], plus a covenant if the output carries one.
+    pub fn unusual(&self) -> Vec<String> {
+        let mut reasons = unusual_features(&self.features);
+        if !self.covenant.is_empty() {
+            reasons.push("carries a covenant: it restricts how this output can be spent later".to_string());
+        }
+        reasons
+    }
 }
 
 /// Reasons why output features differ from those of a normal payment, one per non-default feature.
@@ -183,6 +268,10 @@ pub struct PayloadDetails {
     pub multisig_public_keys: Vec<String>,
     /// The number of signatures (m of n) the multisig output requires, if it is a multisig deposit.
     pub multisig_required_signatures: Option<u8>,
+    /// The index of the payload key the payload claims to be signed with, or `None` for the view key.
+    pub payload_key_index: Option<u64>,
+    /// When the signer stops accepting the payload (unix seconds), or `None` for a version 5 payload.
+    pub expires_at: Option<u64>,
 }
 
 impl PayloadDetails {
@@ -211,6 +300,7 @@ impl PayloadDetails {
                     amount: o.value(),
                     script: o.script().clone(),
                     features: o.features().clone(),
+                    covenant: o.covenant().clone(),
                     payment_id: o.payment_id().clone(),
                 })
                 .collect(),
@@ -232,17 +322,56 @@ impl PayloadDetails {
             num_inputs: info.inputs.len(),
             multisig_public_keys: Vec::new(),
             multisig_required_signatures: None,
+            payload_key_index: None,
+            expires_at: None,
         }
     }
 
-    /// Builds the details of a multisig deposit payload.
-    pub(crate) fn multisig(tx_id: TxId, info: &OneSidedMultisigTransactionInfo) -> Self {
+    /// Records which key the payload claims to be signed with and when it expires.
+    fn with_payload_auth<P: OfflinePayload>(mut self, payload: &P) -> Self {
+        // Anything other than `PayloadAuth` is refused when the payload is parsed
+        if let Some(TariKeyId::PayloadAuth { index }) = payload.payload_key_id() {
+            self.payload_key_index = Some(*index);
+        }
+        self.expires_at = has_payload_auth_fields(payload.get_version()).then_some(payload.expires_at());
+        self
+    }
+
+    fn write_signing_key_and_expiry(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.payload_key_index {
+            Some(index) => writeln!(f, "Signed with    : payload key #{index}")?,
+            None => {
+                writeln!(f, "Signed with    : view key (shared key)")?;
+                writeln!(
+                    f,
+                    "WARNING        : signed with the shared view key - anyone holding the view key could have \
+                     prepared this payload"
+                )?;
+            },
+        }
+        let Some(expires_at) = self.expires_at else {
+            return writeln!(f, "Expires        : never (version 5 payload)");
+        };
+        let left = match expires_at.checked_sub(unix_now()) {
+            Some(secs) => format!("{}h {:02}m {:02}s left", secs / 3600, (secs % 3600) / 60, secs % 60),
+            None => "EXPIRED".to_string(),
+        };
+        writeln!(f, "Expires        : {} ({left})", format_unix_time(expires_at))
+    }
+
+    /// Builds the details of a multisig deposit payload. Fails on a threshold no spend could meet, so that it is
+    /// never shown for approval.
+    pub(crate) fn multisig(
+        tx_id: TxId,
+        info: &OneSidedMultisigTransactionInfo,
+    ) -> Result<Self, TransactionBuilderError> {
+        validate_multisig_threshold(info.party_number, info.public_keys.len())?;
         let mut details = Self::one_sided(PayloadKind::MultisigDeposit, tx_id, &info.base);
         details.multisig_public_keys = info.public_keys.iter().map(|pk| pk.to_hex()).collect();
         // `party_number` holds the threshold m
         details.multisig_required_signatures = Some(info.party_number);
         details.use_top_level_memo_for_recipients();
-        details
+        Ok(details)
     }
 
     /// Multisig signers put the top-level memo on the recipient output, so that is the memo shown for it.
@@ -412,11 +541,7 @@ impl PayloadDetails {
             )?;
         }
         for (i, output) in self.outputs.iter().enumerate() {
-            let warning = if unusual_features(&output.features).is_empty() {
-                ""
-            } else {
-                UNUSUAL
-            };
+            let warning = if output.unusual().is_empty() { "" } else { UNUSUAL };
             writeln!(
                 f,
                 "  output [{}] {} -> script {} (NOT a normal payment){}",
@@ -491,13 +616,12 @@ fn write_memo(f: &mut Formatter<'_>, label: &str, memo: &MemoField) -> std::fmt:
     Ok(())
 }
 
-fn write_features(f: &mut Formatter<'_>, features: &OutputFeatures) -> std::fmt::Result {
+fn write_features(f: &mut Formatter<'_>, features: &OutputFeatures, reasons: &[String]) -> std::fmt::Result {
     writeln!(
         f,
         "      features: type {}, maturity {}, range proof {}",
         features.output_type, features.maturity, features.range_proof_type
     )?;
-    let reasons = unusual_features(features);
     if !reasons.is_empty() {
         writeln!(f, "      WARNING : {}", reasons.join("; "))?;
     }
@@ -508,6 +632,7 @@ impl Display for PayloadDetails {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Payload        : {}", self.kind)?;
         writeln!(f, "Transaction ID : {}", self.tx_id)?;
+        self.write_signing_key_and_expiry(f)?;
         writeln!(
             f,
             "From           : {} (as stated by the payload, not checked)",
@@ -524,7 +649,7 @@ impl Display for PayloadDetails {
             // Both forms are shown so the operator can check the address against whichever one they were given
             writeln!(f, "      address : {}", recipient.address.to_base58())?;
             writeln!(f, "      emoji   : {}", TerminalSafe(&recipient.address))?;
-            write_features(f, &recipient.features)?;
+            write_features(f, &recipient.features, &unusual_features(&recipient.features))?;
             if recipient.payload_memo_differs {
                 writeln!(
                     f,
@@ -545,7 +670,14 @@ impl Display for PayloadDetails {
                 writeln!(f, "  [{}] amount  : {}", i.saturating_add(1), output.amount)?;
                 // There is no address to show: whoever can satisfy this script owns the funds
                 writeln!(f, "      script  : {}", TerminalSafe(&output.script))?;
-                write_features(f, &output.features)?;
+                if !output.covenant.is_empty() {
+                    writeln!(
+                        f,
+                        "      Covenant: {}",
+                        TerminalSafe(&output.covenant.to_bytes().to_hex())
+                    )?;
+                }
+                write_features(f, &output.features, &output.unusual())?;
             }
         }
         if let Some(required) = self.multisig_required_signatures {
@@ -593,7 +725,7 @@ pub struct PayloadSummary<P: OfflinePayload> {
 impl<P: OfflinePayload> PayloadSummary<P> {
     fn new(details: PayloadDetails, payload: P) -> Self {
         Self {
-            details,
+            details: details.with_payload_auth(&payload),
             payload,
             id: NEXT_SUMMARY_ID.fetch_add(1, Ordering::Relaxed),
         }
@@ -607,7 +739,19 @@ impl<P: OfflinePayload> PayloadSummary<P> {
         if !decision.approved {
             return Err(PayloadNotConfirmed::Declined);
         }
-        Ok(ConfirmedPayload { payload: self.payload })
+        Ok(ConfirmedPayload {
+            payload: self.payload,
+            confirmation: decision.kind,
+            payload_hash: decision.payload_hash,
+        })
+    }
+
+    /// Domain-separated Blake2b-256 of the payload's canonical bytes, the bytes its integrity signature covers.
+    pub fn payload_hash(&self) -> Result<FixedHash, TransactionError> {
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U32>, OfflineSigningPayloadHashDomain>::new_with_label("payload_hash")
+                .chain_update(self.payload.canonical_bytes()?);
+        Ok(FixedHash::from(Digest::finalize(hasher)))
     }
 
     /// Gives the payload back without signing it.
@@ -624,9 +768,9 @@ impl PayloadSummary<PrepareOneSidedTransactionForSigningResult> {
 }
 
 impl PayloadSummary<PrepareDepositMultisigTransactionResult> {
-    pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Self {
-        let details = PayloadDetails::multisig(request.tx_id, &request.info);
-        Self::new(details, request)
+    pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Result<Self, TransactionBuilderError> {
+        let details = PayloadDetails::multisig(request.tx_id, &request.info)?;
+        Ok(Self::new(details, request))
     }
 }
 
@@ -657,6 +801,8 @@ impl<P: OfflinePayload> Display for PayloadSummary<P> {
 pub struct Confirmation {
     summary_id: u64,
     approved: bool,
+    kind: ConfirmationKind,
+    payload_hash: FixedHash,
 }
 
 impl Confirmation {
@@ -682,33 +828,50 @@ pub enum PayloadNotConfirmed {
 /// use tari_transaction_components::{
 ///     consensus::ConsensusConstants,
 ///     key_manager::KeyManager,
-///     offline_signing::{models::PrepareOneSidedTransactionForSigningResult, sign_locked_transaction},
+///     offline_signing::{
+///         PayloadKeyPolicy,
+///         models::PrepareOneSidedTransactionForSigningResult,
+///         sign_locked_transaction,
+///     },
 /// };
 ///
 /// fn sign(km: &KeyManager, cc: ConsensusConstants, net: Network, prepared: PrepareOneSidedTransactionForSigningResult) {
-///     let _ = sign_locked_transaction(km, cc, net, prepared);
+///     let _ = sign_locked_transaction(km, cc, net, prepared, &PayloadKeyPolicy::default());
 /// }
 /// ```
 ///
 /// and a `ConfirmedPayload` cannot be built outside this module:
-/// ```compile_fail
+/// ```compile_fail,E0451
+/// use tari_common_types::types::FixedHash;
 /// use tari_transaction_components::offline_signing::{
 ///     ConfirmedPayload,
-///     models::PrepareOneSidedTransactionForSigningResult,
+///     models::{ConfirmationKind, PrepareOneSidedTransactionForSigningResult},
 /// };
 ///
 /// fn wrap(payload: PrepareOneSidedTransactionForSigningResult) -> ConfirmedPayload<PrepareOneSidedTransactionForSigningResult> {
-///     ConfirmedPayload { payload }
+///     ConfirmedPayload { payload, confirmation: ConfirmationKind::Prompt, payload_hash: FixedHash::default() }
 /// }
 /// ```
 #[derive(Clone)]
 pub struct ConfirmedPayload<P: OfflinePayload> {
     payload: P,
+    confirmation: ConfirmationKind,
+    payload_hash: FixedHash,
 }
 
 impl<P: OfflinePayload> ConfirmedPayload<P> {
     pub fn payload(&self) -> &P {
         &self.payload
+    }
+
+    /// A receipt for signing this payload now.
+    pub(crate) fn receipt(&self) -> SigningReceipt {
+        SigningReceipt {
+            tx_id: self.payload.tx_id(),
+            payload_hash: self.payload_hash,
+            confirmation: self.confirmation,
+            signed_at: unix_now(),
+        }
     }
 
     pub(crate) fn into_payload(self) -> P {
@@ -720,6 +883,8 @@ impl<P: OfflinePayload> std::fmt::Debug for ConfirmedPayload<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfirmedPayload")
             .field("payload", &self.payload)
+            .field("confirmation", &self.confirmation)
+            .field("payload_hash", &self.payload_hash)
             .finish()
     }
 }
@@ -745,42 +910,45 @@ impl ConfirmedPayload<PrepareWithdrawMultisigTransactionResult> {
 pub enum ConfirmationMode {
     /// Ask y/N on `input`.
     Interactive,
-    /// There is no one to ask: write and log the summary, then approve.
+    /// There is no one to ask: write the summary, log a record (transaction id, decision and payload hash), then
+    /// approve.
     NonInteractive,
 }
 
-/// Writes `summary` to `out` and returns the operator's decision on it.
+/// Writes `summary` to `out` and returns the operator's decision on it. An expired payload is refused with an error
+/// before anything is written.
 ///
 /// In [`ConfirmationMode::Interactive`] the operator is asked to type `y` or `yes`; anything else, including end of
 /// input, declines. In [`ConfirmationMode::NonInteractive`] the confirmation is approved without reading `input`.
-/// Either way the summary is logged with the decision.
+/// Either way the decision is logged with the transaction id and payload hash; the summary itself is not, as it
+/// carries addresses, amounts and memo text.
 pub fn present_payload_summary<P: OfflinePayload>(
     summary: &PayloadSummary<P>,
     mode: ConfirmationMode,
     out: &mut dyn Write,
     input: &mut dyn BufRead,
 ) -> std::io::Result<Confirmation> {
+    check_payload_expiry(summary.expires_at, unix_now()).map_err(|e| std::io::Error::other(e.to_string()))?;
+    let payload_hash = summary
+        .payload_hash()
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
     write!(
         out,
         "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\n"
     )?;
-    let approved = match mode {
+    let (approved, kind, decision) = match mode {
         ConfirmationMode::NonInteractive => {
             // Only claim a log record when a logger will actually write one
             if log::log_enabled!(target: LOG_TARGET, log::Level::Info) {
                 writeln!(
                     out,
-                    "Signing without a prompt (non-interactive mode or no terminal). The summary above has been \
-                     logged."
+                    "Signing without a prompt (non-interactive mode or no terminal). A record (transaction id and \
+                     payload hash) has been logged."
                 )?;
             } else {
                 writeln!(out, "Signing without a prompt (non-interactive mode or no terminal).")?;
             }
-            info!(
-                target: LOG_TARGET,
-                "Signing offline payload {} without a prompt (non-interactive mode or no terminal):\n{}", summary.tx_id, summary
-            );
-            true
+            (true, ConfirmationKind::NoPrompt, "signed without a prompt")
         },
         ConfirmationMode::Interactive => {
             write!(out, "Sign this transaction? [y/N]: ")?;
@@ -789,20 +957,20 @@ pub fn present_payload_summary<P: OfflinePayload>(
             input.read_line(&mut answer)?;
             let answer = answer.trim().to_ascii_lowercase();
             let approved = answer == "y" || answer == "yes";
-            info!(
-                target: LOG_TARGET,
-                "Offline payload {} {} at the prompt:\n{}",
-                summary.tx_id,
-                if approved { "approved" } else { "declined" },
-                summary
-            );
-            approved
+            let decision = if approved { "approved" } else { "declined" };
+            (approved, ConfirmationKind::Prompt, decision)
         },
     };
+    info!(
+        target: LOG_TARGET,
+        "Offline payload {} ({}) {decision}, payload hash {payload_hash}", summary.tx_id, summary.kind
+    );
     out.flush()?;
     Ok(Confirmation {
         summary_id: summary.id,
         approved,
+        kind,
+        payload_hash,
     })
 }
 
@@ -815,6 +983,7 @@ mod test {
 
     use super::*;
     use crate::{
+        helpers::terminal_safe::needs_escape,
         key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
         offline_signing::models::{PayloadIntegritySignature, PaymentRecipient, get_latest_version},
         transaction_components::{EncryptedData, WalletOutput, covenants::Covenant, memo_field::TxType},
@@ -1078,7 +1247,78 @@ mod test {
             payload_signature: PayloadIntegritySignature {
                 signature: Default::default(),
             },
+            payload_key_id: None,
+            expires_at: unix_now().saturating_add(3600),
         }
+    }
+
+    #[test]
+    fn summary_names_the_signing_key_and_the_expiry() {
+        let mut payload = one_sided_payload(info(&[1000]));
+        payload.payload_key_id = Some(TariKeyId::PayloadAuth { index: 3 });
+        payload.expires_at = unix_now().saturating_add(3600);
+        let rendered = PayloadSummary::from_one_sided(payload.clone()).to_string();
+        assert!(rendered.contains("Signed with    : payload key #3"), "{rendered}");
+        assert!(!rendered.contains("shared view key"), "{rendered}");
+        assert!(
+            rendered.contains(&format!(
+                "Expires        : {} (0h 59m",
+                format_unix_time(payload.expires_at)
+            )) || rendered.contains(&format!(
+                "Expires        : {} (1h 00m",
+                format_unix_time(payload.expires_at)
+            )),
+            "{rendered}"
+        );
+        assert!(rendered.contains(" UTC ("), "{rendered}");
+
+        payload.payload_key_id = None;
+        let rendered = PayloadSummary::from_one_sided(payload).to_string();
+        assert!(
+            rendered.contains("Signed with    : view key (shared key)"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("WARNING        : signed with the shared view key"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn summary_of_a_version_5_payload_has_no_expiry() {
+        let mut payload = one_sided_payload(info(&[1000]));
+        payload.version = semver::Version::new(5, 0, 0);
+        payload.expires_at = 0;
+        let summary = PayloadSummary::from_one_sided(payload);
+        assert_eq!(summary.expires_at, None);
+        assert!(
+            summary
+                .to_string()
+                .contains("Expires        : never (version 5 payload)")
+        );
+    }
+
+    #[test]
+    fn an_expired_payload_is_refused_before_its_summary_is_presented() {
+        let mut payload = one_sided_payload(info(&[1000]));
+        payload.expires_at = unix_now().saturating_sub(1);
+        let summary = PayloadSummary::from_one_sided(payload);
+        let mut out = Vec::new();
+        let err = present_payload_summary(
+            &summary,
+            ConfirmationMode::NonInteractive,
+            &mut out,
+            &mut std::io::empty(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("expired"), "{err}");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn unix_time_is_formatted_in_utc() {
+        assert_eq!(format_unix_time(0), "1970-01-01 00:00:00 UTC");
+        assert_eq!(format_unix_time(1_700_000_000), "2023-11-14 22:13:20 UTC");
     }
 
     fn output_with_memo(key_manager: &KeyManager, value: u64, memo: MemoField) -> WalletOutput {
@@ -1238,6 +1478,73 @@ mod test {
         );
     }
 
+    fn output_with_covenant(key_manager: &KeyManager, covenant: Covenant) -> WalletOutput {
+        WalletOutput::new(
+            Default::default(),
+            MicroMinotari::from(300),
+            key_manager.get_random_key(None, None).unwrap().key_id,
+            OutputFeatures::default(),
+            push_pubkey_script(&key_manager.get_spend_key().pub_key),
+            ExecutionStack::default(),
+            TariKeyId::Zero,
+            Default::default(),
+            Default::default(),
+            0,
+            covenant,
+            EncryptedData::default(),
+            MicroMinotari::zero(),
+            MemoField::new_empty(),
+            key_manager,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn payload_summary_shows_an_output_covenant_escaped() {
+        // Control and bidi characters inside the covenant's own data
+        let covenant = crate::covenant!(field_eq(
+            @field::features,
+            @bytes("\x1b[2J\r\u{202e}".as_bytes().to_vec().try_into().unwrap())
+        ))
+        .unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut with_covenant = info(&[1000]);
+        with_covenant.outputs = vec![output_with_covenant(&key_manager, covenant.clone())];
+
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(with_covenant)).to_string();
+        let lines: Vec<&str> = rendered.lines().collect();
+        let script = lines.iter().position(|l| l.starts_with("      script  : ")).unwrap();
+        assert_eq!(
+            lines[script.saturating_add(1)],
+            format!("      Covenant: {}", covenant.to_bytes().to_hex()),
+            "{rendered}"
+        );
+        assert!(
+            lines[script.saturating_add(3)].starts_with("      WARNING : ") &&
+                lines[script.saturating_add(3)]
+                    .ends_with("carries a covenant: it restricts how this output can be spent later"),
+            "{rendered}"
+        );
+        let recap = &rendered[rendered.find("---- Recap ----").unwrap()..];
+        let line = recap.lines().find(|l| l.starts_with("  output [1] ")).unwrap();
+        assert!(
+            line.ends_with("(WARNING: unusual output features, see above)"),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.chars().any(|c| c != '\n' && needs_escape(c) && c != '\\'),
+            "raw control characters in:\n{rendered}"
+        );
+
+        // No covenant, no line and no warning
+        let mut info = info(&[1000]);
+        info.outputs = vec![output_with_covenant(&key_manager, Covenant::default())];
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        assert!(!rendered.contains("Covenant"), "{rendered}");
+        assert!(!rendered.contains("WARNING :"), "{rendered}");
+        assert!(!rendered.contains("unusual output features"), "{rendered}");
+    }
+
     #[test]
     fn payload_summary_wraps_memo_text() {
         let mut text = " ".repeat(200);
@@ -1298,11 +1605,18 @@ mod test {
             let deposit = PayloadSummary::from_multisig(PrepareDepositMultisigTransactionResult {
                 version: get_latest_version(),
                 tx_id: TxId::from(1u64),
-                info: OneSidedMultisigTransactionInfo::new(memo_info(recipient_memo), vec![], 1),
+                info: OneSidedMultisigTransactionInfo::new(
+                    memo_info(recipient_memo),
+                    vec![tari_common_types::types::CompressedPublicKey::default()],
+                    1,
+                ),
                 payload_signature: PayloadIntegritySignature {
                     signature: Default::default(),
                 },
-            });
+                payload_key_id: None,
+                expires_at: unix_now().saturating_add(3600),
+            })
+            .unwrap();
             let withdraw = PayloadSummary::from_withdraw_multisig(PrepareWithdrawMultisigTransactionResult {
                 version: get_latest_version(),
                 tx_id: TxId::from(1u64),
@@ -1310,6 +1624,8 @@ mod test {
                 payload_signature: PayloadIntegritySignature {
                     signature: Default::default(),
                 },
+                payload_key_id: None,
+                expires_at: unix_now().saturating_add(3600),
             });
             [deposit.to_string(), withdraw.to_string()]
         };
@@ -1333,7 +1649,7 @@ mod test {
             );
         }
         for rendered in renderings("output memo") {
-            assert!(!rendered.contains("WARNING"), "{rendered}");
+            assert!(!rendered.contains("memo differs"), "{rendered}");
         }
     }
 
@@ -1355,9 +1671,11 @@ mod test {
             payload_signature: PayloadIntegritySignature {
                 signature: Default::default(),
             },
+            payload_key_id: None,
+            expires_at: unix_now().saturating_add(3600),
         };
 
-        let summary = PayloadSummary::from_multisig(request);
+        let summary = PayloadSummary::from_multisig(request).unwrap();
         assert_eq!(summary.kind, PayloadKind::MultisigDeposit);
         let rendered = summary.to_string();
         assert!(rendered.contains("Payload        : multisig deposit"), "{rendered}");
@@ -1465,18 +1783,15 @@ mod test {
         .unwrap();
         assert!(confirmation.is_approved());
         let written = String::from_utf8(out).unwrap();
-        // Tests run without a logger unless one was installed, so expect whichever form applies
-        let logged = if log::log_enabled!(target: LOG_TARGET, log::Level::Info) {
-            " The summary above has been logged."
-        } else {
-            ""
-        };
-        assert_eq!(
-            written,
-            format!(
-                "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nSigning without \
-                 a prompt (non-interactive mode or no terminal).{logged}\n"
-            )
+        // Another test may install a logger at any moment, so either form is accepted
+        let prefix = format!(
+            "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nSigning without a \
+             prompt (non-interactive mode or no terminal)."
+        );
+        let rest = written.strip_prefix(&prefix).unwrap_or_else(|| panic!("{written}"));
+        assert!(
+            rest == "\n" || rest == " A record (transaction id and payload hash) has been logged.\n",
+            "{written}"
         );
     }
 }

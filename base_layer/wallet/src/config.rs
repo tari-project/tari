@@ -31,6 +31,7 @@ use strum::EnumString;
 use tari_common::{
     SubConfigPath,
     configuration::{
+        ConfigList,
         Network,
         StringList,
         bootstrap::{wallet_get_default_seed_https_address, wallet_http_service_default_port},
@@ -42,6 +43,12 @@ use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
 use url::Url;
+
+use crate::grpc_method::WalletGrpcMethod;
+
+fn default_grpc_server_allow_methods() -> ConfigList<WalletGrpcMethod> {
+    ConfigList::from(WalletGrpcMethod::ALL_VARIANTS.to_vec())
+}
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -109,6 +116,9 @@ pub struct WalletConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Allowed GRPC methods for the wallet server
+    #[serde(default = "default_grpc_server_allow_methods")]
+    pub grpc_server_allow_methods: ConfigList<WalletGrpcMethod>,
     /// A list of base node peers that the wallet should use for service requests and tracking chain state
     pub base_node_service_peers: StringList,
     /// The amount of times wallet recovery will be retried before being abandoned
@@ -176,6 +186,7 @@ impl Default for WalletConfig {
             grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            grpc_server_allow_methods: default_grpc_server_allow_methods(),
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
             fee_per_gram: 5,

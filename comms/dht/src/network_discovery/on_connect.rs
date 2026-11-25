@@ -295,6 +295,13 @@ impl OnConnect {
         sync_peer: &NodeId,
         peer: UnvalidatedPeerInfo,
     ) -> Result<Option<bool>, NetworkDiscoveryError> {
+        if peer.public_key == *self.context.node_identity.public_key() {
+            debug!(
+                target: LOG_TARGET,
+                "OnConnect: Received our own node from peer sync of `{sync_peer}`. Ignoring."
+            );
+            return Ok(Some(false));
+        }
         let peer_validator = PeerValidator::new(self.config());
         let maybe_existing_peer = self.context.peer_manager.find_by_public_key(&peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();

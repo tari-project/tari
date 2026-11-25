@@ -40,6 +40,7 @@ use tari_common::{
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
     Request,
@@ -129,6 +130,21 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
     )
 }
 
+/// Clap's message can quote the token it could not parse, which on a payload key import line can be the private key.
+/// Neither the line nor that message is shown for a line that names `--key` or a payload key command, however it is
+/// misspelt or cased.
+fn parse_error_message(command: &str, e: &clap::Error) -> String {
+    let line = command.to_ascii_lowercase();
+    if line.contains("--key") || line.contains("payload") {
+        format!(
+            "parsing a command that can hold a private key ({}); it is not shown",
+            e.kind()
+        )
+    } else {
+        format!("parsing '{command}' ({e})")
+    }
+}
+
 pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, ExitError> {
     let mut commands: Vec<CliCommands> = Vec::new();
     let cli_parse_prefix = "minotari_console_wallet --command n/a".to_string();
@@ -146,8 +162,9 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
                     }
                 },
                 Err(e) => {
-                    println!("\nError! parsing '{command}' ({e})\n");
-                    return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
+                    let message = parse_error_message(command, &e);
+                    println!("\nError! {message}\n");
+                    return Err(ExitError::new(ExitCode::CommandError, message));
                 },
             }
         }
@@ -264,7 +281,11 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
-            let grpc = WalletGrpcServer::new(wallet.clone());
+            warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
+            let grpc = WalletGrpcServer::new_with_allow_methods(
+                wallet.clone(),
+                config.grpc_server_allow_methods.as_slice().to_vec(),
+            );
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
@@ -415,7 +436,11 @@ pub fn grpc_mode(
             });
             wallet.shutdown_signal = grpc_shutdown.to_signal();
 
-            let grpc = WalletGrpcServer::new(wallet.clone());
+            warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
+            let grpc = WalletGrpcServer::new_with_allow_methods(
+                wallet.clone(),
+                config.grpc_server_allow_methods.as_slice().to_vec(),
+            );
             let auth = config.grpc_authentication.clone();
 
             let mut tls_identity = None;
@@ -449,6 +474,18 @@ pub fn grpc_mode(
 /// handles and their shutdown signals). After this period the remaining connections are closed, so a client that stops
 /// reading a stream cannot hold the wallet's shutdown drain until it times out.
 const GRPC_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
+
+/// The gRPC prepare endpoints sign with the payload key, so without authentication anyone who can reach the port can
+/// produce payloads a strict signer accepts. Called before gRPC is spawned and before the TUI takes the terminal, so
+/// the warning is seen.
+fn warn_if_payload_key_without_grpc_auth(auth_config: &GrpcAuthentication, wallet: &WalletSqlite) {
+    if matches!(auth_config, GrpcAuthentication::None) && wallet.key_manager_service.get_payload_auth_key().is_some() {
+        const WARNING: &str = "a payload key is loaded and gRPC has no authentication: anyone that can reach the gRPC \
+                               port can prepare payloads signed with it";
+        warn!(target: LOG_TARGET, "{WARNING}");
+        eprintln!("WARNING: {WARNING}");
+    }
+}
 
 async fn run_grpc(
     grpc: WalletGrpcServer,
@@ -504,6 +541,24 @@ mod test {
     use std::path::Path;
 
     use crate::{cli::CliCommands, wallet_modes::parse_command_file};
+
+    #[test]
+    fn a_bad_import_payload_key_line_does_not_echo_the_key() {
+        let key = "0b5c1d6c8a7e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f0a";
+        for line in [
+            format!("import-payload-key --index 1 {key}"),
+            format!("import-payload-key --index x --key {key}"),
+            format!("import-payload-key --key {key} --file f --index 1"),
+            format!("import-paylod-key --key {key}"),
+            format!("import_payload_key --index 1 --key {key}"),
+            format!("Import-Payload-Key --index 1 {key}"),
+            format!("get-balance --KEY {key}"),
+        ] {
+            let err = parse_command_file(line).unwrap_err().to_string();
+            assert!(!err.contains(key), "{err}");
+            assert!(err.contains("not shown"), "{err}");
+        }
+    }
 
     /// Exporting the commitment mask and script private key of any wallet output gives away the wallet's spend key,
     /// so neither export command may accept a request for private keys, in the flag form or the old positional form.
@@ -613,6 +668,8 @@ mod test {
                 CliCommands::PrepareOneSidedTransactionForSigning(_) => {},
                 CliCommands::SignOneSidedTransaction(_) => {},
                 CliCommands::BroadcastSignedOneSidedTransaction(_) => {},
+                CliCommands::ImportPayloadKey(_) => {},
+                CliCommands::ClearPayloadKey => {},
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true

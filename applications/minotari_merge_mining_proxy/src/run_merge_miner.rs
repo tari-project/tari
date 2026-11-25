@@ -68,6 +68,8 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         .timeout(Duration::from_secs(10))
         .user_agent(agent)
         .tcp_keepalive(Duration::from_secs(60))
+        // monerod is untrusted; following its redirects would let it point the proxy's requests at other hosts
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 

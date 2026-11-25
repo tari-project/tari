@@ -828,6 +828,38 @@ mod rebootstrap {
         assert!(!on_connect.is_recently_synced(&node_id, now + Duration::from_secs(5 * 60)));
     }
 
+    /// A peer relaying our own record does not get it stored, nor charged to its budget
+    #[tokio::test]
+    async fn an_on_connect_sync_skips_our_own_record() {
+        let (mut context, mock, mut events) = context(None);
+        let own_identity = make_node_identity();
+        context.node_identity = own_identity.clone();
+        context.peer_manager = crate::test_utils::build_peer_manager_with_node_identity(&own_identity);
+        // A budget of one: charging our own record would refuse the third-party record after it
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 1;
+        context.config = Arc::new(config);
+        let third_party = make_node_identity();
+        let relayed = vec![
+            UnvalidatedPeerInfo::from_peer_limited_claims(own_identity.to_peer(), 5, 5).into(),
+            UnvalidatedPeerInfo::from_peer_limited_claims(third_party.to_peer(), 5, 5).into(),
+        ];
+        let (_server, conn) = peers_server(relayed, false).await;
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        let peer_manager = &context.peer_manager;
+        assert!(!peer_manager.exists(own_identity.public_key()).await.unwrap());
+        assert!(peer_manager.exists(third_party.public_key()).await.unwrap());
+        assert_eq!(peer_manager.count().await, 1);
+        match &*events.try_recv().unwrap() {
+            DhtEvent::NetworkDiscoveryPeersAdded(info) => assert_eq!(info.num_new_peers, 1),
+            event => panic!("unexpected event {event:?}"),
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+    }
+
     #[tokio::test]
     async fn a_peer_serving_forged_claims_on_connect_is_banned() {
         let (context, mock, _events) = context(None);

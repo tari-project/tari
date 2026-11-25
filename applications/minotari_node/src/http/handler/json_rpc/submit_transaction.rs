@@ -48,6 +48,7 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
+    let first_kernel_sig = transaction.first_kernel_excess_sig().cloned();
     let res = match mempool_service.submit_transaction(transaction).await {
         Ok(response) => {
             debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
@@ -83,6 +84,12 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                     is_synced,
                     details: None,
                 },
+                TxStorageResponse::NotStoredMempoolPolicy(reason) => TxSubmissionResponse {
+                    accepted: false,
+                    rejection_reason: TxSubmissionRejectionReason::MempoolPolicy,
+                    is_synced,
+                    details: Some(reason),
+                },
                 TxStorageResponse::NotStoredConsensus(details) | TxStorageResponse::NotStored(details) => {
                     TxSubmissionResponse {
                         accepted: false,
@@ -93,11 +100,20 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                 },
                 TxStorageResponse::NotStoredAlreadySpent |
                 TxStorageResponse::ReorgPool |
-                TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
-                    is_synced,
-                    details: None,
+                TxStorageResponse::NotStoredAlreadyMined => {
+                    let rejection_reason = query_service
+                        .classify_spent_rejection(first_kernel_sig.as_ref())
+                        .await
+                        .map_err(|e| {
+                            error!(target: LOG_TARGET, "Failed to look up the rejected transaction's kernel: {e}");
+                            anyhow::anyhow!("Failed to look up the rejected transaction's kernel: {e}")
+                        })?;
+                    TxSubmissionResponse {
+                        accepted: false,
+                        rejection_reason,
+                        is_synced,
+                        details: None,
+                    }
                 },
             }
         },

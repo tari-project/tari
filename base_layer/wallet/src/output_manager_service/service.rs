@@ -535,8 +535,14 @@ where
                 self.confirm_encumberance(tx_id, tx_id_update, change_outputs)
                     .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
             },
+            OutputManagerRequest::EncumberOutputs { tx_id, commitments } => self
+                .encumber_outputs(tx_id, &commitments)
+                .map(|_| OutputManagerResponse::OutputsEncumbered),
             OutputManagerRequest::CancelPendingTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
+                .map(|_| OutputManagerResponse::TransactionCancelled),
+            OutputManagerRequest::ReleaseUnrecordedTransaction(tx_id) => self
+                .release_unrecorded_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
             OutputManagerRequest::CancelCompletedTransaction(tx_id) => self
                 .cancel_completed_transaction(tx_id)
@@ -1549,16 +1555,13 @@ where
 
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(
-                output_features,
-            )
+            .with_features(output_features)
             .with_script(script)
             .encrypt_data_for_recovery(
                 &self.resources.key_manager,
                 Some(&encryption_key_id),
                 tx_payment_id.clone(),
-            )
-            ?
+            )?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(CompressedPublicKey::new_from_pk(sender_offset_public_key))
             .with_script_key(self.resources.key_manager.get_spend_key().key_id)
@@ -1569,9 +1572,9 @@ where
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?
             .try_build(&self.resources.key_manager)
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
 
         builder.add_recipient(
             recipient_address.clone(),
@@ -1891,18 +1894,40 @@ where
     ) -> Result<(), OutputManagerError> {
         let mut change = Vec::new();
         for output in change_outputs {
-            change.push(DbWalletOutput::from_wallet_output(
-                output,
-                None,
-                OutputSource::default(),
-                Some(tx_id),
-                None,
-            ));
+            let output = DbWalletOutput::from_wallet_output(output, None, OutputSource::default(), Some(tx_id), None);
+            // A change output can come from a signed payload file, and becomes spendable once its transaction is mined
+            if commitment_mask::blocks_revival(&self.resources.key_manager, &output, "Confirm pending transaction") {
+                return Err(OutputManagerError::CommitmentMaskVerificationFailed(
+                    output.commitment.to_hex(),
+                ));
+            }
+            change.push(output);
         }
         self.resources
             .db
             .confirm_encumbered_outputs(tx_id, tx_id_update, change)?;
         Ok(())
+    }
+
+    /// Short-term encumber exactly these outputs against `tx_id`, failing without encumbering any of them if one is
+    /// unknown or not `Unspent`.
+    fn encumber_outputs(
+        &mut self,
+        tx_id: TxId,
+        commitments: &[CompressedCommitment],
+    ) -> Result<(), OutputManagerError> {
+        let mut outputs = Vec::with_capacity(commitments.len());
+        for commitment in commitments {
+            let output = self
+                .resources
+                .db
+                .fetch_by_commitment(commitment.clone(), &self.resources.key_manager)?;
+            if output.status != OutputStatus::Unspent {
+                return Err(OutputManagerStorageError::OutputAlreadySpent.into());
+            }
+            outputs.push(output);
+        }
+        Ok(self.resources.db.encumber_outputs(tx_id, outputs, vec![])?)
     }
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
@@ -1912,6 +1937,12 @@ where
             "Cancelling pending transaction outputs for TxId: {tx_id}"
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id)?)
+    }
+
+    /// Cancel a pending transaction that was never recorded or broadcast, and remove the change outputs it would have
+    /// received: they would otherwise keep their commitments, so the same transaction could not be confirmed again.
+    fn release_unrecorded_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        Ok(self.resources.db.release_unrecorded_transaction(tx_id)?)
     }
 
     /// Cancel a completed transaction and place the encumbered outputs back into the unspent pool
@@ -2614,7 +2645,7 @@ where
         let unspent_remainder = MicroMinotari(
             aftertax_amount
                 .as_u64()
-                .checked_rem(amount_per_split.as_u64())
+                .checked_rem(number_of_splits as u64)
                 .unwrap_or(0),
         );
         let mut expected_outputs = vec![];
@@ -2733,7 +2764,7 @@ where
         let unspent_remainder = MicroMinotari(
             accumulated_amount
                 .as_u64()
-                .checked_rem(amount_per_split.as_u64())
+                .checked_rem(number_of_splits as u64)
                 .unwrap_or(0),
         );
 
@@ -2793,7 +2824,7 @@ where
         tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
-        let dest_outputs = spec_outputs_to_db_outputs(&finalized);
+        let mut dest_outputs = spec_outputs_to_db_outputs(&finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2801,6 +2832,16 @@ where
             self.resources.key_manager.get_view_key().pub_key.as_bytes(),
             finalized.transaction.body.outputs(),
         );
+
+        if let Some(change) = finalized.change {
+            dest_outputs.push(DbWalletOutput::from_wallet_output(
+                change,
+                None,
+                OutputSource::default(),
+                Some(tx_id),
+                None,
+            ));
+        }
 
         trace!(
             target: LOG_TARGET,

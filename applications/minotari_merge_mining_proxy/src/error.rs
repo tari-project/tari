@@ -70,6 +70,8 @@ pub enum MmProxyError {
     InvalidMonerodResponse(String),
     #[error("Failed to send request to monerod: {0}")]
     MonerodRequestFailed(reqwest::Error),
+    #[error("Monerod response exceeds {limit} bytes")]
+    MonerodResponseTooLarge { limit: usize },
     #[error("GRPC request failed with `{status}` {details}")]
     GrpcRequestError {
         #[source]

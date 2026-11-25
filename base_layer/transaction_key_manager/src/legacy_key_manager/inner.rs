@@ -269,7 +269,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
             // anything that does try to convert it back fails loudly. Mapping it to `Managed` instead would be
             // silently catastrophic - an unrecognised `Managed` branch is derived from the master seed, which would
             // turn a one-shot nonce back into the deterministic, host-indexable one this type exists to replace.
-            TariKeyId::LedgerEphemeralNonce { .. } => LegacyTariKeyId::Derived {
+            // A payload auth key is never persisted under its own id either: an imported one is kept by the wallet
+            // as a raw private key in its database, not as a key id.
+            TariKeyId::LedgerEphemeralNonce { .. } | TariKeyId::PayloadAuth { .. } => LegacyTariKeyId::Derived {
                 key: key_id.to_string().into(),
             },
         }
@@ -492,13 +494,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .sign_message_with_spend_key(message, sender_offset_pub_key)
     }
 
-    pub fn sign_script_message_with_spend_key(
+    pub fn sign_script_message_with_spend_key_trusted(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
         self.key_manager
-            .sign_script_message_with_spend_key(message, sender_offset_pub_key)
+            .sign_script_message_with_spend_key_trusted(message, sender_offset_pub_key)
     }
 
     pub fn sign_with_nonce_and_challenge(
