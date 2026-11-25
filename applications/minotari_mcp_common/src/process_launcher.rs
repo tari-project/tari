@@ -158,7 +158,9 @@ impl ProcessLauncher {
             .args(&self.config.args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true);
+            .kill_on_drop(true)
+            // The node MCP server's credential for the node; the launched process has no use for it.
+            .env_remove("MINOTARI_NODE_GRPC_PASSWORD");
 
         // Set environment variables
         for (key, value) in &self.config.env_vars {

@@ -212,13 +212,15 @@ fn load_password(env_password: Option<String>, password_file: Option<&PathBuf>) 
         (Some(password), None) => Ok(Some(SafePassword::from(password))),
         (None, Some(path)) => {
             warn_if_readable_by_others(path);
-            let password = std::fs::read_to_string(path).map_err(|e| {
+            let mut password = std::fs::read_to_string(path).map_err(|e| {
                 McpError::config_error(format!(
                     "Could not read node gRPC password file '{}': {e}",
                     path.display()
                 ))
             })?;
-            Ok(Some(SafePassword::from(password.trim_end_matches(['\r', '\n']))))
+            password.truncate(password.trim_end_matches(['\r', '\n']).len());
+            // Moved, not copied, into the zeroizing SafePassword.
+            Ok(Some(SafePassword::from(password)))
         },
         (None, None) => Ok(None),
     }

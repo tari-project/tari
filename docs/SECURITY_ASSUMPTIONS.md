@@ -117,8 +117,9 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   and blocks the node returns, including the coinbase and the merge-mining hash.
 - **What that means:** A node the operator does not control, or anyone on a plaintext network path, can redirect
   mining rewards and read Basic credentials. Plaintext to a non-loopback host is allowed and logs a warning on each
-  connect; it is never refused. An `https://` address with no CA configured is verified against the system root
-  store, so any certificate authority the system trusts can vouch for the node.
+  connect; it is never refused. Only `http://` and `https://` addresses are accepted. An `https://` address with no
+  CA configured is verified against the root certificates built into the binary's TLS stack: the system store, plus
+  the bundled Mozilla (webpki) roots in the merge-mining proxy. Any of those authorities can vouch for the node.
 - **Not covered:** Sending credentials to a party they were not configured for: the merge-mining proxy's p2pool node
   receives only the `p2pool_grpc_*` credentials and TLS settings, never the base node's. Connecting in plaintext when
   TLS is configured. Unbounded memory from node responses (messages are capped at 8 MiB by default). Blocks returned

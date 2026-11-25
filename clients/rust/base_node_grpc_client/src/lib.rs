@@ -41,7 +41,8 @@ use tonic::{
 
 const LOG_TARGET: &str = "minotari::grpc_client";
 
-/// Kept for compatibility with external users of the old generic alias.
+/// The raw generated client, for callers that manage their own channel and interceptor. Users of the old generic
+/// `BaseNodeGrpcClient<T>` alias rename to this.
 pub type RawBaseNodeGrpcClient<TChannel> = grpc::base_node_client::BaseNodeClient<TChannel>;
 pub type ShaP2PoolGrpcClient =
     grpc::sha_p2_pool_client::ShaP2PoolClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
@@ -89,6 +90,8 @@ impl Default for GrpcClientConfig {
 pub enum GrpcClientError {
     #[error("Invalid gRPC address: {0}")]
     InvalidUri(#[source] tonic::transport::Error),
+    #[error("Unsupported gRPC address scheme '{0}'; use http:// or https://")]
+    UnsupportedScheme(String),
     #[error("gRPC TLS error: {0}")]
     Tls(String),
     #[error("gRPC transport error: {0}")]
@@ -151,12 +154,19 @@ pub fn endpoint(addr: &str, cfg: &GrpcClientConfig) -> Result<Endpoint, GrpcClie
     if let Some(timeout) = cfg.request_timeout {
         endpoint = endpoint.timeout(timeout);
     }
-    let is_https = endpoint.uri().scheme_str() == Some("https");
+    let scheme = endpoint.uri().scheme_str();
+    // tonic dials any other scheme (or none) in plaintext, and the plaintext warning would not fire for it.
+    if !addr.starts_with("unix:") && !matches!(scheme, Some("http" | "https")) {
+        return Err(GrpcClientError::UnsupportedScheme(
+            scheme.unwrap_or_default().to_string(),
+        ));
+    }
+    let is_https = scheme == Some("https");
     let tls_config = match &cfg.tls {
         // tonic only uses TLS for an https URI and would otherwise connect in plaintext without telling anyone.
         Some(_) if !is_https => {
             return Err(GrpcClientError::Tls(
-                "TLS is configured but the address uses http://; use https://".to_string(),
+                "TLS is configured but the address is not https://; use https://".to_string(),
             ));
         },
         Some(tls) => Some(
@@ -164,8 +174,8 @@ pub fn endpoint(addr: &str, cfg: &GrpcClientConfig) -> Result<Endpoint, GrpcClie
                 .ca_certificate(Certificate::from_pem(&tls.ca_cert_pem))
                 .domain_name(&tls.domain_name),
         ),
-        // Public-CA nodes, via tonic's `tls-native-roots`. A host with no system CA bundle gets an empty root store,
-        // so the handshake fails closed.
+        // Public-CA nodes, via the root features enabled in tonic (`tls-native-roots` here). On a host with no system
+        // CA bundle `tls_config` fails with NativeCertsNotFound, so this returns a Tls error.
         None if is_https => Some(ClientTlsConfig::new().with_enabled_roots()),
         None => None,
     };
@@ -245,8 +255,19 @@ mod test {
 
     #[test]
     fn https_without_ca_uses_system_roots() {
-        let endpoint = endpoint("https://10.0.0.1:18142", &GrpcClientConfig::default()).unwrap();
-        assert_eq!(endpoint.uri().scheme_str(), Some("https"));
+        // A host without a CA bundle refuses with a Tls error; it never falls back to plaintext.
+        match endpoint("https://10.0.0.1:18142", &GrpcClientConfig::default()) {
+            Ok(endpoint) => assert_eq!(endpoint.uri().scheme_str(), Some("https")),
+            Err(err) => assert!(matches!(err, GrpcClientError::Tls(_)), "{err:?}"),
+        }
+    }
+
+    #[test]
+    fn non_http_schemes_are_refused() {
+        for addr in ["grpc://10.0.0.1:18142", "grpcs://10.0.0.1:18142", "10.0.0.1:18142"] {
+            let err = endpoint(addr, &GrpcClientConfig::default()).unwrap_err();
+            assert!(matches!(err, GrpcClientError::UnsupportedScheme(_)), "{addr}: {err:?}");
+        }
     }
 
     #[test]
