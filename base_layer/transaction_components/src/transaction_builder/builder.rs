@@ -182,6 +182,23 @@ struct FeeAndChange {
     change_fee: MicroMinotari,
 }
 
+/// Builds a transaction from inputs, recipient specs, pending outputs and an optional change output.
+///
+/// # One sender offset key the host cannot learn
+///
+/// The transaction publishes `script offset = sum(input script keys) - sum(sender offset keys)`. An input script key
+/// derived from the spend key is `H(mask) + spend key`, and masks are wrapped under the view key, so a party holding
+/// only the view key that also learns every sender offset key could solve for the spend key.
+///
+/// So when the key manager holds the spend private key (any software wallet; a ledger keeps it, and its sender offset
+/// keys, on the device) and an input's script key is derived from it, [`Self::reserve_sender_offset_keys`] refuses
+/// with [`TransactionBuilderError::NoPrivateSenderOffsetKey`] unless at least one sender offset key stays inside the
+/// builder: one reserved for a recipient spec or for the change output.
+///
+/// The keys `reserve_sender_offset_keys` hands back and keys registered with
+/// [`Self::with_host_derived_partial_script_offset`] are exported. A recipient spec's key is not, but with the
+/// default [`RecipientKeys::DiffieHellman`] its id is embedded in the output's `commitment_mask_key_id` in
+/// [`FinalizedTransaction::spec_outputs`] and `sent_outputs`. Callers must not persist or export those key ids.
 #[derive(Clone)]
 pub struct TransactionBuilder<KM> {
     consensus_constants: ConsensusConstants,
@@ -436,6 +453,21 @@ where KM: TransactionKeyManagerInterface
         self.check_change_only_has_change(&fee_and_change, pending_outputs)?;
         if self.change_required {
             self.check_offline_decision(&fee_and_change, pending_outputs)?;
+        }
+        let builder_held_keys = self
+            .recipient_specs
+            .len()
+            .saturating_add(usize::from(fee_and_change.change.is_some()));
+        if builder_held_keys == 0 &&
+            !self.key_manager.is_ledger() &&
+            self.pending_input_script_keys.iter().any(|k| {
+                matches!(
+                    k,
+                    TariKeyId::Derived { .. } | TariKeyId::SpendKey | TariKeyId::CodeTemplateAuthor
+                )
+            })
+        {
+            return Err(TransactionBuilderError::NoPrivateSenderOffsetKey);
         }
         let extra = pending_outputs.iter().filter(|o| o.takes_reserved_key).count();
         let count = self
@@ -1899,6 +1931,7 @@ mod test {
             create_consensus_manager,
             create_test_input,
             create_wallet_output_with_data,
+            input_with_a_script_key_not_derived_from_the_spend_key,
         },
         transaction_builder::TransactionBuilder,
         transaction_components::{MemoField, OutputFeatures},
@@ -2018,6 +2051,122 @@ mod test {
         );
     }
 
+    /// A pending output that takes the whole of a 100_000 input, so the transaction carries no change, and the
+    /// builder it is declared on.
+    fn whole_input_to_a_returned_key(
+        input: WalletOutput,
+        key_manager: &KeyManager,
+    ) -> (TransactionBuilder<KeyManager>, PendingOutput) {
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(20)).with_input(input).unwrap();
+        let fee = builder
+            .get_fee_estimate_with(&[PendingOutput::new(MicroMinotari(0), 0)])
+            .unwrap();
+        (
+            builder,
+            PendingOutput::new(MicroMinotari(100_000).checked_sub(fee).unwrap(), 0),
+        )
+    }
+
+    /// The only sender offset key is handed back to the caller, so with a spend key derived input the host could
+    /// learn every sender offset key and solve the script offset for the spend key.
+    #[test]
+    fn a_spend_key_derived_input_with_only_returned_sender_offset_keys_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
+        assert!(matches!(input.script_key_id(), TariKeyId::Derived { .. }));
+        let (mut builder, pending) = whole_input_to_a_returned_key(input, &key_manager);
+
+        let err = builder.reserve_sender_offset_keys(&[pending]).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::NoPrivateSenderOffsetKey),
+            "got {err:?}"
+        );
+    }
+
+    /// The same returned key is fine once a change output's key stays inside the builder.
+    #[test]
+    fn a_spend_key_derived_input_with_a_returned_key_and_change_builds() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder = change_only_builder(&key_manager, MicroMinotari(100_000));
+        let output = create_test_input(MicroMinotari(10_000), 0, &key_manager, vec![], None);
+        add_outputs_with_reserved_sender_offset_keys(&mut builder, vec![output]).unwrap();
+
+        let finalized = builder.build().unwrap();
+        assert!(finalized.change.is_some());
+        assert_validates(&finalized.transaction);
+    }
+
+    /// An input whose script key is not derived from the spend key (a pre-mine spend, `encumber_aggregate_utxo`)
+    /// gives the host nothing to solve for, so a returned key alone is accepted.
+    #[test]
+    fn an_input_not_derived_from_the_spend_key_may_use_only_returned_keys() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
+        input.set_script_key_id(key_manager.get_random_key(None, None).unwrap().key_id);
+        let (mut builder, pending) = whole_input_to_a_returned_key(input, &key_manager);
+
+        assert_eq!(builder.reserve_sender_offset_keys(&[pending]).unwrap().len(), 1);
+    }
+
+    /// A plain burn's sender offset key comes from a recipient spec and stays in the builder, so it builds without
+    /// change.
+    #[test]
+    fn a_plain_burn_without_change_builds() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder = change_only_builder(&key_manager, MicroMinotari(100_000));
+        builder
+            .with_tx_type(TxType::Burn)
+            .with_kernel_features(KernelFeatures::create_burn());
+        let burn = |amount| {
+            RecipientSpec::burn(amount, OutputFeatures::create_burn_output(), MemoField::new_empty())
+                .with_script(script!(Nop).unwrap())
+                .with_script_key(RecipientScriptKey::Zero)
+        };
+        let mut probe = builder.clone();
+        probe.with_recipient_spec(burn(MicroMinotari(0))).unwrap();
+        let fee = probe.get_fee_estimate_without_change().unwrap();
+        builder
+            .with_recipient_spec(burn(MicroMinotari(100_000).checked_sub(fee).unwrap()))
+            .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+
+        let finalized = builder.build().unwrap();
+        assert!(finalized.change.is_none());
+        assert_validates(&finalized.transaction);
+    }
+
+    /// An L2-bound burn's `r` is derived by the host, so without change nothing stays in the builder.
+    #[test]
+    // Ristretto scalar arithmetic, not integer arithmetic: this cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    fn an_l2_burn_without_change_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(20)).with_input(input).unwrap();
+        let fee = builder
+            .get_fee_estimate_with(&[PendingOutput::custom_sender_offset(MicroMinotari(0), 0)])
+            .unwrap();
+        let r = key_manager.get_random_key(None, None).unwrap();
+        builder.with_host_derived_partial_script_offset(
+            PrivateKey::default() - key_manager.get_private_key(&r.key_id).unwrap(),
+        );
+
+        let err = builder
+            .reserve_sender_offset_keys(&[PendingOutput::custom_sender_offset(
+                MicroMinotari(100_000).checked_sub(fee).unwrap(),
+                0,
+            )])
+            .unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::NoPrivateSenderOffsetKey),
+            "got {err:?}"
+        );
+    }
+
     /// A builder spending a single input of `value`, with no recipients.
     fn change_only_builder(key_manager: &KeyManager, value: MicroMinotari) -> TransactionBuilder<KeyManager> {
         let input = create_test_input(value, 0, key_manager, vec![], None);
@@ -2126,13 +2275,11 @@ mod test {
         // outputs weight: 1060, kernel weight: 10, input weight: 9, output weight: 53,
 
         // Pay out so that I should get change, but not enough to pay for the output
-        let input = create_test_input(
+        // The output takes a returned sender offset key and there is no change.
+        let input = input_with_a_script_key_not_derived_from_the_spend_key(
             // one under the amount required to pay the fee for a change output
-            2000 * uT + tx_fee + fee_for_change_output - 1 * uT,
-            0,
+            UtxoTestParams::with_value(2000 * uT + tx_fee + fee_for_change_output - 1 * uT),
             &key_manager,
-            vec![],
-            None,
         );
         let output = p
             .create_output(
@@ -2813,12 +2960,10 @@ mod test {
             ("just above the threshold", MicroMinotari(2000), true),
         ] {
             let p = TestParams::new(&key_manager);
-            let input = create_test_input(
-                2000 * uT + tx_fee + fee_for_change_output - 1 * uT + extra,
-                0,
+            // The output takes a returned sender offset key, and some cases have no change.
+            let input = input_with_a_script_key_not_derived_from_the_spend_key(
+                UtxoTestParams::with_value(2000 * uT + tx_fee + fee_for_change_output - 1 * uT + extra),
                 &key_manager,
-                vec![],
-                None,
             );
             let output = p
                 .create_output(
@@ -2974,7 +3119,11 @@ mod test {
         let key_manager = KeyManager::new_random().unwrap();
         let p1 = TestParams::new(&key_manager);
         let p2 = TestParams::new(&key_manager);
-        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None);
+        // The outputs take returned sender offset keys and there is no change.
+        let input = input_with_a_script_key_not_derived_from_the_spend_key(
+            UtxoTestParams::with_value(MicroMinotari(1200)),
+            &key_manager,
+        );
         let mut builder =
             TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
         let script = TariScript::default();

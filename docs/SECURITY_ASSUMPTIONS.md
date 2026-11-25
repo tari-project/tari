@@ -230,6 +230,22 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   `config.rs`).
 - **Recorded:** 2026-11-25, PR #8434.
 
+### A-BUILDER-01: Callers keep the key ids of builder-made recipient outputs to themselves
+
+- **Assumption:** `TransactionBuilder` treats the sender offset key it reserves for a recipient spec as one the view
+  key holder cannot learn, and counts it toward the rule that a transaction spending a spend-key-derived input keeps
+  at least one sender offset key with the signer. With the default `RecipientKeys::DiffieHellman`, that key's id
+  (wrapped under the view key) is embedded in the output's `commitment_mask_key_id` in the returned
+  `FinalizedTransaction::spec_outputs` and `sent_outputs`. The calling flow is trusted not to persist or export those
+  key ids.
+- **What that means:** A flow that stores those key ids, or hands them to a party holding only the view key, gives that
+  party every sender offset key of a transaction without change, and with the published script offset, the spend key.
+- **Not covered:** The builder must still refuse such a transaction when every sender offset key was handed back by
+  `reserve_sender_offset_keys` or derived by the host (`with_host_derived_partial_script_offset`), whatever the caller
+  does with them.
+- **Where:** `base_layer/transaction_components` (`transaction_builder`), `base_layer/wallet`, `multisig`.
+- **Recorded:** 2026-11-25.
+
 ## Withdrawn entries
 
 None.
