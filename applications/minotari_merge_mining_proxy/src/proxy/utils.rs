@@ -38,7 +38,7 @@ use crate::error::MmProxyError;
 pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
 
 /// The largest monerod response body the proxy will read. Monerod nodes are untrusted (A-MMPROXY-01); this is well
-/// above the largest legitimate response (`get_block`, `get_transaction_pool`).
+/// above typical `get_block`/`get_transaction_pool` responses.
 pub(crate) const MAX_MONEROD_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 
 pub async fn convert_reqwest_response_to_hyper_json_response(
@@ -90,12 +90,21 @@ pub async fn convert_reqwest_response_to_hyper_json_response(
     Ok(resp)
 }
 
+/// Replace `value` with an empty object if it is not one, so `IndexMut` on it cannot panic on monerod data.
+fn ensure_object(value: &mut json::Value) -> &mut json::Value {
+    if !value.is_object() {
+        *value = json!({});
+    }
+    value
+}
+
 /// Add mmproxy extensions object to JSON RPC success response
 pub fn add_aux_data(mut response: json::Value, mut ext: json::Value) -> json::Value {
     if response["result"].is_null() {
         return response;
     }
-    match response["result"][MMPROXY_AUX_KEY_NAME].as_object_mut() {
+    let result = ensure_object(&mut response["result"]);
+    match result[MMPROXY_AUX_KEY_NAME].as_object_mut() {
         Some(obj_mut) => {
             let ext_mut = ext
                 .as_object_mut()
@@ -103,27 +112,21 @@ pub fn add_aux_data(mut response: json::Value, mut ext: json::Value) -> json::Va
             obj_mut.append(ext_mut);
         },
         None => {
-            response["result"][MMPROXY_AUX_KEY_NAME] = ext;
+            result[MMPROXY_AUX_KEY_NAME] = ext;
         },
     }
     response
 }
 
-/// Append chain data to the result object. If the result object is not a JSON object, a JSON object is created.
+/// Append chain data to the result object. If the response, result or aux value is not a JSON object, a JSON object
+/// is created.
 pub fn append_aux_chain_data(mut response: json::Value, chain_data: json::Value) -> json::Value {
-    let result = &mut response["result"];
-    if !result.is_object() {
-        *result = json!({});
+    let result = ensure_object(&mut ensure_object(&mut response)["result"]);
+    let chains = &mut ensure_object(&mut result[MMPROXY_AUX_KEY_NAME])["chains"];
+    match chains.as_array_mut() {
+        Some(arr_mut) => arr_mut.push(chain_data),
+        None => *chains = json!([chain_data]),
     }
-    let chains = match result[MMPROXY_AUX_KEY_NAME]["chains"].as_array_mut() {
-        Some(arr_mut) => arr_mut,
-        None => {
-            result[MMPROXY_AUX_KEY_NAME]["chains"] = json!([]);
-            result[MMPROXY_AUX_KEY_NAME]["chains"].as_array_mut().unwrap()
-        },
-    };
-
-    chains.push(chain_data);
     response
 }
 
