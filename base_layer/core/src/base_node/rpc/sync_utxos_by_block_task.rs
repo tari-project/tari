@@ -199,7 +199,7 @@ where B: BlockchainBackend + 'static
             }
         };
         let hash = header.hash();
-        let (outputs, header_at_height, end_header) = self
+        let (outputs, header_at_height, end_header, _) = self
             .db
             .fetch_outputs_in_block_and_header_pair(hash, height, end_height)
             .await?;
