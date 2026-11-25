@@ -399,7 +399,7 @@ pub async fn coin_split(
 // casting here is okay. If the txns per second for this primary debug tool is a bit off its okay.
 #[allow(clippy::cast_possible_truncation)]
 fn make_it_rain_tx_count(transactions_per_second: f64, duration: Duration) -> (f64, usize) {
-    if !transactions_per_second.is_finite() {
+    if transactions_per_second.is_nan() {
         return (0.0, 0);
     }
     let transactions_per_second = transactions_per_second.abs().clamp(0.01, 250.0);
@@ -436,8 +436,8 @@ pub async fn make_it_rain(
              duration={duration:?}); skipping"
         );
         println!(
-            "\n`make-it-rain` calculated 0 {transaction_type} transactions ({duration:?} at \
-             {transactions_per_second} tx/s); nothing to send\n"
+            "\n`make-it-rain` calculated 0 {transaction_type} transactions ({duration:?} at {transactions_per_second} \
+             tx/s); nothing to send\n"
         );
         return Ok(());
     }
@@ -4524,7 +4524,7 @@ mod test {
             (0.01, Duration::from_secs(60), 0.01, 0),
             (0.0, Duration::from_secs(60), 0.01, 0),
             (f64::NAN, Duration::from_secs(60), 0.0, 0),
-            (f64::INFINITY, Duration::from_secs(60), 0.0, 0),
+            (f64::INFINITY, Duration::from_secs(60), 250.0, 15000),
             (25.0, Duration::from_secs(10), 25.0, 250),
             (10.0, Duration::from_millis(500), 10.0, 5),
             (-500.0, Duration::from_secs(2), 250.0, 500),
