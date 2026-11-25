@@ -30,7 +30,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
-use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
+use tari_node_components::blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate};
 use tari_transaction_components::{
     MicroMinotari,
     transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
@@ -50,6 +50,12 @@ pub enum NodeCommsResponse {
     BlockHeader(Option<ChainHeader>),
     Block(Box<Option<Block>>),
     TransactionOutputs(Vec<TransactionOutput>),
+    OutputsInBlockAndHeaderPair {
+        outputs: Vec<TransactionOutput>,
+        first_header: Box<Option<BlockHeader>>,
+        second_header: Box<Option<BlockHeader>>,
+        best_block_height: u64,
+    },
     HistoricalBlocks(Vec<HistoricalBlock>),
     HistoricalBlock(Box<Option<HistoricalBlock>>),
     NewBlockTemplate(NewBlockTemplate),
@@ -82,6 +88,7 @@ impl Display for NodeCommsResponse {
             Block(_) => write!(f, "Block"),
             HistoricalBlock(_) => write!(f, "HistoricalBlock"),
             TransactionOutputs(_) => write!(f, "TransactionOutputs"),
+            OutputsInBlockAndHeaderPair { .. } => write!(f, "OutputsInBlockAndHeaderPair"),
             HistoricalBlocks(_) => write!(f, "HistoricalBlocks"),
             NewBlockTemplate(_) => write!(f, "NewBlockTemplate"),
             NewBlock {
