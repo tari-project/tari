@@ -36,6 +36,7 @@ use minotari_mcp_common::{
     ServiceHealthMonitors,
     StartupDiagnostics,
     TariProcessLauncher,
+    wallet_rpc::SpendLimits,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use tonic::transport::Channel;
@@ -70,7 +71,11 @@ impl WalletMcpServer {
         let grpc_client = Arc::new(grpc_client);
 
         // Create tool registry with wallet-specific tools
-        let tool_registry = WalletToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled);
+        let limits = Arc::new(SpendLimits::new(
+            config.security.spend_budget,
+            config.security.max_fee_per_gram,
+        ));
+        let tool_registry = WalletToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled, limits);
 
         // Create resource registry with wallet-specific resources
         let resource_registry = WalletResourceRegistry::new(grpc_client.clone());

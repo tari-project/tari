@@ -27,18 +27,17 @@
 
 use std::sync::Arc;
 
-use minotari_app_grpc::tari_rpc::{Empty, GetPaymentIdAddressRequest};
 use minotari_mcp_common::{
-    McpError,
     McpResult,
     McpTool,
     get_optional_string_param,
     get_required_string_param,
     security::PermissionLevel,
+    wallet_rpc,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::transport::Channel;
 
 /// Tool for getting wallet addresses
 #[derive(Clone)]
@@ -75,26 +74,7 @@ impl McpTool for GetAddressTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_address(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get address: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "addresses": {
-                "interactive_address": hex::encode(&response.interactive_address),
-                "one_sided_address": hex::encode(&response.one_sided_address),
-            },
-            "info": {
-                "interactive_address_info": "Used for interactive Mimblewimble transactions (default)",
-                "one_sided_address_info": "Used for one-sided transactions and stealth payments",
-                "format": "Hexadecimal encoding of the address bytes",
-            }
-        }))
+        wallet_rpc::get_address((*self.grpc_client).clone()).await
     }
 }
 
@@ -133,40 +113,7 @@ impl McpTool for GetCompleteAddressTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_complete_address(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get complete address: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "addresses": {
-                "interactive": {
-                    "bytes": hex::encode(&response.interactive_address),
-                    "base58": response.interactive_address_base58,
-                    "emoji": response.interactive_address_emoji,
-                },
-                "one_sided": {
-                    "bytes": hex::encode(&response.one_sided_address),
-                    "base58": response.one_sided_address_base58,
-                    "emoji": response.one_sided_address_emoji,
-                }
-            },
-            "formats": {
-                "bytes": "Raw address bytes in hexadecimal format",
-                "base58": "Human-readable Base58 encoded address",
-                "emoji": "User-friendly emoji representation for easy sharing",
-            },
-            "usage_recommendations": {
-                "interactive_address": "Use for most transactions - enables interactive negotiation",
-                "one_sided_address": "Use for stealth payments or when sender privacy is required",
-                "base58_format": "Recommended for sharing with other users",
-                "emoji_format": "Fun alternative for casual transactions",
-            }
-        }))
+        wallet_rpc::get_complete_address((*self.grpc_client).clone()).await
     }
 }
 
@@ -210,48 +157,7 @@ impl McpTool for GetPaymentIdAddressTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id_str = get_required_string_param(&params, "payment_id")?;
-
-        let payment_id = if let Some(stripped) = payment_id_str.strip_prefix("0x") {
-            hex::decode(stripped).map_err(|e| McpError::invalid_request(format!("Invalid hex payment ID: {e}")))?
-        } else {
-            payment_id_str.as_bytes().to_vec()
-        };
-
-        let request = Request::new(GetPaymentIdAddressRequest { payment_id });
-
-        let mut client = (*self.grpc_client).clone();
-        let response = client
-            .get_payment_id_address(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get payment ID address: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "payment_id": payment_id_str,
-            "addresses": {
-                "interactive": {
-                    "bytes": hex::encode(&response.interactive_address),
-                    "base58": response.interactive_address_base58,
-                    "emoji": response.interactive_address_emoji,
-                },
-                "one_sided": {
-                    "bytes": hex::encode(&response.one_sided_address),
-                    "base58": response.one_sided_address_base58,
-                    "emoji": response.one_sided_address_emoji,
-                }
-            },
-            "info": {
-                "purpose": "These addresses are unique to the specified payment ID",
-                "tracking": "Payments to these addresses will be associated with the payment ID",
-                "privacy": "Each payment ID generates unique addresses for better privacy",
-            },
-            "usage": {
-                "invoicing": "Use these addresses for specific invoices or payment requests",
-                "reconciliation": "Easier to track and reconcile payments from different sources",
-                "reporting": "Simplifies accounting and transaction categorization",
-            }
-        }))
+        wallet_rpc::get_payment_id_address((*self.grpc_client).clone(), &params).await
     }
 }
 

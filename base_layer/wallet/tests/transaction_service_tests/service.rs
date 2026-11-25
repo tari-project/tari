@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{mem::size_of, sync::Arc, time::Duration};
+use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -65,10 +65,11 @@ use minotari_wallet::{
     },
     util::watch::Watch,
     utxo_scanner_service::{
-        handle::UtxoScannerHandle,
+        handle::{UtxoScannerEvent, UtxoScannerHandle},
         imported_output_source_address,
         initializer::UtxoScannerServiceInitializer,
         service::ScannedBlock,
+        uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
     },
 };
 use rand::Rng;
@@ -81,7 +82,15 @@ use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
-    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+    },
 };
 use tari_comms::{
     PeerConnection,
@@ -96,8 +105,9 @@ use tari_core::base_node::{
     rpc::BaseNodeWalletRpcServer,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SK};
+use tari_node_components::blocks::BlockHeader as NodeBlockHeader;
 use tari_p2p::Network;
-use tari_script::{ExecutionStack, Opcode, TariScript, push_pubkey_script};
+use tari_script::{ExecutionStack, Opcode, TariScript, inputs, push_pubkey_script, script};
 use tari_service_framework::{RegisterHandle, StackBuilder, reply_channel};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -166,7 +176,7 @@ use url::Url;
 
 use crate::support::{
     base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory},
-    comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     utils::make_input,
 };
 
@@ -4275,4 +4285,133 @@ async fn an_undecodable_pending_outbound_transaction_can_be_cancelled() {
             .available_balance,
         value
     );
+}
+
+/// The base node sends a block with more outputs than its chunk size as several entries with the same height and
+/// hash. An owned output that is only in a later chunk must still be found and imported.
+#[tokio::test]
+async fn utxo_scanner_imports_an_owned_output_found_only_in_a_later_chunk_of_a_block() {
+    let factories = CryptoFactories::default();
+    let ts_interface =
+        setup_transaction_service_no_comms(factories, make_wallet_database_memory_connection(), None).await;
+    let key_manager = &ts_interface.key_manager_handle;
+
+    let value = MicroMinotari::from(1000);
+    let commitment_mask_key = key_manager.get_random_key(None, None).unwrap();
+    let script_key_id = TariKeyId::Derived {
+        key: (&commitment_mask_key.key_id).into(),
+    };
+    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
+    let encrypted_data = key_manager
+        .encrypt_data_for_recovery(
+            &commitment_mask_key.key_id,
+            None,
+            value.as_u64(),
+            MemoField::new_empty(),
+        )
+        .unwrap();
+    let owned = WalletOutput::new_current_version(
+        value,
+        commitment_mask_key.key_id,
+        OutputFeatures::default(),
+        script!(Nop).unwrap(),
+        inputs!(public_script_key),
+        script_key_id,
+        CompressedPublicKey::default(),
+        ComAndPubSignature::default(),
+        0,
+        Covenant::new(),
+        encrypted_data,
+        MicroMinotari::zero(),
+        MemoField::new_empty(),
+        key_manager,
+    )
+    .unwrap()
+    .to_transaction_output()
+    .unwrap();
+    let other_key_manager = create_new_random_key_manager().await.unwrap();
+    let not_owned = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(2000),
+        &OutputFeatures::default(),
+        other_key_manager.key_manager(),
+    )
+    .to_transaction_output()
+    .unwrap();
+
+    let header_at = |height| {
+        let mut header = NodeBlockHeader::new(0);
+        header.height = height;
+        header
+    };
+    let genesis = header_at(0);
+    let block_1 = header_at(1);
+    let base_node = ts_interface.base_node_mock.clone();
+    base_node
+        .set_blocks(HashMap::from([(0, genesis.clone()), (1, block_1.clone())]))
+        .await
+        .unwrap();
+    // Block 1 is served as two chunks: the first holds only the output that is not ours
+    base_node
+        .set_utxos_by_block(vec![UtxosByBlock {
+            height: 1,
+            header_hash: block_1.hash().to_vec(),
+            utxos: vec![not_owned, owned],
+        }])
+        .await
+        .unwrap();
+    base_node.set_utxo_chunk_size(1).await;
+    base_node
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(ChainMetadata::new(1, block_1.hash(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap()),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
+    base_node.set_mined_utxos(vec![], 1).await;
+    ts_interface
+        .wallet_db
+        .save_scanned_block(ScannedBlock {
+            header_hash: genesis.hash(),
+            height: 0,
+            timestamp: Utc::now().naive_utc(),
+        })
+        .unwrap();
+
+    let shutdown = Shutdown::new();
+    let (event_sender, mut events) = broadcast::channel(100);
+    let scanner = UtxoScannerServiceBuilder::<MockHttpClientFactory>::default()
+        .with_retry_limit(1)
+        .with_mode(UtxoScannerMode::Recovery)
+        .with_client_factory(MockHttpClientFactory::from_mock(base_node))
+        .build_with_resources(
+            ts_interface.wallet_db.clone(),
+            ts_interface.output_manager_service_handle.clone(),
+            ts_interface.transaction_service_handle.clone(),
+            TariAddress::default(),
+            shutdown.to_signal(),
+            event_sender,
+            0,
+            key_manager.clone(),
+        )
+        .await
+        .unwrap();
+    scanner.run().await.unwrap();
+
+    let recovered = tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            match events.recv().await.unwrap() {
+                UtxoScannerEvent::Completed {
+                    num_recovered,
+                    value_recovered,
+                    ..
+                } => break (num_recovered, value_recovered),
+                UtxoScannerEvent::ScanningRoundFailed { error, .. } => panic!("scanning round failed: {error}"),
+                _ => {},
+            }
+        }
+    })
+    .await
+    .expect("the scan must complete");
+    assert_eq!(recovered, (1, value));
 }

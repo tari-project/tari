@@ -66,7 +66,10 @@ impl McpResource for AddressesResource {
         let response = client
             .get_address(GetAddressRequest {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get address: {e}")))?;
+            .map_err(|e| McpError::resource_access_failed(format!(
+                "Failed to get address: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            )))?;
 
         let address_info = response.into_inner();
 
