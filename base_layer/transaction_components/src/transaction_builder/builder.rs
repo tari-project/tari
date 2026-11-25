@@ -2104,8 +2104,8 @@ mod test {
     }
 
     /// A pre-mine script key (as `encumber_aggregate_utxo` spends) is not derived from the spend key, so the host has
-    /// nothing to solve for and a returned key alone passes the check. A software key manager may still refuse the
-    /// device key itself further on.
+    /// nothing to solve for and a returned key alone passes the check. The reservation then reaches the key manager,
+    /// which on a software wallet cannot resolve the device key.
     #[test]
     fn a_pre_mine_input_may_use_only_returned_keys() {
         let key_manager = KeyManager::new_random().unwrap();
@@ -2118,7 +2118,11 @@ mod test {
 
         let result = builder.reserve_sender_offset_keys(&[pending]);
         assert!(
-            !matches!(result, Err(TransactionBuilderError::NoPrivateSenderOffsetKey)),
+            matches!(
+                &result,
+                Err(TransactionBuilderError::KeyManagerError(KeyManagerError::LedgerError(msg)))
+                    if msg == "Cannot access ledger private keys"
+            ),
             "got {result:?}"
         );
     }
