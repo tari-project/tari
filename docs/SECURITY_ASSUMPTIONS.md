@@ -205,7 +205,7 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   change the Tari coinbase or the reward destination.
 - **Where:** `applications/minotari_merge_mining_proxy` (`proxy/inner.rs`, `proxy/utils.rs`, `run_merge_miner.rs`,
   `config.rs`).
-- **Recorded:** 2026-11-25, PR #TBD.
+- **Recorded:** 2026-11-25, PR #8434.
 
 ## Withdrawn entries
 
