@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::{CompressedSignature, HashOutput};
+use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{Service, reply_channel::TrySenderService};
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 
@@ -65,6 +66,24 @@ impl MempoolHandle {
         match self
             .inner
             .call(MempoolRequest::SubmitTransaction(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorage(response) => Ok(response),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
+        }
+    }
+
+    pub async fn submit_transaction_from_peer(
+        &mut self,
+        transaction: Transaction,
+        source_peer: NodeId,
+    ) -> Result<TxStorageResponse, MempoolServiceError> {
+        match self
+            .inner
+            .call(MempoolRequest::SubmitTransactionFromPeer {
+                tx: transaction,
+                source_peer,
+            })
             .await??
         {
             MempoolResponse::TxStorage(response) => Ok(response),
