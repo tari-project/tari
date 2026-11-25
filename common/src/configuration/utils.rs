@@ -1958,12 +1958,17 @@ password = "scoped"
     fn test_load_configuration_first_run_creates_config_and_logs_info() {
         crate::test_logger::init();
 
+        let network = crate::network_check::is_network_choice_valid(Network::MainNet)
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::NextNet))
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::Esmeralda))
+            .unwrap();
+
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("sub").join("config.toml");
         assert!(!config_path.exists());
 
         let overrides = TestOverrides(Vec::new());
-        let result = load_configuration(&config_path, true, true, &overrides, Some(Network::LocalNet));
+        let result = load_configuration(&config_path, true, true, &overrides, Some(network));
         assert!(result.is_ok(), "load_configuration failed: {:?}", result.err());
         assert!(config_path.exists());
 

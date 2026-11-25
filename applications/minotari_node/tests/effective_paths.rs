@@ -3,10 +3,19 @@
 
 use std::{fs, path::Path, process::Command};
 
+use tari_common::{configuration::Network, network_check::is_network_choice_valid};
 use tempfile::tempdir;
+
+fn test_network() -> Network {
+    [Network::LocalNet, Network::NextNet, Network::StageNet]
+        .into_iter()
+        .find(|n| is_network_choice_valid(*n).is_ok())
+        .expect("no valid network for this build")
+}
 
 #[test]
 fn test_effective_paths_are_logged_and_absolute() {
+    let network = test_network().to_string();
     let temp_dir = tempdir().unwrap();
     let base_path = temp_dir.path().to_path_buf();
 
@@ -14,7 +23,7 @@ fn test_effective_paths_are_logged_and_absolute() {
         .arg("--init")
         .arg("--non-interactive-mode")
         .arg("--network")
-        .arg("localnet")
+        .arg(&network)
         .arg("--base-path")
         .arg(&base_path)
         .output()
@@ -29,7 +38,7 @@ fn test_effective_paths_are_logged_and_absolute() {
     );
 
     let log_file = base_path
-        .join("localnet")
+        .join(&network)
         .join("log")
         .join("base_node")
         .join("base_layer.log");
@@ -100,6 +109,7 @@ fn test_effective_paths_are_logged_and_absolute() {
 fn test_unset_home_with_explicit_base_path_emits_no_warning() {
     const WARNING_PREFIX: &str = "Could not determine user home directory; falling back to current working directory: ";
 
+    let network = test_network().to_string();
     let work_dir = tempdir().unwrap();
     let explicit_dir = tempdir().unwrap();
     let explicit_output = Command::new(env!("CARGO_BIN_EXE_minotari_node"))
@@ -110,7 +120,7 @@ fn test_unset_home_with_explicit_base_path_emits_no_warning() {
         .arg("--init")
         .arg("--non-interactive-mode")
         .arg("--network")
-        .arg("localnet")
+        .arg(&network)
         .arg("--base-path")
         .arg(explicit_dir.path())
         .output()
@@ -124,7 +134,7 @@ fn test_unset_home_with_explicit_base_path_emits_no_warning() {
 
     let explicit_log_file = explicit_dir
         .path()
-        .join("localnet")
+        .join(&network)
         .join("log")
         .join("base_node")
         .join("base_layer.log");
