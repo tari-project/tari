@@ -26,7 +26,7 @@ use std::{
 };
 
 use borsh::BorshSerialize;
-use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
+use tari_common_types::types::{CompressedPublicKey, MAX_RANGE_PROOF_BYTES, PrivateKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     MicroMinotari,
@@ -235,6 +235,12 @@ fn convert_unblinded_output(output: &mut grpc::UnblindedOutput) -> Result<Unblin
         if proof.proof_bytes.is_empty() {
             None
         } else {
+            if proof.proof_bytes.len() != MAX_RANGE_PROOF_BYTES {
+                return Err(format!(
+                    "Range proof is invalid: expected {MAX_RANGE_PROOF_BYTES} bytes, got {}",
+                    proof.proof_bytes.len()
+                ));
+            }
             let proof = RangeProof::from_vec(&proof.proof_bytes).map_err(|e| format!("Range proof is invalid: {e}"))?;
             Some(proof)
         }
@@ -433,5 +439,30 @@ mod test {
 
         proto.covenant.push(0);
         assert!(UnblindedOutput::try_from(proto).is_err());
+    }
+
+    #[test]
+    fn enforces_empty_or_exact_range_proof_length_and_zeroizes_keys() {
+        let mut empty_proof = sample_grpc_unblinded_output();
+        let converted = convert_unblinded_output(&mut empty_proof).unwrap();
+        assert!(converted.range_proof.is_none());
+
+        let mut exact_proof = sample_grpc_unblinded_output();
+        exact_proof.range_proof = Some(grpc::RangeProof {
+            proof_bytes: vec![0xAB; MAX_RANGE_PROOF_BYTES],
+        });
+        let converted = convert_unblinded_output(&mut exact_proof).unwrap();
+        assert_eq!(converted.range_proof.unwrap().as_bytes().len(), MAX_RANGE_PROOF_BYTES);
+
+        for bad_len in [1, MAX_RANGE_PROOF_BYTES - 1, MAX_RANGE_PROOF_BYTES + 1] {
+            let mut output = sample_grpc_unblinded_output();
+            output.range_proof = Some(grpc::RangeProof {
+                proof_bytes: vec![0xAB; bad_len],
+            });
+            let err = convert_unblinded_output(&mut output).unwrap_err();
+            assert!(err.starts_with("Range proof is invalid:"), "unexpected error: {err}");
+            assert_eq!(output.spending_key, vec![0u8; 32]);
+            assert_eq!(output.script_private_key, vec![0u8; 32]);
+        }
     }
 }

@@ -31,6 +31,7 @@ use tari_common_types::{
         CompressedPublicKey,
         CompressedSignature,
         FixedHash,
+        MAX_RANGE_PROOF_BYTES,
         PrivateKey,
     },
 };
@@ -1074,6 +1075,26 @@ fn binary_encodings(
     (None, None)
 }
 
+fn is_grpc_only_range_proof_reject(mutation: &Mutation) -> bool {
+    matches!(mutation, Mutation::OutputRangeProof(bytes) if bytes.len() < MAX_RANGE_PROOF_BYTES)
+}
+
+fn push_grpc_result<T>(
+    sample: &str,
+    mutation: &Mutation,
+    grpc_result: Option<T>,
+    results: &mut Vec<(&'static str, Option<T>)>,
+) {
+    if is_grpc_only_range_proof_reject(mutation) {
+        assert!(
+            grpc_result.is_none(),
+            "{sample}: expected gRPC proto to reject non-{MAX_RANGE_PROOF_BYTES}-byte range proof"
+        );
+    } else {
+        results.push(("gRPC proto", grpc_result));
+    }
+}
+
 fn check_block(base: &Block, sample: &Sample) {
     let Sample { name, mutation, accept } = sample;
     let mutation = &mutation;
@@ -1160,8 +1181,8 @@ fn check_block(base: &Block, sample: &Sample) {
     let mut results = vec![
         ("serde_json", serde_json::from_value::<Block>(json).ok()),
         ("P2P proto", Block::try_from(p2p).ok()),
-        ("gRPC proto", Block::try_from(grpc_block).ok()),
     ];
+    push_grpc_result(&sample, mutation, Block::try_from(grpc_block).ok(), &mut results);
     if let Some(encoding) = borsh_encoding {
         results.push(("borsh", borsh::from_slice::<Block>(&encoding).ok()));
     }
@@ -1215,8 +1236,13 @@ fn check_transaction(base: &Transaction, sample: &Sample) {
     let mut results = vec![
         ("serde_json", serde_json::from_value::<Transaction>(json).ok()),
         ("P2P proto", Transaction::try_from(p2p).ok()),
-        ("gRPC proto", Transaction::try_from(grpc_transaction).ok()),
     ];
+    push_grpc_result(
+        &sample,
+        mutation,
+        Transaction::try_from(grpc_transaction).ok(),
+        &mut results,
+    );
     if let Some(encoding) = bincode_encoding {
         results.push(("bincode", bincode::deserialize::<Transaction>(&encoding).ok()));
     }
@@ -1629,13 +1655,15 @@ fn body_samples() -> Vec<Sample> {
         ));
     }
 
-    // Range proof bytes: only the length is checked when decoded
+    // Range proof bytes: shared decoders enforce <= MAX_RANGE_PROOF_BYTES while gRPC requires exact
+    // MAX_RANGE_PROOF_BYTES
     for (name, bytes, accept) in [
         ("empty", vec![], true),
         ("1 byte", vec![1], true),
         ("garbage", vec![0xff; 100], true),
-        ("at the cap", vec![0xff; 577], true),
-        ("one over the cap", vec![0xff; 578], false),
+        ("one under the cap", vec![0xff; MAX_RANGE_PROOF_BYTES - 1], true),
+        ("at the cap", vec![0xff; MAX_RANGE_PROOF_BYTES], true),
+        ("one over the cap", vec![0xff; MAX_RANGE_PROOF_BYTES + 1], false),
     ] {
         samples.push(sample(
             format!("range proof: {name}"),

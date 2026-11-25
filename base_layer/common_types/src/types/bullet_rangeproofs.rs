@@ -170,9 +170,40 @@ impl_validated_decode!(BulletRangeProof);
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::types::{RANGE_PROOF_AGGREGATION_FACTOR, RANGE_PROOF_BIT_LENGTH};
 
     fn proof_bytes(len: usize) -> Vec<u8> {
         vec![0xab; len]
+    }
+
+    #[test]
+    fn max_range_proof_bytes_matches_configured_parameters() {
+        let total_bits = RANGE_PROOF_BIT_LENGTH
+            .checked_mul(RANGE_PROOF_AGGREGATION_FACTOR)
+            .unwrap();
+        assert!(total_bits.is_power_of_two());
+        let log_bits = usize::try_from(total_bits.ilog2()).unwrap();
+        let expected = log_bits
+            .checked_mul(2)
+            .unwrap()
+            .checked_add(6)
+            .unwrap()
+            .checked_mul(32)
+            .unwrap()
+            .checked_add(1)
+            .unwrap();
+        assert_eq!(expected, 577);
+        assert_eq!(MAX_RANGE_PROOF_BYTES, expected);
+
+        // Shared decoders accept up to MAX_RANGE_PROOF_BYTES so stored historical rows remain readable;
+        // exact MAX_RANGE_PROOF_BYTES length is enforced at the gRPC conversion boundary.
+        for len in [0, 1, MAX_RANGE_PROOF_BYTES - 1, MAX_RANGE_PROOF_BYTES] {
+            assert!(
+                BulletRangeProof::from_canonical_bytes(&proof_bytes(len)).is_ok(),
+                "{len}"
+            );
+        }
+        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(MAX_RANGE_PROOF_BYTES + 1)).is_err());
     }
 
     #[test]
