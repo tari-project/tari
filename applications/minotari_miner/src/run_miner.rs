@@ -43,7 +43,7 @@ use minotari_app_utilities::parse_miner_input::{
     verify_p2pool_block_coinbase,
     wallet_payment_address,
 };
-use minotari_node_grpc_client::{GrpcClientConfig, connect_channel, p2pool_client};
+use minotari_node_grpc_client::{GrpcAuthentication, GrpcClientConfig, connect_channel, p2pool_client};
 use tari_common::{
     DefaultConfigLoader,
     exit_codes::{ExitCode, ExitError},
@@ -322,12 +322,26 @@ async fn connect_sha_p2pool(config: &MinerConfig, non_interactive: bool) -> Resu
     if let Some(ref a) = config.base_node_grpc_address {
         p2pool_node_addr = a.clone();
     } else {
-        p2pool_node_addr = prompt_for_p2pool_address(non_interactive, config.base_node_grpc_tls_domain_name.is_some())?;
+        p2pool_node_addr = prompt_for_p2pool_address(non_interactive, false)?;
     }
 
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
-    let cfg = base_node_grpc_client_config(config)?;
+    let cfg = p2pool_grpc_client_config(config)?;
     Ok(p2pool_client(connect_channel(&p2pool_node_addr, &cfg).await?, &cfg)?)
+}
+
+/// The base node's credentials and TLS settings go to the p2pool node only when it is the base node's address; a
+/// prompted or default address may be anyone listening there.
+fn p2pool_grpc_client_config(config: &MinerConfig) -> Result<GrpcClientConfig, MinerError> {
+    let cfg = base_node_grpc_client_config(config)?;
+    if config.base_node_grpc_address.is_some() {
+        return Ok(cfg);
+    }
+    Ok(GrpcClientConfig {
+        auth: GrpcAuthentication::None,
+        tls: None,
+        ..cfg
+    })
 }
 
 async fn connect_base_node(config: &MinerConfig, non_interactive: bool) -> Result<BaseNodeGrpcClient, MinerError> {
@@ -719,6 +733,27 @@ mod test {
         );
         config.base_node_grpc_request_timeout = 0;
         assert_eq!(base_node_grpc_client_config(&config).unwrap().request_timeout, None);
+    }
+
+    #[test]
+    fn p2pool_gets_base_node_credentials_only_at_the_base_node_address() {
+        let mut config = MinerConfig {
+            base_node_grpc_authentication: GrpcAuthentication::Basic {
+                username: "miner".to_string(),
+                password: tari_utilities::SafePassword::from("base-node-secret"),
+            },
+            ..Default::default()
+        };
+        assert!(matches!(
+            p2pool_grpc_client_config(&config).unwrap().auth,
+            GrpcAuthentication::None
+        ));
+
+        config.base_node_grpc_address = Some("http://127.0.0.1:18142".to_string());
+        assert!(matches!(
+            p2pool_grpc_client_config(&config).unwrap().auth,
+            GrpcAuthentication::Basic { .. }
+        ));
     }
 
     #[test]

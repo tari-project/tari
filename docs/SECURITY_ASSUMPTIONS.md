@@ -117,11 +117,15 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   and blocks the node returns, including the coinbase and the merge-mining hash.
 - **What that means:** A node the operator does not control, or anyone on a plaintext network path, can redirect
   mining rewards and read Basic credentials. Plaintext to a non-loopback host is allowed and logs a warning on each
-  connect; it is never refused. Only `http://` and `https://` addresses are accepted. An `https://` address with no
-  CA configured is verified against the root certificates built into the binary's TLS stack: the system store, plus
-  the bundled Mozilla (webpki) roots in the merge-mining proxy. Any of those authorities can vouch for the node.
+  connect; it is never refused. Only `http://`, `https://` and `unix:` socket addresses are accepted. An `https://`
+  address with no CA configured is verified against whichever tonic root features are compiled into the binary: the
+  system store always, plus the bundled Mozilla (webpki) roots where `tls-webpki-roots` is enabled (the merge-mining
+  proxy, and possibly other binaries in a workspace-wide build through Cargo feature unification). Any of those
+  authorities can vouch for the node.
 - **Not covered:** Sending credentials to a party they were not configured for: the merge-mining proxy's p2pool node
-  receives only the `p2pool_grpc_*` credentials and TLS settings, never the base node's. Connecting in plaintext when
+  receives only the `p2pool_grpc_*` credentials and TLS settings, never the base node's. The miner's p2pool
+  connection gets the base node's credentials and TLS settings only when it reuses `base_node_grpc_address`; a
+  prompted or default p2pool address gets none. Connecting in plaintext when
   TLS is configured. Unbounded memory from node responses (messages are capped at 8 MiB by default). Blocks returned
   by a p2pool node, which are still checked for the configured coinbase address.
 - **Where:** `clients/rust/base_node_grpc_client`, `applications/minotari_miner`,
