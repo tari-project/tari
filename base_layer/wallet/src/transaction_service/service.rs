@@ -79,7 +79,7 @@ use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
     multisig::{
-        script::{validate_multisig_parameters, validate_multisig_spend_signature_count},
+        script::validate_multisig_spend_signature_count,
         session::MultisigSession,
         types::GetMultisigUtxoDataOutput,
     },
@@ -93,7 +93,7 @@ use tari_transaction_components::{
             sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
         },
-        one_sided_signer::{multisig_pending_output, withdraw_pending_output},
+        one_sided_signer::{multisig_pending_output, multisig_placeholder_script, withdraw_pending_output},
     },
     transaction_builder::{
         PendingOutput,
@@ -110,6 +110,7 @@ use tari_transaction_components::{
         TransactionError,
         TransactionOutput,
         ValidatorNodeSignature,
+        WalletOutput,
         WalletOutputBuilder,
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -134,7 +135,7 @@ use crate::{
     output_manager_service::{
         UtxoSelectionCriteria,
         UtxoSelectionFilter,
-        error::OutputManagerError,
+        error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
         storage::{OutputStatus, database::OutputBackendQuery, models::SpendingPriority},
@@ -530,7 +531,6 @@ where
                     if request.recipient_address.public_view_key().is_none() {
                         return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());
                     }
-                    validate_multisig_parameters(request.party_number, &request.public_keys)?;
 
                     let temp_tx_id = TxId::new_random();
                     let script = push_pubkey_script(&Default::default());
@@ -753,9 +753,8 @@ where
                         payload_lifetime,
                     )?;
 
-                    self.resources
-                        .output_manager_service
-                        .confirm_pending_transaction(response.tx_id, None, None)
+                    // Held until the signed transaction is submitted or `tx_id` is cancelled, across restarts.
+                    self.encumber_and_confirm_input(response.tx_id, selected_utxo.commitment.clone(), None)
                         .await
                         .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
 
@@ -1186,6 +1185,24 @@ where
                 .await
             },
 
+            // Handled here rather than in the output manager so that it cannot interleave with a submit of the same
+            // payload, which moves its inputs to the signed transaction's tx_id.
+            TransactionServiceRequest::CancelRecordLessTransaction(tx_id) => {
+                async {
+                    if self.db.get_any_transaction(tx_id)?.is_some() {
+                        return Err(TransactionServiceError::FailedToCancelTransaction(format!(
+                            "Transaction {tx_id} has a record"
+                        )));
+                    }
+                    self.resources
+                        .output_manager_service
+                        .release_unrecorded_transaction(tx_id)
+                        .await?;
+                    info!(target: LOG_TARGET, "Released the inputs of prepared TxId: {tx_id} (record-less cancel)");
+                    Ok(TransactionServiceResponse::TransactionCancelled)
+                }
+                .await
+            },
             TransactionServiceRequest::CancelPendingTransaction(tx_id) => {
                 async {
                     self.cancel_pending_transaction(tx_id).await?;
@@ -1511,9 +1528,6 @@ where
 
             TransactionServiceRequest::CreateMultisigUtxo { request } => {
                 async {
-                    // Checked before any input is locked: an error after `prepare_transaction_to_send` would leave
-                    // the selected inputs locked until restart.
-                    validate_multisig_parameters(request.party_number, &request.public_keys)?;
                     let fee_per_gram = MicroMinotari::from(1);
                     let selected_criteria = UtxoSelectionCriteria {
                         excluding_multisig: true,
@@ -1529,6 +1543,8 @@ where
                         uuid.as_bytes().to_vec(),
                     )
                     .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
+                    // Selection must pay for the multisig script the output will really carry.
+                    let script = multisig_placeholder_script(request.party_number, request.public_keys.len())?;
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -1538,7 +1554,7 @@ where
                             selected_criteria,
                             OutputFeatures::default(),
                             fee_per_gram,
-                            push_pubkey_script(&Default::default()),
+                            script,
                             Covenant::default(),
                             payment_id,
                         )
@@ -1691,45 +1707,43 @@ where
                             tx_outputs_to_tx_id(view_key.as_bytes(), finalized_transaction.transaction.body.outputs()),
                         ),
                     };
-                    self.resources
-                        .output_manager_service
-                        .clone()
-                        .confirm_pending_transaction(tx_id, None, change)
+                    let fee = finalized_transaction.transaction.body.get_total_fee()?;
+                    let sent_hashes = finalized_transaction.sent_output_hashes.clone();
+                    let completed_transaction = CompletedTransaction::new_with_output_hashes(
+                        tx_id,
+                        self.resources.one_sided_tari_address.clone(),
+                        recipient_address,
+                        amount,
+                        fee,
+                        finalized_transaction.transaction,
+                        LegacyTransactionStatus::Completed,
+                        Utc::now(),
+                        TransactionDirection::Outbound,
+                        None,
+                        None,
+                        payment_id,
+                        sent_hashes,
+                        vec![],
+                        change_hashes,
+                        0,
+                    )?;
+
+                    self.encumber_and_confirm_input(tx_id, selected_utxo.commitment.clone(), change)
                         .await
                         .map_err(|e| {
-                            TransactionError::BuilderError(format!("Failed to confirm pending transaction: {:?}", e))
+                            TransactionError::BuilderError(format!(
+                                "Failed to lock the input and confirm the pending transaction: {:?}",
+                                e
+                            ))
                         })?;
-
-                    let fee = finalized_transaction.transaction.body.get_total_fee()?;
 
                     // This event being sent is important, but not critical to the protocol being successful. Send only
                     // fails if there are no subscribers.
                     let _result = self
                         .event_publisher
                         .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-                    let sent_hashes = finalized_transaction.sent_output_hashes.clone();
-                    self.submit_transaction(
-                        transaction_broadcast_join_handles,
-                        CompletedTransaction::new_with_output_hashes(
-                            tx_id,
-                            self.resources.one_sided_tari_address.clone(),
-                            recipient_address,
-                            amount,
-                            fee,
-                            finalized_transaction.transaction,
-                            LegacyTransactionStatus::Completed,
-                            Utc::now(),
-                            TransactionDirection::Outbound,
-                            None,
-                            None,
-                            payment_id,
-                            sent_hashes,
-                            vec![],
-                            change_hashes,
-                            0,
-                        )?,
-                    )
-                    .await?;
+                    self.submit_or_release(transaction_broadcast_join_handles, completed_transaction)
+                        .await?;
                     Ok(TransactionServiceResponse::SendMultisigUtxo(tx_id))
                 }
                 .await
@@ -4500,6 +4514,242 @@ where
         Ok(new_tx_id)
     }
 
+    /// The tx_id the record of the payload's `i`th recipient is stored under.
+    fn recipient_tx_id(
+        &self,
+        request: &SignedOneSidedTransactionResult,
+        i: usize,
+    ) -> Result<TxId, TransactionServiceError> {
+        if i == 0 {
+            return Ok(request.signed_transaction.tx_id);
+        }
+        let sent_hash = request
+            .signed_transaction
+            .sent_hashes
+            .get(i)
+            .ok_or(TransactionServiceError::Other(
+                "sent_outputs index out of bounds".to_string(),
+            ))?;
+        Ok(TxId::new_deterministic(
+            self.resources
+                .transaction_key_manager_service
+                .get_private_view_key()
+                .as_bytes(),
+            sent_hash,
+        ))
+    }
+
+    /// Refuses, before anything is locked, a signed payload whose records could not all be written: one that names a
+    /// transaction this wallet already has a record of - a prepared payload has none until it is submitted - or, other
+    /// than its own prepared tx_id, one that already has outputs (such as another prepared payload's), or a recipient
+    /// or change output its transaction does not carry, or that does not name a distinct sent output for each
+    /// recipient.
+    async fn check_signed_payload(
+        &self,
+        request: &SignedOneSidedTransactionResult,
+    ) -> Result<(), TransactionServiceError> {
+        let refuse = |reason: &str| Err(TransactionServiceError::Other(format!("The signed payload {reason}")));
+        let signed = &request.signed_transaction;
+        let recipients = request.request.info.recipients.len();
+        let sent_hashes = signed.sent_hashes.iter().take(recipients).collect::<HashSet<_>>();
+        if recipients == 0 || sent_hashes.len() < recipients {
+            return refuse("has no recipients, or fewer distinct sent outputs than recipients");
+        }
+        let body_hashes = signed
+            .transaction
+            .body
+            .outputs()
+            .iter()
+            .map(TransactionOutput::hash)
+            .collect::<HashSet<_>>();
+        if sent_hashes
+            .into_iter()
+            .chain(&signed.change_hashes)
+            .any(|hash| !body_hashes.contains(hash))
+        {
+            return refuse("names an output its transaction does not carry");
+        }
+        if signed.transaction.body.inputs().is_empty() {
+            return refuse("spends nothing");
+        }
+        // The change output is stored as this wallet's own, so it must be the transaction's change output. Its hash is
+        // recomputed, as the stored one is just a field of the file; the hash covers the commitment.
+        match &signed.change_output {
+            None if signed.change_hashes.is_empty() => {},
+            Some(change) => {
+                // The stored hash is what the output is looked up by once it is mined
+                let hash = change.to_transaction_output()?.hash();
+                if hash != change.output_hash() || !signed.change_hashes.contains(&hash) {
+                    return refuse("does not carry its transaction's change output");
+                }
+            },
+            None => return refuse("does not carry its transaction's change output"),
+        }
+        let mut tx_ids = HashSet::from([request.request.tx_id]);
+        for i in 0..recipients {
+            tx_ids.insert(self.recipient_tx_id(request, i)?);
+        }
+        if tx_ids.len() <= recipients {
+            return refuse("names the same transaction twice");
+        }
+        let mut output_manager = self.resources.output_manager_service.clone();
+        for tx_id in tx_ids {
+            if self.db.get_any_transaction(tx_id)?.is_some() {
+                return refuse(&format!(
+                    "names transaction {tx_id}, which has already been submitted or recorded"
+                ));
+            }
+            // The records are written under these tx_ids, and the confirm moves the payload's outputs to the first
+            if tx_id != request.request.tx_id && !output_manager.fetch_outputs_by_tx_id(tx_id).await?.is_empty() {
+                return refuse(&format!("names transaction {tx_id}, which already has outputs"));
+            }
+        }
+        Ok(())
+    }
+
+    /// As `submit_transaction`, releasing the transaction's locked inputs if its record could not even be written.
+    async fn submit_or_release(
+        &mut self,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        completed_transaction: CompletedTransaction,
+    ) -> Result<(), TransactionServiceError> {
+        let tx_id = completed_transaction.tx_id;
+        let result = self
+            .submit_transaction(transaction_broadcast_join_handles, completed_transaction)
+            .await;
+        if result.is_err() && matches!(self.db.get_any_transaction(tx_id), Ok(None)) {
+            match self
+                .resources
+                .output_manager_service
+                .release_unrecorded_transaction(tx_id)
+                .await
+            {
+                Ok(()) => {
+                    info!(target: LOG_TARGET, "Released the inputs of TxId: {tx_id} (its record was not written)")
+                },
+                Err(e) => warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {tx_id}: {e}"),
+            }
+        }
+        result
+    }
+
+    /// Releases whatever a payload that cannot be submitted still has locked under its `tx_id`, so its other inputs
+    /// can be prepared again. Nothing is left under that tx_id once the payload has been submitted.
+    async fn release_refused_payload(&mut self, tx_id: TxId) {
+        match self
+            .resources
+            .output_manager_service
+            .cancel_pending_transaction(tx_id)
+            .await
+        {
+            Ok(()) => info!(target: LOG_TARGET, "Released the inputs of prepared TxId: {tx_id} (submit refused)"),
+            Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {},
+            Err(e) => warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {tx_id}: {e}"),
+        }
+    }
+
+    /// Makes sure the inputs of a signed payload are locked under the payload's `tx_id`. If any output is spent in
+    /// that tx_id, the inputs must be exactly those outputs, and all still locked. If none is (the payload was
+    /// cancelled, or prepared by a version that did not lock), the payload must not have expired and every input must
+    /// be `Unspent`, and they are locked again. Returns whether anything was locked, or as the inner error a refusal
+    /// after which the payload's inputs should be released. The outer error leaves them alone: a failure to find out,
+    /// or inputs that are not the payload's at all.
+    async fn lock_signed_inputs(
+        &mut self,
+        tx_id: TxId,
+        transaction: &Transaction,
+        expires_at: u64,
+    ) -> Result<Result<bool, TransactionServiceError>, TransactionServiceError> {
+        let refuse = |reason: &str| {
+            Ok(Err(TransactionServiceError::Other(format!(
+                "The inputs of the signed transaction {reason} (transaction {tx_id})"
+            ))))
+        };
+        let inputs = transaction
+            .body
+            .inputs()
+            .iter()
+            .map(|input| input.commitment().cloned())
+            .collect::<Result<Vec<_>, _>>()?;
+        if inputs
+            .iter()
+            .enumerate()
+            .any(|(i, c)| inputs.iter().take(i).any(|d| d == c))
+        {
+            // Not the payload's inputs, whatever is locked for it
+            return Err(TransactionServiceError::Other(format!(
+                "The inputs of the signed transaction repeat an output (transaction {tx_id})"
+            )));
+        }
+        let mut output_manager = self.resources.output_manager_service.clone();
+        let payload_outputs = output_manager
+            .fetch_outputs_by_tx_id(tx_id)
+            .await?
+            .into_iter()
+            // A row cleared back to `Unspent` keeps its `spent_in_tx_id`; it is locked again below like any other
+            .filter(|o| o.spent_in_tx_id == Some(tx_id) && o.status != OutputStatus::Unspent)
+            .collect::<Vec<_>>();
+        if !payload_outputs.is_empty() {
+            if inputs.len() != payload_outputs.len() ||
+                !inputs
+                    .iter()
+                    .all(|c| payload_outputs.iter().any(|o| &o.commitment == c))
+            {
+                return Err(TransactionServiceError::Other(format!(
+                    "The inputs of the signed transaction are not the outputs locked for transaction {tx_id}"
+                )));
+            }
+            if payload_outputs.iter().all(|o| {
+                matches!(
+                    o.status,
+                    OutputStatus::EncumberedToBeSpent | OutputStatus::ShortTermEncumberedToBeSpent
+                )
+            }) {
+                return Ok(Ok(false));
+            }
+            return refuse("are not all still locked for it");
+        }
+        // A version 5 payload has no expiry (`0`)
+        if expires_at != 0 && u64::try_from(Utc::now().timestamp()).unwrap_or(u64::MAX) > expires_at {
+            return refuse("belong to a payload that has expired");
+        }
+        let outputs = output_manager.get_outputs_by_commitments(inputs.clone()).await?;
+        if outputs.len() != inputs.len() || outputs.iter().any(|o| o.status != OutputStatus::Unspent) {
+            return refuse("are not all available to it");
+        }
+        match output_manager.encumber_outputs(tx_id, inputs).await {
+            Ok(()) => Ok(Ok(true)),
+            // An input stopped being `Unspent` since it was read
+            Err(
+                e @ OutputManagerError::OutputManagerStorageError(
+                    OutputManagerStorageError::OutputAlreadySpent | OutputManagerStorageError::ValueNotFound,
+                ),
+            ) => Ok(Err(e.into())),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Locks the `Unspent` output `commitment` as the input of `tx_id` and confirms `tx_id` with its `change`,
+    /// releasing the input again if the confirm fails.
+    async fn encumber_and_confirm_input(
+        &mut self,
+        tx_id: TxId,
+        commitment: CompressedCommitment,
+        change: Option<Vec<WalletOutput>>,
+    ) -> Result<(), OutputManagerError> {
+        let mut output_manager = self.resources.output_manager_service.clone();
+        output_manager.encumber_outputs(tx_id, vec![commitment]).await?;
+        if let Err(e) = output_manager.confirm_pending_transaction(tx_id, None, change).await {
+            if let Err(cancel_err) = output_manager.cancel_pending_transaction(tx_id).await {
+                warn!(target: LOG_TARGET, "Failed to release the input of TxId: {tx_id}: {cancel_err}");
+            }
+            return Err(e);
+        }
+        Ok(())
+    }
+
     async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {
         if let Err(e) = self
             .resources
@@ -4696,43 +4946,16 @@ where
         for recipient in &request.request.info.recipients {
             self.verify_send(&recipient.address, TariAddressFeatures::create_one_sided_only())?;
         }
-        let payment_id = request.request.info.payment_id;
+        self.check_signed_payload(&request).await?;
+        let payment_id = &request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
-        let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
-
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
-
+        let change = request.signed_transaction.change_output.clone().map(|v| vec![v]);
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
-
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(old_tx_id, Some(new_tx_id), change)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(new_tx_id, e.into()))?;
-
         let mut tx_ids = Vec::new();
         let mut completed_txs = Vec::new();
 
         for (i, recipient) in request.request.info.recipients.iter().enumerate() {
-            let tx_id = if i == 0 {
-                new_tx_id
-            } else {
-                TxId::new_deterministic(
-                    self.resources
-                        .transaction_key_manager_service
-                        .get_private_view_key()
-                        .as_bytes(),
-                    request
-                        .signed_transaction
-                        .sent_hashes
-                        .get(i)
-                        .ok_or(TransactionServiceError::Other(
-                            "sent_outputs index out of bounds".to_string(),
-                        ))?,
-                )
-            };
+            let tx_id = self.recipient_tx_id(&request, i)?;
             tx_ids.push(tx_id);
             let sent_hash =
                 request
@@ -4765,9 +4988,41 @@ where
             )?;
             completed_txs.push(completed_tx);
         }
-        let first_completed_tx = completed_txs.remove(0);
-        self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
-            .await?;
+        let relocked = match self
+            .lock_signed_inputs(
+                old_tx_id,
+                &request.signed_transaction.transaction,
+                request.request.expires_at,
+            )
+            .await?
+        {
+            Ok(relocked) => relocked,
+            Err(refusal) => {
+                self.release_refused_payload(old_tx_id).await;
+                return Err(refusal);
+            },
+        };
+
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
+
+        let mut output_manager = self.resources.output_manager_service.clone();
+        if let Err(e) = output_manager
+            .confirm_pending_transaction(old_tx_id, Some(new_tx_id), change)
+            .await
+        {
+            if relocked && let Err(cancel_err) = output_manager.cancel_pending_transaction(old_tx_id).await {
+                warn!(target: LOG_TARGET, "Failed to release the inputs of TxId: {old_tx_id}: {cancel_err}");
+            }
+            return Err(TransactionServiceProtocolError::new(new_tx_id, e.into()).into());
+        }
+
+        let mut completed_txs = completed_txs.into_iter();
+        if let Some(first_completed_tx) = completed_txs.next() {
+            self.submit_or_release(transaction_broadcast_join_handles, first_completed_tx)
+                .await?;
+        }
         for completed_tx in completed_txs {
             self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
         }

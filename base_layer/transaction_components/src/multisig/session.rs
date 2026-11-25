@@ -36,7 +36,8 @@ use crate::{
     consensus::ConsensusConstants,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::TransactionKeyManagerInterface,
-    multisig::script::{validate_multisig_parameters, validate_multisig_spend_signature_count},
+    multisig::script::validate_multisig_spend_signature_count,
+    offline_signing::one_sided_signer::validate_multisig_threshold,
     transaction_builder::{FinalizedTransaction, RecipientSpec},
     transaction_components::{
         OutputFeatures,
@@ -79,14 +80,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         ),
         TransactionBuilderError,
     > {
-        validate_multisig_parameters(party_number, &public_keys)?;
+        validate_multisig_threshold(party_number, public_keys.len())?;
 
         let mut message = Box::new([0u8; 32]);
         rand::rng().fill_bytes(message.as_mut());
 
         let user_data = uuid.as_bytes().to_vec();
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
-        let payment_id =
+        let mut payment_id =
             MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
@@ -101,6 +102,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized_builder = tx_builder.build()?;
+        // The builder writes the settled fee into the on-chain memo; the copy returned to the wallet must match it.
+        payment_id.set_fee(finalized_builder.transaction.body.get_total_fee()?);
         let output =
             finalized_builder.spec_outputs.first().cloned().ok_or_else(|| {
                 TransactionBuilderError::Other("The multisig recipient output was not built".to_string())
@@ -134,6 +137,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         output: WalletOutput,
         consensus_constants: &ConsensusConstants,
     ) -> Result<(FinalizedTransaction, MemoField, MicroMinotari), TransactionBuilderError> {
+        // `CheckMultiSigVerify` consumes exactly `m` signatures; any extra would fail the spend with StackNotEmpty.
         validate_multisig_spend_signature_count(output.script(), signatures.len())?;
 
         let mut input_stack = ExecutionStack::default();
@@ -211,12 +215,19 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
+    use std::{
+        pin::pin,
+        task::{Context, Poll, Waker},
+    };
+
     use tari_common::configuration::Network;
     use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
     use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, Opcode, TariScript};
+    use uuid::Uuid;
 
     use crate::{
         MicroMinotari,
+        TransactionBuilder,
         key_manager::{KeyManager, TransactionKeyManagerInterface},
         multisig::session::MultisigSession,
         test_helpers::create_consensus_manager,
@@ -298,109 +309,39 @@ mod test {
     }
 
     #[test]
-    fn create_deposit_multisig_enforces_script_bounds() {
-        use std::{
-            future::Future,
-            pin::pin,
-            task::{Context, Poll, Waker},
-        };
-
-        use uuid::Uuid;
-
-        use crate::{TransactionBuilder, multisig::script::MAX_MULTISIG_LIMIT, test_helpers::create_test_input};
-
-        fn block_on_ready<F: Future>(fut: F) -> F::Output {
-            let mut fut = pin!(fut);
-            let mut cx = Context::from_waker(Waker::noop());
-            match fut.as_mut().poll(&mut cx) {
-                Poll::Ready(val) => val,
-                Poll::Pending => panic!("create_deposit_multisig_transaction is synchronous"),
-            }
-        }
-
-        let rules = create_consensus_manager();
-        let consensus_constants = rules.consensus_constants(0);
+    fn create_deposit_refuses_an_unmeetable_threshold() {
         let key_manager = KeyManager::new_random().unwrap();
-        let recipient_key_manager = KeyManager::new_random().unwrap();
         let recipient = TariAddress::new_dual_address(
-            recipient_key_manager.get_view_key().pub_key,
-            recipient_key_manager.get_spend_key().pub_key,
+            key_manager.get_view_key().pub_key,
+            key_manager.get_spend_key().pub_key,
             Network::LocalNet,
             TariAddressFeatures::create_one_sided_only(),
             None,
         )
         .unwrap();
-
-        let make_builder = || {
-            let input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
-            let mut builder =
-                TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
-            builder.with_fee_per_gram(MicroMinotari(1)).with_input(input).unwrap();
-            builder
-        };
-
-        let mut session = MultisigSession::new(key_manager.clone());
-        let deposit_err = |res: Result<_, super::TransactionBuilderError>| match res {
-            Ok(_) => panic!("expected the deposit to be rejected"),
-            Err(e) => e.to_string(),
-        };
-
-        // Positive control: the same builder accepts a valid 2-of-2.
-        let valid_keys = (0..2)
-            .map(|_| key_manager.get_random_key(None, None).unwrap().pub_key)
-            .collect::<Vec<_>>();
-        let valid_res = block_on_ready(session.create_deposit_multisig_transaction(
-            MicroMinotari(10_000),
-            2,
-            valid_keys.clone(),
-            recipient.clone(),
-            make_builder(),
-            Uuid::nil(),
-        ));
-        assert!(
-            valid_res.is_ok(),
-            "a valid 2-of-2 deposit must build: {:?}",
-            valid_res.err()
-        );
-
-        let zero_threshold = deposit_err(block_on_ready(session.create_deposit_multisig_transaction(
-            MicroMinotari(10_000),
-            0,
-            valid_keys.clone(),
-            recipient.clone(),
-            make_builder(),
-            Uuid::nil(),
-        )));
-        assert!(
-            zero_threshold.contains("Invalid multisig threshold party_number=0"),
-            "{zero_threshold}"
-        );
-
-        let threshold_above_n = deposit_err(block_on_ready(session.create_deposit_multisig_transaction(
-            MicroMinotari(10_000),
-            3,
-            valid_keys,
-            recipient.clone(),
-            make_builder(),
-            Uuid::nil(),
-        )));
-        assert!(
-            threshold_above_n.contains("Invalid multisig threshold party_number=3"),
-            "{threshold_above_n}"
-        );
-
-        let oversized_keys = (0..=MAX_MULTISIG_LIMIT)
-            .map(|_| key_manager.get_random_key(None, None).unwrap().pub_key)
-            .collect::<Vec<_>>();
-        let oversized = deposit_err(block_on_ready(session.create_deposit_multisig_transaction(
-            MicroMinotari(10_000),
-            2,
-            oversized_keys,
-            recipient.clone(),
-            make_builder(),
-            Uuid::nil(),
-        )));
-        assert!(oversized.contains("expected 1..=32, got 33"), "{oversized}");
+        for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 14), (2, 33)] {
+            let tx_builder = TransactionBuilder::new(
+                create_consensus_manager().consensus_constants(0).clone(),
+                key_manager.clone(),
+                Network::LocalNet,
+            )
+            .unwrap();
+            let mut session = MultisigSession::new(key_manager.clone());
+            let future = session.create_deposit_multisig_transaction(
+                MicroMinotari(1000),
+                m,
+                vec![key_manager.get_spend_key().pub_key; n],
+                recipient.clone(),
+                tx_builder,
+                Uuid::nil(),
+            );
+            // The threshold is checked before anything is awaited, so one poll settles it.
+            let Poll::Ready(result) = pin!(future).poll(&mut Context::from_waker(Waker::noop())) else {
+                panic!("{m} of {n}: the deposit did not fail on the threshold");
+            };
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+        }
     }
 
     #[test]

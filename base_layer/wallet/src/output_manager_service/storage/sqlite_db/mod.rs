@@ -87,6 +87,64 @@ impl OutputManagerSqliteDatabase {
         Self { database_connection }
     }
 
+    /// The body of `cancel_pending_or_completed_transaction`, inside the caller's database transaction.
+    fn cancel_transaction_outputs(
+        conn: &mut SqliteConnection,
+        tx_id: TxId,
+        pending: bool,
+    ) -> Result<(), OutputManagerStorageError> {
+        let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, conn)?;
+
+        if outputs.is_empty() {
+            return Err(OutputManagerStorageError::ValueNotFound);
+        }
+
+        for output in &outputs {
+            if output.received_in_tx_id == Some(tx_id.as_i64_wrapped()) {
+                info!(
+                    target: LOG_TARGET,
+                    "Cancelling {} inbound output with Commitment: {} - from TxId: {}",
+                    if pending { "pending" } else { "completed" },
+                    output.commitment.to_hex(),
+                    tx_id
+                );
+                output.update(
+                    UpdateOutput {
+                        status: Some(OutputStatus::CancelledInbound),
+                        last_validation_timestamp: Some(Some(
+                            DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc(),
+                        )),
+                        ..Default::default()
+                    },
+                    conn,
+                )?;
+            } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
+                info!(
+                    target: LOG_TARGET,
+                    "Cancelling {} outbound output with Commitment: {} - from TxId: {}",
+                    if pending { "pending" } else { "completed" },
+                    output.commitment.to_hex(),
+                    tx_id
+                );
+                output.update(
+                    UpdateOutput {
+                        status: Some(OutputStatus::Unspent),
+                        spent_in_tx_id: Some(None),
+                        // We clear these so that the output will be revalidated the next time a validation is done.
+                        mined_height: Some(None),
+                        mined_in_block: Some(None),
+                        ..Default::default()
+                    },
+                    conn,
+                )?;
+            } else {
+                // can only be one of the two
+            }
+        }
+
+        Ok(())
+    }
+
     fn insert(
         &self,
         key_value_pair: DbKeyValuePair,
@@ -1291,58 +1349,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        conn.transaction::<_, _, _>(|conn| {
-            let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, conn)?;
-
-            if outputs.is_empty() {
-                return Err(OutputManagerStorageError::ValueNotFound);
-            }
-
-            for output in &outputs {
-                if output.received_in_tx_id == Some(tx_id.as_i64_wrapped()) {
-                    info!(
-                        target: LOG_TARGET,
-                        "Cancelling {} inbound output with Commitment: {} - from TxId: {}",
-                        if pending { "pending" } else { "completed" },
-                        output.commitment.to_hex(),
-                        tx_id
-                    );
-                    output.update(
-                        UpdateOutput {
-                            status: Some(OutputStatus::CancelledInbound),
-                            last_validation_timestamp: Some(Some(
-                                DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc(),
-                            )),
-                            ..Default::default()
-                        },
-                        conn,
-                    )?;
-                } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
-                    info!(
-                        target: LOG_TARGET,
-                        "Cancelling {} outbound output with Commitment: {} - from TxId: {}",
-                        if pending { "pending" } else { "completed" },
-                        output.commitment.to_hex(),
-                        tx_id
-                    );
-                    output.update(
-                        UpdateOutput {
-                            status: Some(OutputStatus::Unspent),
-                            spent_in_tx_id: Some(None),
-                            // We clear these so that the output will be revalidated the next time a validation is done.
-                            mined_height: Some(None),
-                            mined_in_block: Some(None),
-                            ..Default::default()
-                        },
-                        conn,
-                    )?;
-                } else {
-                    // can only be one of the two
-                }
-            }
-
-            Ok(())
-        })?;
+        conn.transaction::<_, _, _>(|conn| Self::cancel_transaction_outputs(conn, tx_id, pending))?;
 
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1355,6 +1362,40 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         Ok(())
+    }
+
+    fn release_unrecorded_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        conn.transaction::<_, _, _>(|conn| {
+            let cancelled = match Self::cancel_transaction_outputs(conn, tx_id, true) {
+                Ok(()) => true,
+                Err(OutputManagerStorageError::ValueNotFound) => false,
+                Err(e) => return Err(e),
+            };
+            let change = outputs::table
+                .filter(outputs::received_in_tx_id.eq(tx_id.as_i64_wrapped()))
+                .filter(
+                    outputs::status
+                        .eq(OutputStatus::CancelledInbound as i32)
+                        .or(outputs::status.eq(OutputStatus::EncumberedToBeReceived as i32)),
+                )
+                .load::<OutputSql>(conn)?;
+            for output in &change {
+                info!(
+                    target: LOG_TARGET,
+                    "Removing change output with Commitment: {} - of unrecorded TxId: {}",
+                    output.commitment.to_hex(),
+                    tx_id
+                );
+            }
+            let commitments = change.iter().map(|o| o.commitment.clone()).collect::<Vec<_>>();
+            let removed =
+                diesel::delete(outputs::table.filter(outputs::commitment.eq_any(commitments))).execute(conn)?;
+            if !cancelled && removed == 0 {
+                return Err(OutputManagerStorageError::ValueNotFound);
+            }
+            Ok(())
+        })
     }
 
     // This is typically used by a receiver after the finalized transaction has been broadcast/returned by the sender

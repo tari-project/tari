@@ -535,8 +535,14 @@ where
                 self.confirm_encumberance(tx_id, tx_id_update, change_outputs)
                     .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
             },
+            OutputManagerRequest::EncumberOutputs { tx_id, commitments } => self
+                .encumber_outputs(tx_id, &commitments)
+                .map(|_| OutputManagerResponse::OutputsEncumbered),
             OutputManagerRequest::CancelPendingTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
+                .map(|_| OutputManagerResponse::TransactionCancelled),
+            OutputManagerRequest::ReleaseUnrecordedTransaction(tx_id) => self
+                .release_unrecorded_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
             OutputManagerRequest::CancelCompletedTransaction(tx_id) => self
                 .cancel_completed_transaction(tx_id)
@@ -1888,18 +1894,40 @@ where
     ) -> Result<(), OutputManagerError> {
         let mut change = Vec::new();
         for output in change_outputs {
-            change.push(DbWalletOutput::from_wallet_output(
-                output,
-                None,
-                OutputSource::default(),
-                Some(tx_id),
-                None,
-            ));
+            let output = DbWalletOutput::from_wallet_output(output, None, OutputSource::default(), Some(tx_id), None);
+            // A change output can come from a signed payload file, and becomes spendable once its transaction is mined
+            if commitment_mask::blocks_revival(&self.resources.key_manager, &output, "Confirm pending transaction") {
+                return Err(OutputManagerError::CommitmentMaskVerificationFailed(
+                    output.commitment.to_hex(),
+                ));
+            }
+            change.push(output);
         }
         self.resources
             .db
             .confirm_encumbered_outputs(tx_id, tx_id_update, change)?;
         Ok(())
+    }
+
+    /// Short-term encumber exactly these outputs against `tx_id`, failing without encumbering any of them if one is
+    /// unknown or not `Unspent`.
+    fn encumber_outputs(
+        &mut self,
+        tx_id: TxId,
+        commitments: &[CompressedCommitment],
+    ) -> Result<(), OutputManagerError> {
+        let mut outputs = Vec::with_capacity(commitments.len());
+        for commitment in commitments {
+            let output = self
+                .resources
+                .db
+                .fetch_by_commitment(commitment.clone(), &self.resources.key_manager)?;
+            if output.status != OutputStatus::Unspent {
+                return Err(OutputManagerStorageError::OutputAlreadySpent.into());
+            }
+            outputs.push(output);
+        }
+        Ok(self.resources.db.encumber_outputs(tx_id, outputs, vec![])?)
     }
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
@@ -1909,6 +1937,12 @@ where
             "Cancelling pending transaction outputs for TxId: {tx_id}"
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id)?)
+    }
+
+    /// Cancel a pending transaction that was never recorded or broadcast, and remove the change outputs it would have
+    /// received: they would otherwise keep their commitments, so the same transaction could not be confirmed again.
+    fn release_unrecorded_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        Ok(self.resources.db.release_unrecorded_transaction(tx_id)?)
     }
 
     /// Cancel a completed transaction and place the encumbered outputs back into the unspent pool

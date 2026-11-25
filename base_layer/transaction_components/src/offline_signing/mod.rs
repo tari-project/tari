@@ -94,6 +94,7 @@ mod test {
             PaymentRecipient,
             models::{
                 ConfirmationKind,
+                PrepareDepositMultisigTransactionResult,
                 PrepareOneSidedTransactionForSigningResult,
                 SignedOneSidedTransactionResult,
                 SignedTransaction,
@@ -101,7 +102,12 @@ mod test {
                 TransactionResult,
             },
             offline_signer::sign_locked_transaction,
-            one_sided_signer::{multisig_pending_output, withdraw_pending_output},
+            one_sided_signer::{
+                multisig_pending_output,
+                sign_multisig_transaction,
+                validate_multisig_threshold,
+                withdraw_pending_output,
+            },
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
             prepare_withdraw_multisig_transaction,
@@ -3410,6 +3416,62 @@ mod test {
     }
 
     #[test]
+    fn deposit_multisig_refuses_an_unmeetable_threshold() {
+        let (spend, view) = wallets(Some(1));
+        let bob = KeyManager::new_random().unwrap();
+        let prepare = |m: u8, n: usize| {
+            prepare_deposit_multisig_transaction(
+                &view,
+                TxId::new_random(),
+                view_builder(&spend, &view),
+                MicroMinotari(5000),
+                MemoField::new_empty(),
+                OutputFeatures::default(),
+                m,
+                vec![bob.get_spend_key().pub_key; n],
+                one_sided_address(&view),
+                one_sided_address(&bob),
+                None,
+            )
+        };
+        let bad: [(u8, usize); 6] = [(0, 2), (3, 2), (1, 0), (2, 14), (32, 32), (2, 33)];
+        for (m, n) in bad {
+            let err = prepare(m, n).unwrap_err().to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+        }
+        prepare(1, 1).unwrap();
+        // The largest script every network accepts.
+        prepare(13, 13).unwrap();
+        for (m, n) in bad {
+            assert!(validate_multisig_threshold(m, n).is_err(), "{m} of {n}");
+        }
+        validate_multisig_threshold(2, 13).unwrap();
+        let valid = prepare(2, 2).unwrap();
+
+        // A payload carrying a bad threshold is neither summarised for approval nor signed.
+        for (m, n) in bad {
+            let mut info = valid.info.clone();
+            info.party_number = m;
+            info.public_keys = vec![bob.get_spend_key().pub_key; n];
+            let payload = PrepareDepositMultisigTransactionResult {
+                info: info.clone(),
+                ..valid.clone()
+            };
+            let err = PayloadSummary::from_multisig(payload).unwrap_err().to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+            let err = sign_multisig_transaction(
+                &spend,
+                create_consensus_manager().consensus_constants(0).clone(),
+                Network::LocalNet,
+                info,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+        }
+    }
+
+    #[test]
     fn withdraw_multisig_payload_key_rules() {
         let (spend, view) = wallets(Some(1));
         let bob_address = one_sided_address(&KeyManager::new_random().unwrap());
@@ -3449,113 +3511,6 @@ mod test {
         assert_payload_key_rules(&spend, prepare(&spend, &view), |payload, policy| {
             sign_one_sided(&spend, payload, policy).map(|_| ())
         });
-    }
-
-    fn offline_err<T>(res: Result<T, impl std::fmt::Display>) -> String {
-        match res {
-            Ok(_) => panic!("expected an error"),
-            Err(e) => e.to_string(),
-        }
-    }
-
-    #[test]
-    fn offline_deposit_multisig_enforces_threshold_and_participant_bounds() {
-        use crate::multisig::script::MAX_MULTISIG_LIMIT;
-
-        let rules = create_consensus_manager();
-        let bob_key_manager = KeyManager::new_random().unwrap();
-        let bob_address = one_sided_address(&bob_key_manager);
-        let pending = |party_number: u8, key_count: usize| {
-            multisig_pending_output(
-                rules.consensus_constants(0),
-                &bob_address,
-                MicroMinotari(5000),
-                &OutputFeatures::default(),
-                &MemoField::new_empty(),
-                party_number,
-                key_count,
-            )
-        };
-
-        assert!(pending(2, 2).is_ok(), "a valid 2-of-2 must be accepted");
-        assert!(offline_err(pending(0, 2)).contains("Invalid multisig threshold party_number=0"));
-        assert!(offline_err(pending(3, 2)).contains("Invalid multisig threshold party_number=3"));
-        assert!(offline_err(pending(2, usize::from(MAX_MULTISIG_LIMIT) + 1)).contains("expected 1..=32, got 33"));
-    }
-
-    /// A payload forged or re-signed by a compromised view-wallet host must be refused by the cold signer without
-    /// panicking, whatever multisig parameters it carries.
-    #[test]
-    fn cold_signer_refuses_re_signed_payloads_with_invalid_multisig_parameters() {
-        use crate::multisig::script::MAX_MULTISIG_LIMIT;
-
-        let rules = create_consensus_manager();
-        let alice_key_manager = KeyManager::new_random().unwrap();
-        let bob_key_manager = KeyManager::new_random().unwrap();
-        let bob_address = one_sided_address(&bob_key_manager);
-        let alice_address = one_sided_address(&alice_key_manager);
-        let valid_keys = vec![
-            alice_key_manager.get_spend_key().pub_key,
-            bob_key_manager.get_spend_key().pub_key,
-        ];
-        let oversized_keys = (0..=MAX_MULTISIG_LIMIT)
-            .map(|_| alice_key_manager.get_random_key(None, None).unwrap().pub_key)
-            .collect::<Vec<_>>();
-
-        let sign_tampered = |party_number: u8, public_keys: Vec<CompressedPublicKey>| {
-            let mut prepared = prepare_deposit_multisig_transaction(
-                &alice_key_manager,
-                TxId::new_random(),
-                funded_builder(&alice_key_manager),
-                MicroMinotari(5000),
-                MemoField::new_empty(),
-                OutputFeatures::default(),
-                2,
-                valid_keys.clone(),
-                alice_address.clone(),
-                bob_address.clone(),
-                None,
-            )
-            .unwrap();
-            prepared.info.party_number = party_number;
-            prepared.info.public_keys = public_keys;
-            let canonical = crate::offline_signing::models::borsh_canonical_multisig(
-                &prepared.version,
-                prepared.tx_id,
-                &prepared.info,
-                prepared.payload_key_id.as_ref(),
-                prepared.expires_at,
-            )
-            .unwrap();
-            prepared.payload_signature = crate::offline_signing::offline_signer::sign_payload(
-                &alice_key_manager,
-                &TariKeyId::ViewKey,
-                &canonical,
-            )
-            .unwrap();
-            // The summary refuses an invalid threshold before the operator sees it
-            let summary = PayloadSummary::from_multisig(prepared).map_err(|e| e.to_string())?;
-            sign_locked_deposit_multisig_transaction(
-                &alice_key_manager,
-                rules.consensus_constants(0).clone(),
-                Network::LocalNet,
-                confirmed(summary),
-                &PayloadKeyPolicy::default(),
-            )
-            .map_err(|e| e.to_string())
-        };
-
-        assert!(
-            sign_tampered(2, valid_keys.clone()).is_ok(),
-            "an untampered 2-of-2 must sign"
-        );
-        assert!(
-            offline_err(sign_tampered(0, valid_keys.clone())).contains("Invalid multisig threshold party_number=0")
-        );
-        assert!(
-            offline_err(sign_tampered(3, valid_keys.clone())).contains("Invalid multisig threshold party_number=3")
-        );
-        assert!(offline_err(sign_tampered(2, oversized_keys)).contains("expected 1..=32, got 33"));
     }
 
     /// Logs reach places the summary screen does not, so the confirmation and signing records carry only the
