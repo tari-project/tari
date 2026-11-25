@@ -80,6 +80,8 @@ pub struct BlockSynchronizer<'a, B> {
     /// Time the current attempt has spent waiting on the network, which is what its budget bounds
     attempt_network_time: Duration,
     received_valid_block: bool,
+    /// Slow peers whose short ban is deferred while latency backoff retries remain active
+    deferred_slow_peers: Vec<(NodeId, BlockSyncError)>,
     /// When block sync attempts with each peer ended without a block or a ban, kept across sync rounds
     attempts_without_block: &'a mut HashMap<NodeId, Vec<Instant>>,
 }
@@ -105,6 +107,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             predial_time: HashMap::new(),
             attempt_network_time: Duration::ZERO,
             received_valid_block: false,
+            deferred_slow_peers: Vec::new(),
             attempts_without_block,
         }
     }
@@ -203,6 +206,12 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 Ok(_) => return Ok(()),
                 Err(err @ BlockSyncError::AllSyncPeersExceedLatency) => {
                     warn!(target: LOG_TARGET, "{err}");
+                    latency_increases_counter = latency_increases_counter.saturating_add(1);
+                    // Prohibit using a few slow sync peers only, rather get new sync peers assigned
+                    if latency_increases_counter > MAX_LATENCY_INCREASES || self.sync_peers.len() < 2 {
+                        self.ban_deferred_slow_peers().await;
+                        return Err(err);
+                    }
                     max_latency = max_latency.saturating_add(self.config.max_latency_increase);
                     warn!(
                         target: LOG_TARGET,
@@ -210,23 +219,13 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         max_latency,
                         self.sync_peers.len()
                     );
-                    latency_increases_counter = latency_increases_counter.saturating_add(1);
-                    if latency_increases_counter > MAX_LATENCY_INCREASES {
-                        return Err(err);
-                    }
-                    // Prohibit using a few slow sync peers only, rather get new sync peers assigned
-                    if self.sync_peers.len() < 2 {
-                        return Err(err);
-                    } else {
-                        continue;
-                    }
                 },
                 Err(err @ BlockSyncError::SyncRoundFailed) => {
                     sync_round = sync_round.saturating_add(1);
                     warn!(target: LOG_TARGET, "{err} ({sync_round})");
-                    continue;
                 },
                 Err(err) => {
+                    self.ban_deferred_slow_peers().await;
                     return Err(err);
                 },
             }
@@ -235,6 +234,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
     #[allow(clippy::too_many_lines)]
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
+        self.deferred_slow_peers.clear();
         let mut sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
         // Peers whose recent attempts ended without a block go last
         prune_recent_outcomes(self.attempts_without_block);
@@ -359,8 +359,19 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             );
             match self.synchronize_blocks(sync_peer, client, max_latency).await {
                 Ok(_) => {
+                    // When a sync round completes, any peer that was merely too slow earlier in the round is not
+                    // banned so honest peers on slower links (e.g. Tor) are not penalized.
+                    self.deferred_slow_peers.clear();
                     self.attempts_without_block.remove(&node_id);
                     return Ok(());
+                },
+                Err(err @ BlockSyncError::MaxLatencyExceeded { .. }) => {
+                    warn!(target: LOG_TARGET, "{err}");
+                    if self.received_valid_block {
+                        self.attempts_without_block.remove(&node_id);
+                    }
+                    latency_counter = latency_counter.saturating_add(1);
+                    self.deferred_slow_peers.push((node_id, err));
                 },
                 Err(err) => {
                     self.ban_sync_peer(&node_id, &err).await;
@@ -371,11 +382,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     } else {
                         // Banned already, or a failure on our side or one the peer may not have caused
                     }
-                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
-                        latency_counter = latency_counter.saturating_add(1);
-                    } else {
-                        self.remove_sync_peer(&node_id);
-                    }
+                    self.remove_sync_peer(&node_id);
                 },
             }
         }
@@ -386,6 +393,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             Err(BlockSyncError::AllSyncPeersExceedLatency)
         } else {
             Err(BlockSyncError::SyncRoundFailed)
+        }
+    }
+
+    async fn ban_deferred_slow_peers(&mut self) {
+        let deferred = std::mem::take(&mut self.deferred_slow_peers);
+        for (node_id, err) in deferred {
+            self.ban_sync_peer(&node_id, &err).await;
+            self.remove_sync_peer(&node_id);
         }
     }
 

@@ -31,26 +31,61 @@ use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, PeerFeatures},
-    protocol::rpc::{HandshakeRejectReason, RpcError, RpcHandshakeError},
-    test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
+    protocol::rpc::{
+        HandshakeRejectReason,
+        NamedProtocolService,
+        Request,
+        Response,
+        RpcError,
+        RpcHandshakeError,
+        RpcStatus,
+        Streaming,
+        mock::MockRpcServer,
+    },
+    test_utils::{
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
+        node_identity::build_node_identity,
+    },
 };
 use tari_node_components::blocks::{ChainBlock, ChainHeader};
+use tari_transaction_components::transaction_components::RangeProofType;
 use tari_utilities::ByteArray;
+use tokio::sync::mpsc;
 
 use super::synchronizer::{dial_failure_is_peer_caused, rpc_setup_failure_is_peer_caused};
 use crate::{
-    base_node::sync::{
-        BlockSyncError,
-        BlockSynchronizer,
-        BlockchainSyncConfig,
-        SyncPeer,
-        mock_sync_peer::{MockSyncPeer, banned_peers, connect_mock_peer, connect_mock_peer_as},
+    base_node::{
+        chain_metadata_service::PeerChainMetadata,
+        sync::{
+            BlockSyncError,
+            BlockSynchronizer,
+            BlockchainSyncConfig,
+            SyncPeer,
+            mock_sync_peer::{MockSyncPeer, banned_peers, connect_mock_peer, connect_mock_peer_as},
+            rpc::{BaseNodeSyncRpcServer, BaseNodeSyncService},
+        },
     },
     blocks::UpdateBlockAccumulatedData,
     chain_storage::{BlockchainDatabase, DbTransaction, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint},
+    proto,
+    proto::base_node::{
+        FindChainSplitRequest,
+        FindChainSplitResponse,
+        SyncBlocksRequest,
+        SyncHeadersRequest,
+        SyncKernelsRequest,
+        SyncUtxosRequest,
+        SyncUtxosResponse,
+    },
     test_helpers::{
         BlockSpecs,
-        blockchain::{TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain},
+        blockchain::{
+            TempDatabase,
+            create_chained_blocks,
+            create_chained_blocks_with_range_proof_type,
+            create_main_chain,
+            create_new_blockchain,
+        },
     },
     validation::mocks::MockValidator,
 };
@@ -688,4 +723,292 @@ async fn swap_after_partial_block_sync_reorgs_onto_orphans_held_on_a_synced_bloc
 #[tokio::test]
 async fn swap_after_full_block_sync_reorgs_onto_orphans_held_on_a_synced_block() {
     swap_after_block_sync_reorgs_onto_orphans_held_on_a_synced_block(true).await;
+}
+
+/// Builds a `count`-block main chain using `RevealedValue` range proofs on a scratch node and inserts only the valid
+/// headers into a fresh local database so block sync can stream and validate slices across multiple rounds.
+fn chain_headers_ahead_of_blocks(count: usize) -> (BlockchainDatabase<TempDatabase>, Vec<Arc<ChainBlock>>) {
+    let other_node = create_new_blockchain();
+    let mut prev = Arc::new(other_node.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
+    let mut chain_blocks = Vec::with_capacity(count);
+    for _ in 0..count {
+        let (_, map) = create_chained_blocks_with_range_proof_type(
+            &other_node,
+            block_specs!(["N->GB"]),
+            prev,
+            Some(RangeProofType::RevealedValue),
+        );
+        let next = map.get("N").unwrap().clone();
+        other_node.add_block(next.to_arc_block()).unwrap();
+        chain_blocks.push(next.clone());
+        prev = next;
+    }
+
+    let db = create_new_blockchain();
+    let headers = chain_blocks
+        .iter()
+        .map(|block| ChainHeader::try_construct(block.header().clone(), block.accumulated_data().clone()).unwrap())
+        .collect();
+    db.insert_valid_headers(headers).unwrap();
+    (db, chain_blocks)
+}
+
+struct StreamingChainPeer {
+    genesis_hash: Vec<u8>,
+    chain: Vec<Arc<ChainBlock>>,
+    per_block_delay: Duration,
+}
+
+#[tari_comms::async_trait]
+impl BaseNodeSyncService for StreamingChainPeer {
+    async fn sync_blocks(
+        &self,
+        request: Request<SyncBlocksRequest>,
+    ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
+        let message = request.into_message();
+        let start_idx = if message.start_hash == self.genesis_hash {
+            0
+        } else {
+            self.chain
+                .iter()
+                .position(|b| b.hash().as_slice() == message.start_hash.as_slice())
+                .map(|i| i.saturating_add(1))
+                .ok_or_else(|| RpcStatus::not_found("start hash not found"))?
+        };
+        let end_idx = self
+            .chain
+            .iter()
+            .position(|b| b.hash().as_slice() == message.end_hash.as_slice())
+            .ok_or_else(|| RpcStatus::not_found("end hash not found"))?;
+        let slice = self
+            .chain
+            .get(start_idx..=end_idx)
+            .ok_or_else(|| RpcStatus::bad_request("start after end"))?
+            .to_vec();
+        let delay = self.per_block_delay;
+        let (tx, rx) = mpsc::channel(slice.len().saturating_add(1));
+        tokio::spawn(async move {
+            for block in slice {
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay).await;
+                }
+                let response = proto::base_node::BlockBodyResponse::try_from(block.block().clone()).unwrap();
+                if tx.send(Ok(response)).await.is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(Streaming::new(rx))
+    }
+
+    async fn sync_headers(
+        &self,
+        _: Request<SyncHeadersRequest>,
+    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus> {
+        Err(RpcStatus::not_implemented("mock"))
+    }
+
+    async fn get_header_by_height(&self, _: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        Err(RpcStatus::not_implemented("mock"))
+    }
+
+    async fn find_chain_split(
+        &self,
+        _: Request<FindChainSplitRequest>,
+    ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
+        Err(RpcStatus::not_implemented("mock"))
+    }
+
+    async fn get_chain_metadata(&self, _: Request<()>) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
+        Err(RpcStatus::not_implemented("mock"))
+    }
+
+    async fn sync_kernels(
+        &self,
+        _: Request<SyncKernelsRequest>,
+    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
+        Err(RpcStatus::not_implemented("mock"))
+    }
+
+    async fn sync_utxos(&self, _: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
+        Err(RpcStatus::not_implemented("mock"))
+    }
+}
+
+async fn connect_streaming_peer(
+    connectivity_mock: &ConnectivityManagerMockState,
+    service: StreamingChainPeer,
+    claim: ChainMetadata,
+) -> (SyncPeer, MockRpcServer<BaseNodeSyncRpcServer<StreamingChainPeer>>) {
+    let peer_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let server = BaseNodeSyncRpcServer::new(service);
+    let protocol_name = server.as_protocol_name();
+    let mut mock_server = MockRpcServer::new(server, peer_identity.clone());
+    mock_server.serve();
+    let conn = mock_server
+        .create_connection(peer_identity.to_peer(), protocol_name.into())
+        .await;
+    connectivity_mock.add_active_connection(conn).await;
+    let sync_peer = SyncPeer::from(PeerChainMetadata::new(peer_identity.node_id().clone(), claim, None));
+    (sync_peer, mock_server)
+}
+
+#[tokio::test]
+async fn slow_peers_are_retried_with_increased_max_latency_without_being_banned() {
+    let (db, chain_blocks) = chain_headers_ahead_of_blocks(15);
+    let genesis_hash = db.fetch_chain_header(0).unwrap().hash().to_vec();
+    let tip_claim = claim_for(chain_blocks.last().unwrap());
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+
+    let (peer_a, _server_a) = connect_streaming_peer(
+        &connectivity_mock,
+        StreamingChainPeer {
+            genesis_hash: genesis_hash.clone(),
+            chain: chain_blocks.clone(),
+            per_block_delay: Duration::from_millis(20),
+        },
+        tip_claim.clone(),
+    )
+    .await;
+    let (peer_b, _server_b) = connect_streaming_peer(
+        &connectivity_mock,
+        StreamingChainPeer {
+            genesis_hash,
+            chain: chain_blocks,
+            per_block_delay: Duration::from_millis(20),
+        },
+        tip_claim,
+    )
+    .await;
+
+    // Round 1 exceeds `initial_max_sync_latency` (1ms) on both peers after 5 blocks each (reaching height 10);
+    // backoff raises `max_latency` by 2s without banning either peer, and Round 2 streams the final 5 blocks to 15.
+    let config = BlockchainSyncConfig {
+        initial_max_sync_latency: Duration::from_millis(1),
+        max_latency_increase: Duration::from_secs(2),
+        ..Default::default()
+    };
+    let mut sync_peers = vec![peer_a, peer_b];
+    let mut attempts_without_block = HashMap::new();
+    let mut synchronizer = BlockSynchronizer::new(
+        config,
+        db.clone().into(),
+        connectivity.clone(),
+        &mut sync_peers,
+        Arc::new(MockValidator::new(true)),
+        &mut attempts_without_block,
+    );
+    synchronizer.synchronize().await.unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 15);
+    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+    assert_eq!(sync_peers.len(), 2);
+    for peer in &sync_peers {
+        assert!(!peer.connection().unwrap().is_strong());
+    }
+}
+
+#[tokio::test]
+async fn slow_peers_are_short_banned_when_latency_backoff_aborts() {
+    // 1. Single slow peer (`sync_peers.len() < 2`) aborts immediately and issues a short ban
+    let (db_single, chain_single) = chain_headers_ahead_of_blocks(6);
+    let genesis_hash_single = db_single.fetch_chain_header(0).unwrap().hash().to_vec();
+    let tip_single_claim = claim_for(chain_single.last().unwrap());
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+
+    let (slow_single, _server_single) = connect_streaming_peer(
+        &connectivity_mock,
+        StreamingChainPeer {
+            genesis_hash: genesis_hash_single,
+            chain: chain_single,
+            per_block_delay: Duration::from_millis(15),
+        },
+        tip_single_claim,
+    )
+    .await;
+    let single_node_id = slow_single.node_id().clone();
+    let config = BlockchainSyncConfig {
+        initial_max_sync_latency: Duration::from_micros(100),
+        max_latency_increase: Duration::from_micros(100),
+        ..Default::default()
+    };
+    let short_ban_period = config.short_ban_period;
+    let mut single_peers = vec![slow_single];
+    let mut attempts_without_block = HashMap::new();
+    let mut synchronizer = BlockSynchronizer::new(
+        config.clone(),
+        db_single.clone().into(),
+        connectivity.clone(),
+        &mut single_peers,
+        Arc::new(MockValidator::new(true)),
+        &mut attempts_without_block,
+    );
+    let err = synchronizer.synchronize().await.unwrap_err();
+    assert!(matches!(err, BlockSyncError::AllSyncPeersExceedLatency), "{err}");
+    assert!(single_peers.is_empty());
+    let banned = banned_peers(connectivity.clone(), &connectivity_mock).await;
+    let [(banned_peer, ban_duration, ban_reason)] = banned.as_slice() else {
+        panic!("expected one short ban on <2 slow-peer abort, got {banned:?}");
+    };
+    assert_eq!(*banned_peer, single_node_id);
+    assert_eq!(*ban_duration, short_ban_period);
+    assert!(
+        ban_reason.contains("exceeded maximum permitted sync latency"),
+        "{ban_reason}"
+    );
+
+    // 2. Two slow peers exhausting all `MAX_LATENCY_INCREASES` (5 increases = 6 rounds * 10 blocks = 60 blocks)
+    // issue short bans for both slow peers when backoff gives up.
+    let (db_pair, chain_pair) = chain_headers_ahead_of_blocks(62);
+    let genesis_hash_pair = db_pair.fetch_chain_header(0).unwrap().hash().to_vec();
+    let tip_pair_claim = claim_for(chain_pair.last().unwrap());
+    let (slow_a, _server_a) = connect_streaming_peer(
+        &connectivity_mock,
+        StreamingChainPeer {
+            genesis_hash: genesis_hash_pair.clone(),
+            chain: chain_pair.clone(),
+            per_block_delay: Duration::from_millis(5),
+        },
+        tip_pair_claim.clone(),
+    )
+    .await;
+    let (slow_b, _server_b) = connect_streaming_peer(
+        &connectivity_mock,
+        StreamingChainPeer {
+            genesis_hash: genesis_hash_pair,
+            chain: chain_pair,
+            per_block_delay: Duration::from_millis(5),
+        },
+        tip_pair_claim,
+    )
+    .await;
+    let slow_a_id = slow_a.node_id().clone();
+    let slow_b_id = slow_b.node_id().clone();
+    let mut pair_peers = vec![slow_a, slow_b];
+    let mut synchronizer = BlockSynchronizer::new(
+        config,
+        db_pair.clone().into(),
+        connectivity.clone(),
+        &mut pair_peers,
+        Arc::new(MockValidator::new(true)),
+        &mut attempts_without_block,
+    );
+    let err = synchronizer.synchronize().await.unwrap_err();
+    assert!(matches!(err, BlockSyncError::AllSyncPeersExceedLatency), "{err}");
+    assert_eq!(db_pair.get_height().unwrap(), 60);
+    assert!(pair_peers.is_empty());
+    let banned = banned_peers(connectivity, &connectivity_mock).await;
+    assert_eq!(banned.len(), 2, "{banned:?}");
+    assert!(
+        banned
+            .iter()
+            .any(|(id, dur, _)| *id == slow_a_id && *dur == short_ban_period)
+    );
+    assert!(
+        banned
+            .iter()
+            .any(|(id, dur, _)| *id == slow_b_id && *dur == short_ban_period)
+    );
 }
