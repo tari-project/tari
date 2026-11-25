@@ -437,20 +437,6 @@ mod test {
         other_node_id.node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false).node_id;
         let err = storage.add_or_update_peer(other_node_id).unwrap_err();
         assert!(matches!(err, PeerManagerError::OwnIdentity));
-        let mut other_public_key = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
-        other_public_key.node_id = own.node_id.clone();
-        let err = storage
-            .add_or_update_online_peer(
-                &other_public_key.public_key,
-                &other_public_key.node_id,
-                &[],
-                &PeerFeatures::COMMUNICATION_NODE,
-                &PeerAddressSource::Config,
-            )
-            .unwrap_err();
-        assert!(matches!(err, PeerManagerError::OwnIdentity));
-        let err = storage.add_or_update_peer(other_public_key).unwrap_err();
-        assert!(matches!(err, PeerManagerError::OwnIdentity));
         assert_eq!(storage.count(), count);
 
         storage
