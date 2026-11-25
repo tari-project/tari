@@ -90,6 +90,9 @@ pub struct MergeMiningProxyConfig {
     pub base_node_grpc_tls_domain_name: Option<String>,
     /// GRPC ca cert name for TLS
     pub base_node_grpc_ca_cert_filename: String,
+    /// Per-request gRPC timeout for the base node and p2pool node; 0 disables it (default = 30s)
+    #[serde(with = "serializers::seconds")]
+    pub base_node_grpc_request_timeout: Duration,
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
@@ -166,6 +169,7 @@ impl fmt::Debug for MergeMiningProxyConfig {
             .field("base_node_grpc_authentication", &self.base_node_grpc_authentication)
             .field("base_node_grpc_tls_domain_name", &self.base_node_grpc_tls_domain_name)
             .field("base_node_grpc_ca_cert_filename", &self.base_node_grpc_ca_cert_filename)
+            .field("base_node_grpc_request_timeout", &self.base_node_grpc_request_timeout)
             .field("listener_address", &self.listener_address)
             .field("submit_to_origin", &self.submit_to_origin)
             .field(
@@ -240,6 +244,7 @@ impl Default for MergeMiningProxyConfig {
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
+            base_node_grpc_request_timeout: Duration::from_secs(30),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,

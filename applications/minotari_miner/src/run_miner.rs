@@ -19,7 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{convert::TryFrom, sync::Arc, thread, time::Instant};
+use std::{
+    convert::TryFrom,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use futures::stream::StreamExt;
 use log::*;
@@ -346,6 +351,7 @@ fn base_node_grpc_client_config(config: &MinerConfig) -> Result<GrpcClientConfig
         &config.base_node_grpc_authentication,
         config.base_node_grpc_tls_domain_name.as_deref(),
         &config.config_dir.join(&config.base_node_grpc_ca_cert_filename),
+        Some(Duration::from_secs(config.base_node_grpc_request_timeout)).filter(|t| !t.is_zero()),
     )?)
 }
 
@@ -699,6 +705,17 @@ mod test {
     use tonic::{Request, Response, Status};
 
     use super::*;
+
+    #[test]
+    fn request_timeout_zero_disables_it() {
+        let mut config = MinerConfig::default();
+        assert_eq!(
+            base_node_grpc_client_config(&config).unwrap().request_timeout,
+            Some(Duration::from_secs(30))
+        );
+        config.base_node_grpc_request_timeout = 0;
+        assert_eq!(base_node_grpc_client_config(&config).unwrap().request_timeout, None);
+    }
 
     #[test]
     fn panic_message_reads_str_and_string_payloads() {

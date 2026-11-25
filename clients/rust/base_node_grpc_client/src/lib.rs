@@ -56,7 +56,7 @@ pub struct GrpcTlsConfig {
 #[derive(Clone, Debug)]
 pub struct GrpcClientConfig {
     pub auth: GrpcAuthentication,
-    /// Required for an `https://` address.
+    /// Verify the node against this CA. Without it an `https://` address is verified against the system roots.
     pub tls: Option<GrpcTlsConfig>,
     pub connect_timeout: Duration,
     /// Bounds the time until the server starts responding; `None` disables it.
@@ -151,22 +151,20 @@ pub fn endpoint(addr: &str, cfg: &GrpcClientConfig) -> Result<Endpoint, GrpcClie
     if let Some(timeout) = cfg.request_timeout {
         endpoint = endpoint.timeout(timeout);
     }
-    match &cfg.tls {
-        Some(tls) => {
-            let tls_config = ClientTlsConfig::new()
+    let tls_config = match &cfg.tls {
+        Some(tls) => Some(
+            ClientTlsConfig::new()
                 .ca_certificate(Certificate::from_pem(&tls.ca_cert_pem))
-                .domain_name(&tls.domain_name);
-            endpoint = endpoint
-                .tls_config(tls_config)
-                .map_err(|e| GrpcClientError::Tls(e.to_string()))?;
-        },
-        // Without a CA tonic would build an empty root store and every handshake would fail.
-        None if endpoint.uri().scheme_str() == Some("https") => {
-            return Err(GrpcClientError::Tls(
-                "https requires a CA certificate; set tls".to_string(),
-            ));
-        },
-        None => {},
+                .domain_name(&tls.domain_name),
+        ),
+        // Public-CA nodes; this crate enables tonic's `tls-native-roots`, so the root store is never empty.
+        None if endpoint.uri().scheme_str() == Some("https") => Some(ClientTlsConfig::new().with_enabled_roots()),
+        None => None,
+    };
+    if let Some(tls_config) = tls_config {
+        endpoint = endpoint
+            .tls_config(tls_config)
+            .map_err(|e| GrpcClientError::Tls(e.to_string()))?;
     }
     // A unix socket's URI is an `http://tonic` placeholder.
     if !addr.starts_with("unix:") {
@@ -237,12 +235,10 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn https_without_tls_is_refused_before_dialing() {
-        let err = connect_channel("https://10.0.0.1:18142", &GrpcClientConfig::default())
-            .await
-            .unwrap_err();
-        assert!(matches!(err, GrpcClientError::Tls(_)), "{err:?}");
+    #[test]
+    fn https_without_ca_uses_system_roots() {
+        let endpoint = endpoint("https://10.0.0.1:18142", &GrpcClientConfig::default()).unwrap();
+        assert_eq!(endpoint.uri().scheme_str(), Some("https"));
     }
 
     struct ThreadLocalLogger;

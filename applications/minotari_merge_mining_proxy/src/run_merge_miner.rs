@@ -278,6 +278,7 @@ fn base_node_grpc_client_config(config: &MergeMiningProxyConfig) -> Result<GrpcC
         &config.base_node_grpc_authentication,
         config.base_node_grpc_tls_domain_name.as_deref(),
         &config.config_dir.join(&config.base_node_grpc_ca_cert_filename),
+        request_timeout(config),
     )
 }
 
@@ -287,7 +288,12 @@ fn p2pool_grpc_client_config(config: &MergeMiningProxyConfig) -> Result<GrpcClie
         &config.p2pool_grpc_authentication,
         config.p2pool_grpc_tls_domain_name.as_deref(),
         &config.config_dir.join(&config.p2pool_grpc_ca_cert_filename),
+        request_timeout(config),
     )
+}
+
+fn request_timeout(config: &MergeMiningProxyConfig) -> Option<Duration> {
+    Some(config.base_node_grpc_request_timeout).filter(|t| !t.is_zero())
 }
 
 #[cfg(test)]
@@ -315,5 +321,17 @@ mod test {
         };
         let cfg = p2pool_grpc_client_config(&config).unwrap();
         assert!(matches!(cfg.auth, GrpcAuthentication::Basic { ref username, .. } if username == "pool"));
+    }
+
+    #[test]
+    fn request_timeout_zero_disables_it() {
+        let mut config = MergeMiningProxyConfig::default();
+        assert_eq!(
+            base_node_grpc_client_config(&config).unwrap().request_timeout,
+            Some(Duration::from_secs(30))
+        );
+        config.base_node_grpc_request_timeout = Duration::ZERO;
+        assert_eq!(base_node_grpc_client_config(&config).unwrap().request_timeout, None);
+        assert_eq!(p2pool_grpc_client_config(&config).unwrap().request_timeout, None);
     }
 }

@@ -88,6 +88,8 @@
 #base_node_grpc_tls_domain_name = "localhost"
 # The base node's CA certificate in the config directory, used when TLS is on (default = "node_ca.pem")
 #base_node_grpc_ca_cert_filename = "node_ca.pem"
+# Per-request gRPC timeout in seconds for the base node and the p2pool node; 0 disables it (default = 30)
+#base_node_grpc_request_timeout = 30
 
 # Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
 #listener_address = "/ip4/127.0.0.1/tcp/18081"

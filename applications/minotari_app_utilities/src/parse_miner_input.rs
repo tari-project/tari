@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::Path, str::FromStr};
+use std::{path::Path, str::FromStr, time::Duration};
 
 use dialoguer::{Input as InputPrompt, console::Term};
 use log::*;
@@ -189,6 +189,7 @@ pub fn grpc_client_config(
     auth: &GrpcAuthentication,
     tls_domain: Option<&str>,
     ca_cert_path: &Path,
+    request_timeout: Option<Duration>,
 ) -> Result<GrpcClientConfig, GrpcClientError> {
     let tls = tls_domain
         .map(|domain_name| {
@@ -207,6 +208,7 @@ pub fn grpc_client_config(
     Ok(GrpcClientConfig {
         auth: auth.clone(),
         tls,
+        request_timeout,
         ..Default::default()
     })
 }
@@ -908,14 +910,14 @@ mod test {
         let dir = tempfile::tempdir().unwrap();
         let ca_path = dir.path().join("node_ca.pem");
 
-        let cfg = grpc_client_config(&GrpcAuthentication::None, None, &ca_path).unwrap();
+        let cfg = grpc_client_config(&GrpcAuthentication::None, None, &ca_path, None).unwrap();
         assert!(cfg.tls.is_none());
 
-        let err = grpc_client_config(&GrpcAuthentication::None, Some("localhost"), &ca_path).unwrap_err();
+        let err = grpc_client_config(&GrpcAuthentication::None, Some("localhost"), &ca_path, None).unwrap_err();
         assert!(matches!(err, GrpcClientError::Tls(_)), "{err:?}");
 
         std::fs::write(&ca_path, b"pem").unwrap();
-        let tls = grpc_client_config(&GrpcAuthentication::None, Some("localhost"), &ca_path)
+        let tls = grpc_client_config(&GrpcAuthentication::None, Some("localhost"), &ca_path, None)
             .unwrap()
             .tls
             .unwrap();

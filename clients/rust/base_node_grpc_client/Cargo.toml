@@ -17,7 +17,7 @@ tari_common_types = { workspace = true }
 
 log = { workspace = true }
 thiserror = { workspace = true }
-tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
+tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring", "tls-native-roots"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "time"] }
