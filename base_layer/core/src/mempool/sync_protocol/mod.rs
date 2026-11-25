@@ -837,6 +837,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             let bytes = result?;
             num_frames = num_frames.saturating_add(1);
             if num_recv >= max_recv {
+                // A peer configured for more than our `initial_sync_max_transactions` may send more. The terminator
+                // counts towards the ceiling too.
+                if discard_excess && num_frames > MAX_STREAM_FRAMES {
+                    return Err(MempoolProtocolError::TooManyTransactions {
+                        peer: self.peer_node_id.clone(),
+                        max: MAX_STREAM_FRAMES,
+                    });
+                }
                 // The terminator, an empty `TransactionItem`, encodes to an empty frame
                 if bytes.is_empty() {
                     debug!(
@@ -852,13 +860,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                     return Err(MempoolProtocolError::TooManyTransactions {
                         peer: self.peer_node_id.clone(),
                         max: max_recv,
-                    });
-                }
-                // A peer configured for more than our `initial_sync_max_transactions` may send more
-                if num_frames > MAX_STREAM_FRAMES {
-                    return Err(MempoolProtocolError::TooManyTransactions {
-                        peer: self.peer_node_id.clone(),
-                        max: MAX_STREAM_FRAMES,
                     });
                 }
                 continue;

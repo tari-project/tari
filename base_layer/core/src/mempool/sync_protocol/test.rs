@@ -491,11 +491,10 @@ impl<T: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for StallingClose<T
     }
 }
 
-/// Past our own `initial_sync_max_transactions`, further frames are discarded without being decoded, but a peer that
-/// never sends the terminator is still cut off after `MAX_STREAM_FRAMES`. The per-frame deadline cannot do this on its
-/// own: it restarts for every frame.
-#[tokio::test]
-async fn initiator_cuts_off_a_peer_that_streams_past_the_frame_ceiling() {
+/// Runs an initiator limited to `initial_sync_max_transactions` of 2 against a peer that streams `num_frames` frames:
+/// two transactions, then frames that are not a valid `TransactionItem` (so the initiator only gets past them by not
+/// decoding them), ending with the terminator if `terminate`. Returns the initiator's result.
+async fn initiator_receiving_frames(num_frames: usize, terminate: bool) -> Result<(), MempoolProtocolError> {
     let (mempool, _transactions) = new_mempool_with_transactions(0).await;
     let peer_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
@@ -517,27 +516,50 @@ async fn initiator_cuts_off_a_peer_that_streams_past_the_frame_ceiling() {
     for txn in &create_transactions(2) {
         write_message(&mut peer, transaction_item(txn)).await;
     }
-    // Not a valid `TransactionItem`, so the initiator only gets past it by not decoding it. With the two transactions
-    // above this is one frame over the ceiling.
-    for _ in 2..=MAX_STREAM_FRAMES {
+    for _ in 2..num_frames - usize::from(terminate) {
         peer.feed(Bytes::from_static(&[0])).await.unwrap();
     }
+    if terminate {
+        peer.feed(Bytes::new()).await.unwrap();
+    }
     peer.flush().await.unwrap();
+    // Our inventory was empty, so we ask for nothing. Sending may fail once the initiator has closed the substream.
+    peer.send(proto::InventoryIndexes::default().to_encoded_bytes().into())
+        .await
+        .ok();
 
-    let result = tokio::time::timeout(Duration::from_secs(60), initiator)
+    tokio::time::timeout(Duration::from_secs(60), initiator)
         .await
         .expect("initiator never returned")
-        .unwrap();
-    assert!(
-        matches!(
-            result,
-            Err(MempoolProtocolError::TooManyTransactions {
-                max: MAX_STREAM_FRAMES,
-                ..
-            })
-        ),
-        "expected the frame ceiling to fire, got {result:?}"
-    );
+        .unwrap()
+}
+
+fn is_frame_ceiling_error(result: &Result<(), MempoolProtocolError>) -> bool {
+    matches!(
+        result,
+        Err(MempoolProtocolError::TooManyTransactions {
+            max: MAX_STREAM_FRAMES,
+            ..
+        })
+    )
+}
+
+/// Past our own `initial_sync_max_transactions`, further frames are discarded without being decoded, but a peer that
+/// never sends the terminator is still cut off after `MAX_STREAM_FRAMES`. The per-frame deadline cannot do this on its
+/// own: it restarts for every frame.
+#[tokio::test]
+async fn initiator_cuts_off_a_peer_that_streams_past_the_frame_ceiling() {
+    let result = initiator_receiving_frames(MAX_STREAM_FRAMES + 1, false).await;
+    assert!(is_frame_ceiling_error(&result), "got {result:?}");
+}
+
+/// The terminator counts towards the frame ceiling: a stream of exactly `MAX_STREAM_FRAMES` frames including it
+/// completes, and one more frame does not
+#[tokio::test]
+async fn the_terminator_counts_towards_the_frame_ceiling() {
+    initiator_receiving_frames(MAX_STREAM_FRAMES, true).await.unwrap();
+    let result = initiator_receiving_frames(MAX_STREAM_FRAMES + 1, true).await;
+    assert!(is_frame_ceiling_error(&result), "got {result:?}");
 }
 
 /// A sync that exchanged everything successfully must still count as a success when only the
@@ -1439,15 +1461,21 @@ async fn responder_asks_only_for_its_limit_of_a_longer_inventory() {
 /// The responder takes no more transactions than it asked for
 #[tokio::test]
 async fn responder_rejects_more_transactions_than_it_asked_for() {
-    let (mut framed, responder, indexes) = responder_limited_to_two(2).await;
-    assert_eq!(indexes.len(), 2);
-    for txn in &create_transactions(3) {
-        // The responder may already have closed the substream before the last one
-        framed.send(transaction_item(txn).to_encoded_bytes().into()).await.ok();
+    // Fewer than its limit of 2, so it is the request and not the limit that caps what it takes
+    let (mut framed, responder, indexes) = responder_limited_to_two(1).await;
+    assert_eq!(indexes, vec![0]);
+    let items = create_transactions(2)
+        .iter()
+        .map(transaction_item)
+        .chain([proto::TransactionItem::empty()])
+        .collect::<Vec<_>>();
+    for item in items {
+        // The responder may already have closed the substream
+        framed.send(item.to_encoded_bytes().into()).await.ok();
     }
     let result = responder.await.unwrap();
     assert!(
-        matches!(result, Err(MempoolProtocolError::TooManyTransactions { max: 2, .. })),
+        matches!(result, Err(MempoolProtocolError::TooManyTransactions { max: 1, .. })),
         "unexpected result: {result:?}"
     );
 }
