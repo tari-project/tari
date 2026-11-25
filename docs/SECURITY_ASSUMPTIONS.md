@@ -187,12 +187,13 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   never from monerod. The listener (loopback by default) serves trusted miners; exposing it is the operator's choice.
 - **What that means:** A monerod node can serve bad or stale templates or withhold responses, which costs
   merge-mining availability. The proxy moves on to another configured monerod when a request times out or fails, or
-  when the response body is too large or not valid JSON (including empty or HTML error pages); a monerod that returns
-  an error status with a JSON body, or a template the proxy rejects, stays selected. Monerod cannot change the Tari
-  coinbase or reward destination, but with `submit_to_origin` on (the default) a found block goes to monerod first, so
-  a selected monerod can stop found Tari blocks from being submitted; running your own monerod or setting
-  `submit_to_origin = false` avoids this. The Monero side is exposed: monerod builds the Monero block template, so an
-  untrusted or on-path monerod can pay the Monero block reward to someone else, and it sees
+  when the response body is too large or not valid JSON (including empty or HTML error pages); a monerod that
+  returns an error status with a JSON body, or a template the proxy rejects, stays selected. The client that
+  forwards requests to monerod does not follow redirects, so monerod cannot point it at other hosts. Monerod cannot
+  change the Tari coinbase or reward destination, but with `submit_to_origin` on (the default) a found block goes to
+  monerod first, so a selected monerod can stop found Tari blocks from being submitted; running your own monerod or
+  setting `submit_to_origin = false` avoids this. The Monero side is exposed: monerod builds the Monero block
+  template, so an untrusted or on-path monerod can pay the Monero block reward to someone else, and it sees
   `monerod_username`/`monerod_password` when `monerod_use_auth` is set (in cleartext over `http://`, and over
   `https://` too because certificates are not checked). Operators who care should run their own monerod (see the
   SECURITY note in `common/config/presets/f_merge_mining_proxy.toml`). Requests the proxy does not recognise are
