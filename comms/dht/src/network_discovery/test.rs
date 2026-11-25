@@ -1652,7 +1652,7 @@ mod rebootstrap {
     }
 
     /// Discovering shares the per-source budget with OnConnect, updates known peers seen before the budget runs out,
-    /// stops reading the stream early once the budget is exhausted, and does not count a budget-cut sync as succeeded.
+    /// stops reading the stream early once the budget is exhausted, and counts useful budget-cut syncs as succeeded.
     #[tokio::test]
     async fn discovering_caps_new_peers_at_the_source_budget_and_updates_known_peers() {
         let (mut context, mock, _events) = context(None);
@@ -1724,8 +1724,12 @@ mod rebootstrap {
         let StateEvent::DiscoveryComplete(stats) = Discovering::new(params, context.clone()).next_event().await else {
             panic!("expected DiscoveryComplete");
         };
-        assert_eq!(stats.num_succeeded, 0, "a budget-cut sync must not count as succeeded");
+        assert_eq!(
+            stats.num_succeeded, 1,
+            "a budget-cut sync that stored new peers must count as succeeded"
+        );
         assert_eq!(stats.num_new_peers, 2);
+        assert!(stats.is_success());
         assert_eq!(
             stats.num_duplicate_peers, 1,
             "Discovering must stop early on budget exhaustion instead of reading trailing records"

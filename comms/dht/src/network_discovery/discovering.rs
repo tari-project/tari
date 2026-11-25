@@ -129,8 +129,14 @@ impl Discovering {
                     self.stats.sync_peers.push(peer_node_id.clone());
                     debug!(target: LOG_TARGET, "Discovering: Attempting to sync from peer `{peer_node_id}`" );
 
-                    if matches!(self.request_from_peers(conn, was_connected).await, Ok(false)) {
-                        self.stats.num_succeeded = self.stats.num_succeeded.saturating_add(1);
+                    let new_peers_before_sync = self.stats.num_new_peers;
+                    if let Ok(budget_used_up) = self.request_from_peers(conn, was_connected).await {
+                        // A source that filled its budget still made useful progress. Only a budget-cut sync
+                        // that stored no new peers must remain uncounted, so Ready cannot mistake it for an
+                        // empty successful sync and switch to OnConnectMode.
+                        if !budget_used_up || self.stats.num_new_peers > new_peers_before_sync {
+                            self.stats.num_succeeded = self.stats.num_succeeded.saturating_add(1);
+                        }
                     }
                 },
                 Err(err) => {
