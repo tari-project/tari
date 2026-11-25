@@ -933,13 +933,15 @@ mod tests {
         let connectivity = MockConnectivity::new(client.clone());
         let (event_tx, _event_rx) = broadcast::channel(8);
         let in_flight = Arc::new(Mutex::new(HashSet::new()));
-        let mut guard = InFlightBurnProofsGuard::try_acquire(&in_flight, [burn_a.output_hash, burn_b.output_hash]).unwrap();
+        let mut guard =
+            InFlightBurnProofsGuard::try_acquire(&in_flight, [burn_a.output_hash, burn_b.output_hash]).unwrap();
 
         let in_flight_clone = Arc::clone(&in_flight);
         let burn_a_hash = burn_a.output_hash;
         let burn_b_hash = burn_b.output_hash;
         let handle = tokio::spawn(async move {
-            execute_with_retries_and_delay(&tx_db, &connectivity, &event_tx, &mut guard, Duration::from_millis(50)).await;
+            execute_with_retries_and_delay(&tx_db, &connectivity, &event_tx, &mut guard, Duration::from_millis(50))
+                .await;
         });
 
         // Allow attempt 1 for burn_a (succeeds) and attempt 1 for burn_b (fails) to complete
