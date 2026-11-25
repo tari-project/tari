@@ -37,8 +37,12 @@ use crate::error::MmProxyError;
 /// The JSON object key name used for merge mining proxy response extensions
 pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
 
+/// The largest monerod response body the proxy will read. Monerod nodes are untrusted (A-MMPROXY-01); this is well
+/// above the largest legitimate response (`get_block`, `get_transaction_pool`).
+pub(crate) const MAX_MONEROD_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+
 pub async fn convert_reqwest_response_to_hyper_json_response(
-    resp: reqwest::Response,
+    mut resp: reqwest::Response,
 ) -> Result<Response<json::Value>, MmProxyError> {
     let mut builder = Response::builder();
 
@@ -60,11 +64,28 @@ pub async fn convert_reqwest_response_to_hyper_json_response(
             .map_err(|e| MmProxyError::ConversionError(format!("Invalid status code: {}", e)))?,
     );
 
+    let too_large = MmProxyError::MonerodResponseTooLarge {
+        limit: MAX_MONEROD_RESPONSE_BYTES,
+    };
+    let content_length = resp
+        .content_length()
+        .map(|len| usize::try_from(len).unwrap_or(usize::MAX));
+    if content_length.is_some_and(|len| len > MAX_MONEROD_RESPONSE_BYTES) {
+        return Err(too_large);
+    }
+    let mut body = Vec::with_capacity(content_length.unwrap_or_default());
     // `without_url` keeps the monerod URL (which may carry credentials or a query) out of the error
-    let body_json = resp
-        .json()
+    while let Some(chunk) = resp
+        .chunk()
         .await
-        .map_err(|e| MmProxyError::MonerodRequestFailed(e.without_url()))?;
+        .map_err(|e| MmProxyError::MonerodRequestFailed(e.without_url()))?
+    {
+        if body.len().saturating_add(chunk.len()) > MAX_MONEROD_RESPONSE_BYTES {
+            return Err(too_large);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let body_json = json::from_slice::<json::Value>(&body)?;
     let resp = builder.body(body_json)?;
     Ok(resp)
 }
@@ -142,4 +163,114 @@ pub fn try_into_json_block_header(header: tari_rpc::BlockHeaderResponse) -> Resu
 pub fn request_bytes_to_value(request: Request<Bytes>) -> Result<Request<json::Value>, MmProxyError> {
     let json = json::from_slice::<json::Value>(request.body())?;
     Ok(request.map(move |_| json))
+}
+
+#[cfg(test)]
+pub(crate) mod test {
+    use std::{convert::Infallible, net::SocketAddr, time::Duration};
+
+    use futures::{StreamExt, stream};
+    use http_body_util::{BodyExt, Full, StreamBody, combinators::BoxBody};
+    use hyper::{StatusCode, body::Frame, server::conn::http1, service::service_fn};
+    use hyper_util::rt::TokioIo;
+    use tokio::net::TcpListener;
+
+    use super::*;
+
+    pub(crate) type MockBody = BoxBody<Bytes, Infallible>;
+
+    /// Serve `respond()` to every request on a loopback port, as a stand-in monerod.
+    pub(crate) async fn serve_mock_monerod(respond: fn() -> Response<MockBody>) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((tcp, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let svc = service_fn(move |_req| async move { Ok::<_, Infallible>(respond()) });
+                    let _res = http1::Builder::new().serve_connection(TokioIo::new(tcp), svc).await;
+                });
+            }
+        });
+        addr
+    }
+
+    fn full(body: impl Into<Bytes>) -> MockBody {
+        Full::new(body.into()).boxed()
+    }
+
+    /// Declares a Content-Length over the limit, sends a few bytes and then never finishes.
+    pub(crate) fn oversized_content_length() -> Response<MockBody> {
+        let frames = stream::once(async { Ok(Frame::data(Bytes::from_static(b"{\"a\""))) }).chain(stream::pending());
+        Response::builder()
+            .header(hyper::header::CONTENT_LENGTH, MAX_MONEROD_RESPONSE_BYTES + 1)
+            .body(BodyExt::boxed(StreamBody::new(frames)))
+            .unwrap()
+    }
+
+    async fn fetch(respond: fn() -> Response<MockBody>) -> Result<Response<json::Value>, MmProxyError> {
+        let addr = serve_mock_monerod(respond).await;
+        let resp = reqwest::get(format!("http://{addr}/json_rpc")).await.unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            convert_reqwest_response_to_hyper_json_response(resp),
+        )
+        .await
+        .expect("conversion should not hang")
+    }
+
+    #[tokio::test]
+    async fn it_parses_a_small_body_and_keeps_status_and_headers() {
+        let resp = fetch(|| {
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("x-monerod", "yes")
+                .body(full(r#"{"height": 5}"#))
+                .unwrap()
+        })
+        .await
+        .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(resp.headers()["x-monerod"], "yes");
+        assert_eq!(resp.body(), &json!({"height": 5}));
+    }
+
+    #[tokio::test]
+    async fn it_rejects_an_oversized_content_length_without_reading_the_body() {
+        let err = tokio::time::timeout(Duration::from_secs(1), fetch(oversized_content_length))
+            .await
+            .expect("should not wait for the body")
+            .unwrap_err();
+        assert!(matches!(err, MmProxyError::MonerodResponseTooLarge {
+            limit: MAX_MONEROD_RESPONSE_BYTES
+        }));
+    }
+
+    #[tokio::test]
+    async fn it_rejects_an_oversized_chunked_body() {
+        let err = fetch(|| {
+            let chunk = Bytes::from(vec![b' '; 1024 * 1024]);
+            let frames = stream::repeat_with(move || Ok(Frame::data(chunk.clone()))).take(9);
+            Response::new(BodyExt::boxed(StreamBody::new(frames)))
+        })
+        .await
+        .unwrap_err();
+        assert!(matches!(err, MmProxyError::MonerodResponseTooLarge { .. }));
+    }
+
+    #[tokio::test]
+    async fn it_accepts_a_body_exactly_at_the_limit() {
+        let resp = fetch(|| {
+            let body = format!("\"{}\"", "a".repeat(MAX_MONEROD_RESPONSE_BYTES - 2));
+            Response::new(full(body))
+        })
+        .await
+        .unwrap();
+        assert_eq!(resp.body().as_str().unwrap().len(), MAX_MONEROD_RESPONSE_BYTES - 2);
+    }
+
+    #[tokio::test]
+    async fn it_returns_a_json_error_for_invalid_json() {
+        let err = fetch(|| Response::new(full("not json"))).await.unwrap_err();
+        assert!(matches!(err, MmProxyError::JsonError(_)));
+    }
 }

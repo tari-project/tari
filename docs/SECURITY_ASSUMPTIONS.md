@@ -178,6 +178,22 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Where:** `applications/minotari_mcp_common`, `applications/minotari_mcp_node`, `applications/minotari_mcp_wallet`.
 - **Recorded:** 2026-11-23.
 
+### A-MMPROXY-01: The merge-mining proxy treats upstream monerod nodes as untrusted, and its listener as trusted miners only
+
+- **Assumption:** The `monerod_url` entries, including the public defaults (many of them plain `http://`), are
+  untrusted third parties. TLS to monerod deliberately skips certificate checks (PR #7060) so the proxy can fall back
+  to raw IP addresses. The Tari coinbase and reward come from the local base node over gRPC, never from monerod. The
+  listener (loopback by default) serves trusted miners; exposing it is the operator's choice.
+- **What that means:** A monerod node can serve bad or stale templates or withhold responses. That costs
+  merge-mining availability on that node, not funds, and the proxy moves on to another configured monerod. Requests
+  the proxy does not recognise are forwarded to monerod, which should run with `--restricted-rpc`.
+- **Not covered:** A monerod response must not be able to crash the proxy or exhaust its memory or CPU. Response
+  bodies must stay size-limited and time-limited. Upstream data must not change the Tari coinbase or the reward
+  destination.
+- **Where:** `applications/minotari_merge_mining_proxy` (`proxy/inner.rs`, `proxy/utils.rs`, `run_merge_miner.rs`,
+  `config.rs`).
+- **Recorded:** 2026-11-25, PR #TBD.
+
 ## Withdrawn entries
 
 None.
