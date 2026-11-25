@@ -33,7 +33,10 @@ use either::Either;
 use futures::{SinkExt, channel::mpsc};
 use log::*;
 use minotari_app_grpc::{
-    conversions::{aggregate_body::check_body_size, transaction_output::grpc_output_with_payref},
+    conversions::{
+        aggregate_body::{check_body_counts, check_body_size},
+        transaction_output::grpc_output_with_payref,
+    },
     tari_rpc::{
         self,
         CalcType,
@@ -386,7 +389,7 @@ fn decode_new_block_template(
     if let Some(body) = template.body.as_ref() {
         let height = template.header.as_ref().map_or(0, |h| h.height);
         let constants = consensus_rules.consensus_constants(height);
-        check_body_size(body, constants, constants.max_block_coinbase_count()).map_err(|s| {
+        check_body_size(body, constants, true).map_err(|s| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("{error_prefix}: {s}")),
@@ -411,7 +414,7 @@ fn decode_submit_block_request(
     if let Some(body) = request.body.as_ref() {
         let height = request.header.as_ref().map_or(0, |h| h.height);
         let constants = consensus_rules.consensus_constants(height);
-        check_body_size(body, constants, constants.max_block_coinbase_count()).map_err(|e| {
+        check_body_size(body, constants, true).map_err(|e| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("Invalid block provided: {e}")),
@@ -435,12 +438,15 @@ fn decode_submit_transaction_request(
     report_error_flag: bool,
 ) -> Result<Transaction, Status> {
     if let Some(body) = request.transaction.as_ref().and_then(|t| t.body.as_ref()) {
+        // Deliberately pick the consensus-constants set with the highest `max_block_transaction_weight` so this
+        // pre-conversion bound stays conservative across hard-fork schedules without hitting the chain DB; the
+        // mempool enforces the exact tip constants downstream.
         let constants = consensus_rules
             .consensus_constants_vec()
             .iter()
             .max_by_key(|c| c.max_block_transaction_weight())
             .unwrap_or_else(|| consensus_rules.consensus_constants(0));
-        check_body_size(body, constants, 0).map_err(|e| {
+        check_body_size(body, constants, false).map_err(|e| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("Invalid transaction provided: {e}")),
@@ -462,9 +468,15 @@ fn decode_submit_transaction_request(
 
 /// Decodes the header and body blobs of a `submit_block_blob` request into a [`Block`].
 ///
-/// The blobs are borsh-decoded and the resulting block is then normalised through the P2P protobuf conversion by
-/// [`normalise_block_via_p2p_proto`], so this entry point accepts exactly the blocks a peer could send.
-fn decode_block_blob(header_blob: &[u8], body_blob: &[u8], report_error_flag: bool) -> Result<Block, Status> {
+/// The blobs are borsh-decoded, checked in `O(1)` against the consensus body weight element bounds at `header.height`,
+/// and the resulting block is then normalised through the P2P protobuf conversion by [`normalise_block_via_p2p_proto`],
+/// so this entry point accepts exactly the blocks a peer could send.
+fn decode_block_blob(
+    header_blob: &[u8],
+    body_blob: &[u8],
+    consensus_rules: &BaseNodeConsensusManager,
+    report_error_flag: bool,
+) -> Result<Block, Status> {
     let malformed = |e: String| {
         obscure_error_if_true(
             report_error_flag,
@@ -474,9 +486,19 @@ fn decode_block_blob(header_blob: &[u8], body_blob: &[u8], report_error_flag: bo
     let mut header_bytes = header_blob;
     let mut body_bytes = body_blob;
     trace!(target: LOG_TARGET, "doing header");
-    let header = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
+    let header: BlockHeader = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
     trace!(target: LOG_TARGET, "doing body");
-    let body = BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?;
+    let body: tari_transaction_components::aggregated_body::AggregateBody =
+        BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?;
+    let constants = consensus_rules.consensus_constants(header.height);
+    check_body_counts(
+        body.inputs().len(),
+        body.outputs().len(),
+        body.kernels().len(),
+        constants,
+        true,
+    )
+    .map_err(malformed)?;
     normalise_block_via_p2p_proto(Block::new(header, body), report_error_flag)
 }
 
@@ -2044,7 +2066,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Received block blob from miner: {request:?}");
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "request: {request:?}");
-        let block = decode_block_blob(&request.header_blob, &request.body_blob, report_error_flag)?;
+        let block = decode_block_blob(
+            &request.header_blob,
+            &request.body_blob,
+            &self.consensus_rules,
+            report_error_flag,
+        )?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -3837,12 +3864,13 @@ mod test {
 
     #[test]
     fn a_valid_block_blob_round_trips_unchanged() {
+        let consensus_rules = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
         let block = mainnet_genesis();
         assert!(!block.body.outputs().is_empty());
         assert!(!block.body.kernels().is_empty());
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+        let decoded = decode_block_blob(&header_blob, &body_blob, &consensus_rules, true).unwrap();
 
         assert_eq!(decoded, block);
         assert_eq!(decoded.hash(), block.hash());
@@ -3851,6 +3879,7 @@ mod test {
 
     #[test]
     fn the_input_data_of_a_compact_input_survives_the_round_trip() {
+        let consensus_rules = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
         let block = mainnet_genesis();
         let input = TransactionInput::new_with_output_hash(
             FixedHash::zero(),
@@ -3861,7 +3890,7 @@ mod test {
         let block = Block::new(block.header, AggregateBody::new_unsorted(vec![input], outputs, kernels));
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+        let decoded = decode_block_blob(&header_blob, &body_blob, &consensus_rules, true).unwrap();
 
         assert_eq!(decoded, block);
         assert_eq!(
@@ -3885,31 +3914,33 @@ mod test {
     // same accept or reject decision on a block or transaction. Fields and values it does not sample are not checked.
     #[test]
     fn a_kernel_with_an_unknown_feature_bit_is_rejected_as_invalid_argument() {
+        let consensus_rules = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
         let block = mainnet_genesis();
         let (inputs, outputs, mut kernels) = block.body.dissolve();
         kernels.first_mut().unwrap().features = KernelFeatures::from_bits_retain(0x04);
         let block = Block::new(block.header, AggregateBody::new_unsorted(inputs, outputs, kernels));
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let err = decode_block_blob(&header_blob, &body_blob, true).unwrap_err();
+        let err = decode_block_blob(&header_blob, &body_blob, &consensus_rules, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
         assert!(err.message().starts_with("Malformed block: "), "{}", err.message());
 
-        let err = decode_block_blob(&header_blob, &body_blob, false).unwrap_err();
+        let err = decode_block_blob(&header_blob, &body_blob, &consensus_rules, false).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
         assert_eq!(err.message(), "Error has occurred. Details are obscured.");
     }
 
     #[test]
     fn a_truncated_blob_is_rejected_as_invalid_argument() {
+        let consensus_rules = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
         let (header_blob, body_blob) = to_blobs(&mainnet_genesis());
 
         let (_, truncated_header) = header_blob.split_last().unwrap();
         let (_, truncated_body) = body_blob.split_last().unwrap();
 
-        let err = decode_block_blob(truncated_header, &body_blob, true).unwrap_err();
+        let err = decode_block_blob(truncated_header, &body_blob, &consensus_rules, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
-        let err = decode_block_blob(&header_blob, truncated_body, true).unwrap_err();
+        let err = decode_block_blob(&header_blob, truncated_body, &consensus_rules, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 
@@ -3937,16 +3968,51 @@ mod test {
 
     #[test]
     fn submit_block_blob_normalises_a_v1_compact_input_to_v0() {
+        let consensus_rules = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
         let block = mainnet_genesis();
         let tx = transaction_with_a_v1_compact_input();
         let block = Block::new(block.header, tx.body);
         assert_eq!(first_input_version(&block.body), TransactionInputVersion::V1);
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+        let decoded = decode_block_blob(&header_blob, &body_blob, &consensus_rules, true).unwrap();
 
         // Fails if `decode_block_blob` stops round-tripping through the P2P proto
         assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
+    }
+
+    #[test]
+    fn submit_block_blob_rejects_oversized_body_before_normalisation() {
+        let consensus_rules = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
+        let block = mainnet_genesis();
+        let constants = consensus_rules.consensus_constants(block.header.height);
+        let max_kernels = usize::try_from(
+            constants
+                .max_block_transaction_weight()
+                .checked_div(constants.transaction_weight_params().params().kernel_weight)
+                .unwrap(),
+        )
+        .unwrap()
+        .checked_add(1)
+        .unwrap();
+        let sample_kernel = block.body.kernels().first().unwrap().clone();
+        // 1 kernel over the consensus block kernel limit (9,000 non-coinbase + 1 coinbase = 9,001 on MainNet).
+        let oversized_body =
+            AggregateBody::new_unsorted(vec![], vec![], vec![sample_kernel; max_kernels.checked_add(1).unwrap()]);
+        let oversized_block = Block::new(block.header, oversized_body);
+        let (header_blob, body_blob) = to_blobs(&oversized_block);
+
+        let err = decode_block_blob(&header_blob, &body_blob, &consensus_rules, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message().contains("exceeds maximum block transaction weight"),
+            "{}",
+            err.message()
+        );
+
+        let err = decode_block_blob(&header_blob, &body_blob, &consensus_rules, false).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert_eq!(err.message(), "Error has occurred. Details are obscured.");
     }
 
     /// The gRPC conversion currently makes the same accept or reject decision as the P2P one on every value
