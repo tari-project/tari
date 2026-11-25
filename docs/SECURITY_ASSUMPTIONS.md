@@ -184,12 +184,18 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   untrusted third parties. TLS to monerod deliberately skips certificate checks (PR #7060) so the proxy can fall back
   to raw IP addresses. The Tari coinbase and reward come from the local base node over gRPC, never from monerod. The
   listener (loopback by default) serves trusted miners; exposing it is the operator's choice.
-- **What that means:** A monerod node can serve bad or stale templates or withhold responses. That costs
-  merge-mining availability on that node, not funds, and the proxy moves on to another configured monerod. Requests
-  the proxy does not recognise are forwarded to monerod, which should run with `--restricted-rpc`.
-- **Not covered:** A monerod response must not be able to crash the proxy or exhaust its memory or CPU. Response
-  bodies must stay size-limited and time-limited. Upstream data must not change the Tari coinbase or the reward
-  destination.
+- **What that means:** A monerod node can serve bad or stale templates or withhold responses, which costs
+  merge-mining availability on that node; the proxy moves on to another configured monerod. Tari funds are not at
+  risk, because the Tari coinbase and reward come from the base node. The Monero side is exposed: monerod builds the
+  Monero block template, so an untrusted or on-path monerod can pay the Monero block reward to someone else, and it
+  sees `monerod_username`/`monerod_password` when `monerod_use_auth` is set (in cleartext over `http://`, and over
+  `https://` too because certificates are not checked). Operators who care should run their own monerod (see the
+  SECURITY note in `common/config/presets/f_merge_mining_proxy.toml`). Requests the proxy does not recognise are
+  forwarded to monerod, which should run with `--restricted-rpc`.
+- **Not covered:** A monerod response must not be able to crash the proxy. Each response body is read under a fixed
+  raw-byte limit (`MAX_MONEROD_RESPONSE_BYTES`, 8 MiB) and the per-request monerod timeout; the parsed JSON tree for
+  a body within the limit can be many times larger per in-flight request, which is accepted. Upstream data must not
+  change the Tari coinbase or the reward destination.
 - **Where:** `applications/minotari_merge_mining_proxy` (`proxy/inner.rs`, `proxy/utils.rs`, `run_merge_miner.rs`,
   `config.rs`).
 - **Recorded:** 2026-11-25, PR #TBD.
