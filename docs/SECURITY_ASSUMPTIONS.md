@@ -234,12 +234,16 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 
 - **Assumption:** `TransactionBuilder` treats the sender offset key it reserves for a recipient spec as one the view
   key holder cannot learn, and counts it toward the rule that a transaction spending a spend-key-derived input keeps
-  at least one sender offset key with the signer. With the default `RecipientKeys::DiffieHellman`, that key's id
-  (wrapped under the view key) is embedded in the output's `commitment_mask_key_id` in the returned
-  `FinalizedTransaction::spec_outputs` and `sent_outputs`. The calling flow is trusted not to persist or export those
-  key ids.
+  at least one sender offset key with the signer. That key's id (wrapped under the view key) still reaches the
+  returned `FinalizedTransaction`: in every `RecipientKeys` mode it is each `sent_outputs` entry's
+  `sender_offset_key_id` (crate private; `OutputPair` has no serde), and with `RecipientKeys::DiffieHellman` it is also
+  embedded in that entry's `custom_recovery_key_id` and in the output's `commitment_mask_key_id` in `sent_outputs` and
+  `spec_outputs`. When no change key stays inside the builder, the calling flow is trusted not to persist or export
+  those key ids.
 - **What that means:** A flow that stores those key ids, or hands them to a party holding only the view key, gives that
   party every sender offset key of a transaction without change, and with the published script offset, the spend key.
+  The offline signer hands its recipients' key ids back to the online wallet; that is safe only because
+  `with_change_required` keeps the change key with the signer, and dropping that requirement there would be unsafe.
 - **Not covered:** The builder must still refuse such a transaction when every sender offset key was handed back by
   `reserve_sender_offset_keys` or derived by the host (`with_host_derived_partial_script_offset`), whatever the caller
   does with them.

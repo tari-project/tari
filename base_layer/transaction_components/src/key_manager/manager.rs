@@ -3750,6 +3750,10 @@ mod tests {
             .unwrap();
         let derived_private = key_manager.get_private_key(&derived).unwrap();
         let derived_public = key_manager.get_public_key_at_key_id(&derived).unwrap();
+        let author_private = key_manager.get_private_key(&TariKeyId::CodeTemplateAuthor).unwrap();
+        let author_public = key_manager
+            .get_public_key_at_key_id(&TariKeyId::CodeTemplateAuthor)
+            .unwrap();
 
         assert_eq!(
             kernel_offset.to_hex(),
@@ -3768,5 +3772,13 @@ mod tests {
             "4a0ff2c41ec660958747994641223ada4c7ce88d926b8f78ae5d343199717803"
         );
         assert_eq!(derived_public, CompressedPublicKey::from_secret_key(&derived_private));
+        assert_eq!(
+            author_private.to_hex(),
+            "2ee5d9279a38dc8ce7fdac110624ba72bf643d6bfb5d2aa05cb9eb5ce5879c07"
+        );
+        assert_eq!(
+            author_public.to_hex(),
+            "148ce2d4d8c0aa0cb89136e50cc8549d5d113fc0b7f977bfa47266bee640b903"
+        );
     }
 }

@@ -196,9 +196,14 @@ struct FeeAndChange {
 /// builder: one reserved for a recipient spec or for the change output.
 ///
 /// The keys `reserve_sender_offset_keys` hands back and keys registered with
-/// [`Self::with_host_derived_partial_script_offset`] are exported. A recipient spec's key is not, but with the
-/// default [`RecipientKeys::DiffieHellman`] its id is embedded in the output's `commitment_mask_key_id` in
-/// [`FinalizedTransaction::spec_outputs`] and `sent_outputs`. Callers must not persist or export those key ids.
+/// [`Self::with_host_derived_partial_script_offset`] are exported. A recipient spec's key counts as kept, but its id
+/// (wrapped under the view key) still reaches the returned [`FinalizedTransaction`]: in every [`RecipientKeys`] mode it
+/// is each `sent_outputs` entry's `sender_offset_key_id` (crate private, and `OutputPair` has no serde), and with
+/// [`RecipientKeys::DiffieHellman`] it is also embedded in that entry's `custom_recovery_key_id` and in the output's
+/// `commitment_mask_key_id` in both `sent_outputs` and `spec_outputs`. When no change key stays inside the builder,
+/// callers must not persist or export those key ids. The offline signer hands its recipients' key ids back to the host,
+/// which is safe only because [`Self::with_change_required`] keeps the change key with the signer; dropping that
+/// requirement there would be unsafe.
 #[derive(Clone)]
 pub struct TransactionBuilder<KM> {
     consensus_constants: ConsensusConstants,
@@ -2098,16 +2103,24 @@ mod test {
         assert_validates(&finalized.transaction);
     }
 
-    /// An input whose script key is not derived from the spend key (a pre-mine spend, `encumber_aggregate_utxo`)
-    /// gives the host nothing to solve for, so a returned key alone is accepted.
+    /// A pre-mine script key (as `encumber_aggregate_utxo` spends) is not derived from the spend key, so the host has
+    /// nothing to solve for and a returned key alone passes the check. A software key manager may still refuse the
+    /// device key itself further on.
     #[test]
-    fn an_input_not_derived_from_the_spend_key_may_use_only_returned_keys() {
+    fn a_pre_mine_input_may_use_only_returned_keys() {
         let key_manager = KeyManager::new_random().unwrap();
         let mut input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
-        input.set_script_key_id(key_manager.get_random_key(None, None).unwrap().key_id);
+        input.set_script_key_id(TariKeyId::LedgerKey {
+            branch: minotari_ledger_wallet_common::common_types::LedgerKeyBranch::PreMine,
+            index: 0,
+        });
         let (mut builder, pending) = whole_input_to_a_returned_key(input, &key_manager);
 
-        assert_eq!(builder.reserve_sender_offset_keys(&[pending]).unwrap().len(), 1);
+        let result = builder.reserve_sender_offset_keys(&[pending]);
+        assert!(
+            !matches!(result, Err(TransactionBuilderError::NoPrivateSenderOffsetKey)),
+            "got {result:?}"
+        );
     }
 
     /// A plain burn's sender offset key comes from a recipient spec and stays in the builder, so it builds without
