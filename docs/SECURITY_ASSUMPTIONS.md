@@ -178,6 +178,35 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Where:** `applications/minotari_mcp_common`, `applications/minotari_mcp_node`, `applications/minotari_mcp_wallet`.
 - **Recorded:** 2026-11-23.
 
+### A-MMPROXY-01: The merge-mining proxy treats upstream monerod nodes as untrusted, and its listener as trusted miners only
+
+- **Assumption:** The `monerod_url` entries, including the public defaults (many of them plain `http://`), are
+  untrusted third parties. TLS to monerod deliberately skips certificate checks (PR #7060) so the proxy can fall back
+  to raw IP addresses. The Tari coinbase and reward come over gRPC from the operator-configured base node, or from the
+  p2pool node when `p2pool_enabled` is set (the proxy checks that its coinbase pays the configured wallet address),
+  never from monerod. The listener (loopback by default) serves trusted miners; exposing it is the operator's choice.
+- **What that means:** A monerod node can serve bad or stale templates or withhold responses, which costs
+  merge-mining availability. The proxy moves on to another configured monerod when a request times out or fails, or
+  when the response body is too large or not valid JSON (including empty or HTML error pages); a monerod that
+  returns an error status with a JSON body, or a template the proxy rejects, stays selected. The client that
+  forwards requests to monerod does not follow redirects, so monerod cannot point it at other hosts. Monerod cannot
+  change the Tari coinbase or reward destination, but with `submit_to_origin` on (the default) a found block goes to
+  monerod first, so a selected monerod can stop found Tari blocks from being submitted; running your own monerod
+  avoids this, and setting `submit_to_origin = false` keeps the block from being sent to monerod (submission still
+  waits for, and can fail on, monerod selection). The Monero side is exposed: monerod builds the Monero block
+  template, so an untrusted or on-path monerod can pay the Monero block reward to someone else, and it sees
+  `monerod_username`/`monerod_password` when `monerod_use_auth` is set (in cleartext over `http://`, and over
+  `https://` too because certificates are not checked). Operators who care should run their own monerod (see the
+  SECURITY note in `common/config/presets/f_merge_mining_proxy.toml`). Requests the proxy does not recognise are
+  forwarded to monerod, which should run with `--restricted-rpc`.
+- **Not covered:** A monerod response must not be able to crash the proxy. Each response body is read under a fixed
+  raw-byte limit (`MAX_MONEROD_RESPONSE_BYTES`, 8 MiB) and the per-request monerod timeout; the parsed JSON tree for
+  a body within the limit can be many times larger per in-flight request, which is accepted. Upstream data must not
+  change the Tari coinbase or the reward destination.
+- **Where:** `applications/minotari_merge_mining_proxy` (`proxy/inner.rs`, `proxy/utils.rs`, `run_merge_miner.rs`,
+  `config.rs`).
+- **Recorded:** 2026-11-25, PR #8434.
+
 ## Withdrawn entries
 
 None.
