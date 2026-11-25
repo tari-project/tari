@@ -487,6 +487,7 @@ mod tests {
         calculate_block_output_mr_from_grpc_outputs,
         make_test_coinbase_output,
     };
+    use minotari_node_grpc_client::GrpcClientConfig;
     use tari_common_types::{
         grpc_authentication::GrpcAuthentication,
         tari_address::TariAddressFeatures,
@@ -628,10 +629,7 @@ mod tests {
 
         let dummy_channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
         let mut dummy_base_node_client =
-            minotari_app_grpc::tari_rpc::base_node_client::BaseNodeClient::with_interceptor(
-                dummy_channel,
-                ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
-            );
+            BaseNodeGrpcClient::from_channel(dummy_channel, &GrpcClientConfig::default()).unwrap();
 
         let manager = BlockTemplateManager::try_create(
             &mut dummy_base_node_client,
@@ -675,10 +673,7 @@ mod tests {
 
         let dummy_channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
         let mut dummy_base_node_client =
-            minotari_app_grpc::tari_rpc::base_node_client::BaseNodeClient::with_interceptor(
-                dummy_channel,
-                ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
-            );
+            BaseNodeGrpcClient::from_channel(dummy_channel, &GrpcClientConfig::default()).unwrap();
 
         let manager = BlockTemplateManager::try_create(
             &mut dummy_base_node_client,
@@ -720,10 +715,7 @@ mod tests {
 
         let dummy_channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
         let mut dummy_base_node_client =
-            minotari_app_grpc::tari_rpc::base_node_client::BaseNodeClient::with_interceptor(
-                dummy_channel,
-                ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
-            );
+            BaseNodeGrpcClient::from_channel(dummy_channel, &GrpcClientConfig::default()).unwrap();
 
         let manager = BlockTemplateManager::try_create(
             &mut dummy_base_node_client,

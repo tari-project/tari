@@ -20,20 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::str::FromStr;
+use std::{path::Path, str::FromStr};
 
 use dialoguer::{Input as InputPrompt, console::Term};
 use log::*;
-use minotari_app_grpc::{
-    authentication::ClientAuthenticationInterceptor,
-    tari_rpc::{
-        Block,
-        NewBlockTemplateRequest,
-        OutputType,
-        base_node_client::BaseNodeClient,
-        sha_p2_pool_client::ShaP2PoolClient,
-    },
-};
+use minotari_app_grpc::tari_rpc::{Block, NewBlockTemplateRequest, OutputType};
+pub use minotari_node_grpc_client::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
+use minotari_node_grpc_client::{GrpcAuthentication, GrpcClientConfig, GrpcClientError, GrpcTlsConfig};
 use tari_common::configuration::{
     Network,
     bootstrap::{ApplicationType, grpc_default_port},
@@ -48,11 +41,7 @@ use tari_script::{Opcode, TariScript, push_pubkey_script};
 use tari_transaction_components::transaction_components::TransactionOutput as CoreTransactionOutput;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
-use tonic::{
-    Code,
-    codegen::InterceptedService,
-    transport::{Channel, Uri},
-};
+use tonic::{Code, transport::Uri};
 
 const LOG_TARGET: &str = "minotari::app_utilities::parse_miner_input";
 
@@ -194,11 +183,33 @@ pub fn process_quit(command: &str) -> Result<(), UserQuit> {
     Ok(())
 }
 
-/// Base node gRPC client
-pub type BaseNodeGrpcClient = BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
-
-/// SHA P2Pool gRPC client
-pub type ShaP2PoolGrpcClient = ShaP2PoolClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
+/// Client config for the miner-side gRPC connections. TLS is on when `tls_domain` is set, with the CA read from
+/// `ca_cert_path`.
+pub fn grpc_client_config(
+    auth: &GrpcAuthentication,
+    tls_domain: Option<&str>,
+    ca_cert_path: &Path,
+) -> Result<GrpcClientConfig, GrpcClientError> {
+    let tls = tls_domain
+        .map(|domain_name| {
+            let ca_cert_pem = std::fs::read(ca_cert_path).map_err(|e| {
+                GrpcClientError::Tls(format!(
+                    "Could not read CA certificate '{}': {e}",
+                    ca_cert_path.display()
+                ))
+            })?;
+            Ok::<_, GrpcClientError>(GrpcTlsConfig {
+                ca_cert_pem,
+                domain_name: domain_name.to_string(),
+            })
+        })
+        .transpose()?;
+    Ok(GrpcClientConfig {
+        auth: auth.clone(),
+        tls,
+        ..Default::default()
+    })
+}
 
 /// Verify that the base node is responding to the mining gRPC requests
 pub async fn verify_base_node_grpc_mining_responses(
@@ -462,7 +473,6 @@ mod tests {
         TipInfoResponse,
         base_node_server::{BaseNode, BaseNodeServer},
     };
-    use tari_common_types::grpc_authentication::GrpcAuthentication;
     use tonic::{Request, Response, Status};
 
     use super::*;
@@ -793,11 +803,7 @@ mod tests {
                 Err(_) => None,
             };
             if let Some(channel) = channel {
-                let c = BaseNodeClient::with_interceptor(
-                    channel,
-                    ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
-                );
-                client = Some(c);
+                client = Some(BaseNodeGrpcClient::from_channel(channel, &GrpcClientConfig::default()).unwrap());
                 break;
             }
         }
@@ -896,6 +902,26 @@ mod test {
 
     const VALID_MAINNET_ADDRESS: &str =
         "126J92Yow5y9UoRFd1DNujPmVFq9C1ZeiYWT95UKxz5Y1rzbfjtHg4SCZS1dk83ivzt3m2XRQHTaYUk9SwmyeCvy5BJ";
+
+    #[test]
+    fn grpc_client_config_reads_ca_only_when_tls_is_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let ca_path = dir.path().join("node_ca.pem");
+
+        let cfg = grpc_client_config(&GrpcAuthentication::None, None, &ca_path).unwrap();
+        assert!(cfg.tls.is_none());
+
+        let err = grpc_client_config(&GrpcAuthentication::None, Some("localhost"), &ca_path).unwrap_err();
+        assert!(matches!(err, GrpcClientError::Tls(_)), "{err:?}");
+
+        std::fs::write(&ca_path, b"pem").unwrap();
+        let tls = grpc_client_config(&GrpcAuthentication::None, Some("localhost"), &ca_path)
+            .unwrap()
+            .tls
+            .unwrap();
+        assert_eq!(tls.ca_cert_pem, b"pem");
+        assert_eq!(tls.domain_name, "localhost");
+    }
 
     #[test]
     fn test_process_quit_returns_user_quit() {

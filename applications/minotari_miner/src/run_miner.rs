@@ -24,32 +24,23 @@ use std::{convert::TryFrom, sync::Arc, thread, time::Instant};
 use futures::stream::StreamExt;
 use log::*;
 use minotari_app_grpc::{
-    authentication::ClientAuthenticationInterceptor,
     conversions::transaction_output::grpc_output_with_payref,
-    tari_rpc::{
-        Block,
-        GetNewBlockRequest,
-        PowAlgo,
-        SubmitBlockRequest,
-        SubmitBlockResponse,
-        base_node_client::BaseNodeClient,
-        pow_algo::PowAlgos,
-        sha_p2_pool_client::ShaP2PoolClient,
-    },
+    tari_rpc::{Block, GetNewBlockRequest, PowAlgo, SubmitBlockRequest, SubmitBlockResponse, pow_algo::PowAlgos},
 };
 use minotari_app_utilities::parse_miner_input::{
     BaseNodeGrpcClient,
     ParseInputError,
     ShaP2PoolGrpcClient,
+    grpc_client_config,
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
     verify_p2pool_block_coinbase,
     wallet_payment_address,
 };
+use minotari_node_grpc_client::{GrpcClientConfig, connect_channel, p2pool_client};
 use tari_common::{
     DefaultConfigLoader,
-    MAX_GRPC_MESSAGE_SIZE,
     exit_codes::{ExitCode, ExitError},
     load_configuration,
 };
@@ -71,7 +62,6 @@ use tari_transaction_components::{
 };
 use tari_utilities::hex::Hex;
 use tokio::{sync::Mutex, time::sleep};
-use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     cli::Cli,
@@ -331,32 +321,8 @@ async fn connect_sha_p2pool(config: &MinerConfig, non_interactive: bool) -> Resu
     }
 
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
-    let mut endpoint = Endpoint::new(p2pool_node_addr)?;
-
-    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
-        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
-            .await
-            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
-        let ca = Certificate::from_pem(pem);
-
-        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
-        endpoint = endpoint
-            .tls_config(tls)
-            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
-    }
-
-    let channel = endpoint
-        .connect()
-        .await
-        .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
-    let node_conn = ShaP2PoolClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    )
-    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-    Ok(node_conn)
+    let cfg = base_node_grpc_client_config(config)?;
+    Ok(p2pool_client(connect_channel(&p2pool_node_addr, &cfg).await?, &cfg)?)
 }
 
 async fn connect_base_node(config: &MinerConfig, non_interactive: bool) -> Result<BaseNodeGrpcClient, MinerError> {
@@ -368,32 +334,19 @@ async fn connect_base_node(config: &MinerConfig, non_interactive: bool) -> Resul
     }
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
-    let mut endpoint = Endpoint::new(base_node_addr)?;
+    let cfg = base_node_grpc_client_config(config)?;
+    Ok(BaseNodeGrpcClient::from_channel(
+        connect_channel(&base_node_addr, &cfg).await?,
+        &cfg,
+    )?)
+}
 
-    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
-        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
-            .await
-            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
-        let ca = Certificate::from_pem(pem);
-
-        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
-        endpoint = endpoint
-            .tls_config(tls)
-            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
-    }
-
-    let channel = endpoint
-        .connect()
-        .await
-        .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
-    let node_conn = BaseNodeClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    )
-    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-    Ok(node_conn)
+fn base_node_grpc_client_config(config: &MinerConfig) -> Result<GrpcClientConfig, MinerError> {
+    Ok(grpc_client_config(
+        &config.base_node_grpc_authentication,
+        config.base_node_grpc_tls_domain_name.as_deref(),
+        &config.config_dir.join(&config.base_node_grpc_ca_cert_filename),
+    )?)
 }
 
 async fn verify_base_node_responses(
@@ -739,7 +692,6 @@ mod test {
         sha_p2_pool_server::{ShaP2Pool, ShaP2PoolServer},
     };
     use tari_common_types::{
-        grpc_authentication::GrpcAuthentication,
         tari_address::TariAddressFeatures,
         types::{CompressedPublicKey, PrivateKey},
     };
@@ -867,11 +819,7 @@ mod test {
             if let Ok(endpoint) = tonic::transport::Endpoint::from_shared(format!("http://{addr}")) &&
                 let Ok(channel) = endpoint.connect().await
             {
-                let c = ShaP2PoolClient::with_interceptor(
-                    channel,
-                    ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
-                );
-                client = Some(c);
+                client = Some(p2pool_client(channel, &GrpcClientConfig::default()).unwrap());
                 break;
             }
         }

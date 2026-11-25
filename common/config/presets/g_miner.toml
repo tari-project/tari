@@ -13,6 +13,8 @@
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 # GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
 #base_node_grpc_tls_domain_name = "localhost"
+# The base node's CA certificate in the config directory, used when TLS is on (default = "node_ca.pem")
+#base_node_grpc_ca_cert_filename = "node_ca.pem"
 
 # Number of mining threads (default: number of logical CPU cores)
 #num_mining_threads = 8

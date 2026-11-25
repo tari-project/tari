@@ -29,16 +29,16 @@ use minotari_app_grpc::tari_rpc::GetNetworkStateRequest;
 use minotari_mcp_common::{McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::Request;
 
 /// Tool for listing blockchain headers
 #[derive(Clone)]
 pub struct ListHeadersTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl ListHeadersTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -85,11 +85,11 @@ impl McpTool for ListHeadersTool {
 /// Tool for getting a specific block header by hash
 #[derive(Clone)]
 pub struct GetHeaderByHashTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetHeaderByHashTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -129,11 +129,11 @@ impl McpTool for GetHeaderByHashTool {
 /// Tool for getting blocks by height
 #[derive(Clone)]
 pub struct GetBlocksTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetBlocksTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -177,11 +177,11 @@ impl McpTool for GetBlocksTool {
 /// Tool for getting tip information
 #[derive(Clone)]
 pub struct GetTipInfoTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetTipInfoTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -216,11 +216,11 @@ impl McpTool for GetTipInfoTool {
 /// Tool for getting sync information
 #[derive(Clone)]
 pub struct GetSyncInfoTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetSyncInfoTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -255,11 +255,11 @@ impl McpTool for GetSyncInfoTool {
 /// Tool for getting network difficulty over time
 #[derive(Clone)]
 pub struct GetNetworkDifficultyTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNetworkDifficultyTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -311,11 +311,11 @@ impl McpTool for GetNetworkDifficultyTool {
 /// Tool for getting tokens in circulation
 #[derive(Clone)]
 pub struct GetTokensInCirculationTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetTokensInCirculationTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -359,11 +359,11 @@ impl McpTool for GetTokensInCirculationTool {
 /// Tool for getting network state
 #[derive(Clone)]
 pub struct GetNetworkStateTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNetworkStateTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }

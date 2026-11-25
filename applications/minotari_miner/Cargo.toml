@@ -20,6 +20,7 @@ minotari_app_utilities = { path = "../minotari_app_utilities", features = [
     "miner_input",
 ] }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
+minotari_node_grpc_client = { workspace = true }
 tari_utilities = { version = "0.10" }
 
 base64 = { workspace = true }

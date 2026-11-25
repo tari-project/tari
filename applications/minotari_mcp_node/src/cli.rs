@@ -71,6 +71,23 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_NODE_GRPC_TIMEOUT", default_value = "10")]
     pub node_grpc_timeout: u64,
 
+    /// Base node gRPC Basic auth username. The password is read from the MINOTARI_NODE_GRPC_PASSWORD environment
+    /// variable or from --node-grpc-password-file.
+    #[clap(long, env = "MINOTARI_NODE_GRPC_USERNAME")]
+    pub node_grpc_username: Option<String>,
+
+    /// File holding the base node gRPC Basic auth password (should be readable only by its owner)
+    #[clap(long, env = "MINOTARI_NODE_GRPC_PASSWORD_FILE")]
+    pub node_grpc_password_file: Option<PathBuf>,
+
+    /// Domain name in the base node's gRPC TLS certificate; enables TLS. Requires --node-grpc-ca-cert.
+    #[clap(long, env = "MINOTARI_NODE_GRPC_TLS_DOMAIN_NAME")]
+    pub node_grpc_tls_domain_name: Option<String>,
+
+    /// PEM file of the CA that signed the base node's gRPC TLS certificate
+    #[clap(long, env = "MINOTARI_NODE_GRPC_CA_CERT")]
+    pub node_grpc_ca_cert: Option<PathBuf>,
+
     // Node-specific flags for auto-launch (prefixed to avoid conflicts)
     /// Base node: Create a default configuration file if it doesn't exist
     #[clap(long, env = "MINOTARI_MCP_NODE_INIT")]

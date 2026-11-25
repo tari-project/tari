@@ -39,15 +39,14 @@ use minotari_node_grpc_client::{
     grpc::{BanPeerRequest, UnbanPeerRequest},
 };
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Tool for banning peers
 pub struct BanPeerTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl BanPeerTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -145,11 +144,11 @@ impl McpTool for BanPeerTool {
 
 /// Tool for unbanning peers
 pub struct UnbanPeerTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl UnbanPeerTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }

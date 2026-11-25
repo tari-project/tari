@@ -28,16 +28,15 @@ use async_trait::async_trait;
 use minotari_mcp_common::{McpError, McpResource, McpResult};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Resource providing transaction information by hash
 pub struct TransactionInfoResource {
     #[allow(dead_code)]
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: Arc<BaseNodeGrpcClient>,
 }
 
 impl TransactionInfoResource {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> Self {
         Self { grpc_client }
     }
 }

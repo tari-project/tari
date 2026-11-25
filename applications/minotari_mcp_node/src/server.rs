@@ -50,8 +50,7 @@ use minotari_mcp_common::{
     StartupDiagnostics,
     TariProcessLauncher,
 };
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
-use tonic::transport::{Channel, Endpoint};
+use minotari_node_grpc_client::{BaseNodeGrpcClient, endpoint};
 
 use crate::{
     cli::Cli,
@@ -64,7 +63,7 @@ use crate::{
 /// Minotari Node MCP Server
 pub struct NodeMcpServer {
     inner: Box<dyn McpServer>,
-    _grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    _grpc_client: Arc<BaseNodeGrpcClient>,
     launched_process: Option<Arc<ProcessLauncher>>,
 }
 
@@ -190,28 +189,12 @@ impl NodeMcpServer {
     }
 
     /// Create gRPC client connection to base node
-    async fn create_grpc_client(config: &NodeMcpConfig) -> McpResult<BaseNodeGrpcClient<Channel>> {
+    async fn create_grpc_client(config: &NodeMcpConfig) -> McpResult<BaseNodeGrpcClient> {
         let endpoint_url = config.node_grpc_url();
 
         log::info!("Connecting to base node at: {endpoint_url}");
 
-        let endpoint = Endpoint::from_shared(endpoint_url)
-            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {e}")))?;
-
-        let channel = endpoint
-            .timeout(std::time::Duration::from_secs(config.node_grpc.timeout_secs))
-            .connect()
-            .await
-            .map_err(|e| McpError::config_error(format!("Failed to connect to base node: {e}")))?;
-
-        // Create client (simplified - no authentication for now)
-        let client = BaseNodeClient::new(channel);
-
-        // TODO: Test the connection with a simple call
-        // For now, skip the test call due to tonic version compatibility issues
-
-        log::info!("Base node client created (connection test skipped)");
-        Ok(client)
+        Ok(BaseNodeGrpcClient::connect(&endpoint_url, &config.grpc_client_config()?).await?)
     }
 
     /// Create connection manager with health monitoring
@@ -223,11 +206,7 @@ impl NodeMcpServer {
         let conn_manager = ConnectionManager::new(pool_config, circuit_config, health_config);
 
         // Add the base node service endpoint
-        let endpoint_url = config.node_grpc_url();
-        let endpoint = Endpoint::from_shared(endpoint_url)
-            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {e}")))?
-            .timeout(Duration::from_secs(config.node_grpc.timeout_secs))
-            .connect_timeout(Duration::from_secs(5));
+        let endpoint = endpoint(&config.node_grpc_url(), &config.grpc_client_config()?)?;
 
         conn_manager.add_service("base_node".to_string(), endpoint).await?;
         conn_manager.start_maintenance().await?;
