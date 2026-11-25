@@ -65,9 +65,15 @@ pub enum ParseInputError {
     UserQuit(#[from] UserQuit),
 }
 
-pub fn prompt_for_base_node_address(network: Network, non_interactive: bool) -> Result<String, ParseInputError> {
+/// The default address uses https when `tls` is set, since TLS over an http:// address is refused.
+pub fn prompt_for_base_node_address(
+    network: Network,
+    non_interactive: bool,
+    tls: bool,
+) -> Result<String, ParseInputError> {
     let default_address = format!(
-        "http://127.0.0.1:{}",
+        "{}://127.0.0.1:{}",
+        scheme(tls),
         grpc_default_port(ApplicationType::BaseNode, network)
     );
     if non_interactive || !Term::stderr().is_term() {
@@ -96,8 +102,9 @@ pub fn prompt_for_base_node_address(network: Network, non_interactive: bool) -> 
     }
 }
 
-pub fn prompt_for_p2pool_address(non_interactive: bool) -> Result<String, ParseInputError> {
-    let default_address = format!("http://127.0.0.1:{}", 18145);
+/// The default address uses https when `tls` is set, since TLS over an http:// address is refused.
+pub fn prompt_for_p2pool_address(non_interactive: bool, tls: bool) -> Result<String, ParseInputError> {
+    let default_address = format!("{}://127.0.0.1:{}", scheme(tls), 18145);
     if non_interactive || !Term::stderr().is_term() {
         info!(
             target: LOG_TARGET,
@@ -122,6 +129,10 @@ pub fn prompt_for_p2pool_address(non_interactive: bool) -> Result<String, ParseI
         address = address.trim().to_string();
         return Ok(address);
     }
+}
+
+fn scheme(tls: bool) -> &'static str {
+    if tls { "https" } else { "http" }
 }
 
 /// Read wallet_payment_address arg or prompt for input
@@ -947,7 +958,7 @@ mod test {
 
     #[test]
     fn test_prompt_for_base_node_address_non_interactive_fallback() {
-        let res = prompt_for_base_node_address(Network::Esmeralda, true).expect("should fall back to default");
+        let res = prompt_for_base_node_address(Network::Esmeralda, true, false).expect("should fall back to default");
         let expected = format!(
             "http://127.0.0.1:{}",
             grpc_default_port(ApplicationType::BaseNode, Network::Esmeralda)
@@ -956,8 +967,18 @@ mod test {
     }
 
     #[test]
+    fn default_addresses_use_https_when_tls_is_configured() {
+        let base = prompt_for_base_node_address(Network::Esmeralda, true, true).unwrap();
+        assert!(base.starts_with("https://127.0.0.1:"), "{base}");
+        assert_eq!(
+            prompt_for_p2pool_address(true, true).unwrap(),
+            "https://127.0.0.1:18145"
+        );
+    }
+
+    #[test]
     fn test_prompt_for_p2pool_address_non_interactive_fallback() {
-        let res = prompt_for_p2pool_address(true).expect("should fall back to default");
+        let res = prompt_for_p2pool_address(true, false).expect("should fall back to default");
         assert_eq!(res, "http://127.0.0.1:18145");
     }
 
@@ -996,12 +1017,12 @@ mod test {
                 "http://127.0.0.1:{}",
                 grpc_default_port(ApplicationType::BaseNode, Network::Esmeralda)
             );
-            let base_res = prompt_for_base_node_address(Network::Esmeralda, false)
+            let base_res = prompt_for_base_node_address(Network::Esmeralda, false, false)
                 .expect("base node prompt without TTY must fall back to default");
             assert_eq!(base_res, default_base);
 
             let p2pool_res =
-                prompt_for_p2pool_address(false).expect("p2pool prompt without TTY must fall back to default");
+                prompt_for_p2pool_address(false, false).expect("p2pool prompt without TTY must fall back to default");
             assert_eq!(p2pool_res, "http://127.0.0.1:18145");
             return;
         }

@@ -164,7 +164,8 @@ pub fn endpoint(addr: &str, cfg: &GrpcClientConfig) -> Result<Endpoint, GrpcClie
                 .ca_certificate(Certificate::from_pem(&tls.ca_cert_pem))
                 .domain_name(&tls.domain_name),
         ),
-        // Public-CA nodes; this crate enables tonic's `tls-native-roots`, so the root store is never empty.
+        // Public-CA nodes, via tonic's `tls-native-roots`. A host with no system CA bundle gets an empty root store,
+        // so the handshake fails closed.
         None if is_https => Some(ClientTlsConfig::new().with_enabled_roots()),
         None => None,
     };

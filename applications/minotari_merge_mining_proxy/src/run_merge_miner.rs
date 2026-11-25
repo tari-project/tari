@@ -232,7 +232,11 @@ async fn connect_base_node(
     if let Some(ref a) = config.base_node_grpc_address {
         base_node_addr = a.clone();
     } else {
-        base_node_addr = prompt_for_base_node_address(config.network, non_interactive)?;
+        base_node_addr = prompt_for_base_node_address(
+            config.network,
+            non_interactive,
+            config.base_node_grpc_tls_domain_name.is_some(),
+        )?;
     };
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
@@ -266,7 +270,7 @@ async fn connect_sha_p2pool(
     if let Some(ref a) = config.p2pool_node_grpc_address {
         p2pool_node_addr = a.clone();
     } else {
-        p2pool_node_addr = prompt_for_p2pool_address(non_interactive)?;
+        p2pool_node_addr = prompt_for_p2pool_address(non_interactive, config.p2pool_grpc_tls_domain_name.is_some())?;
     };
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
     let cfg = p2pool_grpc_client_config(config)?;
