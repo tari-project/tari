@@ -25,7 +25,10 @@ use std::sync::{Arc, Mutex};
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
 
-use super::{join_gate::JoinCooldown, middleware::DhtHandlerMiddleware};
+use super::{
+    join_gate::{DiscoveryCooldown, JoinCooldown},
+    middleware::DhtHandlerMiddleware,
+};
 use crate::{
     DhtConfig,
     DhtRequester,
@@ -43,6 +46,7 @@ pub struct DhtHandlerLayer {
     outbound_service: OutboundMessageRequester,
     discovery_requester: DhtDiscoveryRequester,
     join_cooldown: Arc<Mutex<JoinCooldown>>,
+    discovery_cooldown: Arc<Mutex<DiscoveryCooldown>>,
     source_budget: SharedSourceBudget,
     accepted_joins: SharedAcceptedJoins,
 }
@@ -66,6 +70,7 @@ impl DhtHandlerLayer {
             outbound_service,
             discovery_requester,
             join_cooldown: Default::default(),
+            discovery_cooldown: Default::default(),
             source_budget,
             accepted_joins,
         }
@@ -85,6 +90,7 @@ impl<S> Layer<S> for DhtHandlerLayer {
             self.discovery_requester.clone(),
             self.config.clone(),
             self.join_cooldown.clone(),
+            self.discovery_cooldown.clone(),
             self.source_budget.clone(),
             self.accepted_joins.clone(),
         )

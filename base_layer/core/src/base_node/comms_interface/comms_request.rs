@@ -74,8 +74,10 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
-    FetchUnspentUtxosInBlock {
+    FetchOutputsInBlockAndHeaderPair {
         block_hash: BlockHash,
+        first_height: u64,
+        second_height: u64,
     },
     FetchMinedInfoByPayRef(FixedHash),
     FetchMinedInfoByOutputHash(HashOutput),
@@ -152,8 +154,15 @@ impl Display for NodeCommsRequest {
             } => {
                 write!(f, "GetValidatorNode ({sidechain_id:?}), public key ({public_key:?})")
             },
-            FetchUnspentUtxosInBlock { block_hash } => {
-                write!(f, "FetchUnspentUtxosInBlock ({block_hash})")
+            FetchOutputsInBlockAndHeaderPair {
+                block_hash,
+                first_height,
+                second_height,
+            } => {
+                write!(
+                    f,
+                    "FetchOutputsInBlockAndHeaderPair ({block_hash}, {first_height}, {second_height})"
+                )
             },
             FetchMinedInfoByPayRef(payref) => {
                 write!(f, "FetchMinedInfoByPayRef ({payref})")

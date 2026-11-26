@@ -973,8 +973,8 @@ impl TransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     HASHER_LABEL_STEALTH_KEY,
                 );
-                let hasher = hasher.chain(branch_key.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                let hasher = hasher.chain(branch_key.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice()).map_err(|_| {
                     KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
                 })?;
                 let public_key = CompressedPublicKey::from_secret_key(&private_key);
@@ -986,8 +986,8 @@ impl TransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     CODE_TEMPLATE_AUTHOR_LABEL,
                 );
-                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice()).map_err(|_| {
                     KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
                 })?;
                 let public_key = CompressedPublicKey::from_secret_key(&private_key);
@@ -1382,8 +1382,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         let key_hash = hasher
             .chain(commitment_private_key.as_bytes())
             .chain(nonce_private_key.as_bytes())
-            .finalize();
-        PrivateKey::from_uniform_bytes(key_hash.as_ref()).map_err(|_| {
+            .finalize_zeroizing();
+        PrivateKey::from_uniform_bytes(key_hash.as_slice()).map_err(|_| {
             KeyManagerError::TransactionError(TransactionError::KeyManagerError(
                 "Invalid private key for kernel signature nonce".to_string(),
             ))
@@ -1987,8 +1987,8 @@ impl TransactionKeyManagerInterface for KeyManager {
             HASHER_LABEL_BURN_SENDER_OFFSET,
         )
         .chain(mask.as_bytes())
-        .finalize();
-        let secret = PrivateKey::from_uniform_bytes(hash.as_ref())?;
+        .finalize_zeroizing();
+        let secret = PrivateKey::from_uniform_bytes(hash.as_slice())?;
         let pub_key = CompressedPublicKey::from_secret_key(&secret);
         let key_id = self.create_encrypted_key(secret, None)?;
         Ok(TariKeyAndId { pub_key, key_id })
@@ -2021,8 +2021,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         let hasher =
             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
-        let hasher = hasher.chain(private_key.as_bytes()).finalize();
-        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())?;
+        let hasher = hasher.chain(private_key.as_bytes()).finalize_zeroizing();
+        let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice())?;
         let public_key = CompressedPublicKey::from_secret_key(&private_key);
         let public_key = spend_key + &public_key.to_public_key()?;
         Ok(CompressedPublicKey::new_from_pk(public_key))
@@ -2044,8 +2044,8 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     HASHER_LABEL_STEALTH_KEY,
                 );
-                let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())
+                let hasher = hasher.chain(commitment_mask.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice())
                     .map_err(|_| KeyManagerError::UnexpectedError("Invalid private key for Spend".to_string()))?;
                 let private_key = private_key + spend_key;
                 Ok(private_key)
@@ -2055,8 +2055,8 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     CODE_TEMPLATE_AUTHOR_LABEL,
                 );
-                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice()).map_err(|_| {
                     KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
                 })?;
                 let spend_key = self.get_private_spend_key()?;
@@ -3726,5 +3726,59 @@ mod tests {
                     .is_none()
             );
         }
+    }
+
+    /// Known answers for the key derivations that hash a private key, so wiping their intermediate digests cannot
+    /// change a derived key.
+    #[test]
+    fn private_key_hash_derivations_match_known_answers() {
+        use tari_crypto::keys::SecretKey;
+        use tari_utilities::hex::Hex;
+
+        use crate::key_manager::wallet_types::{SpendWallet, WalletType};
+
+        let key = |byte: u8| PrivateKey::from_uniform_bytes(&[byte; 64]).unwrap();
+        let key_manager = KeyManager::new(WalletType::SpendWallet(SpendWallet::new(key(1), key(2), None))).unwrap();
+        let mask = key_manager.create_encrypted_key(key(3), None).unwrap();
+        let nonce = key_manager.create_encrypted_key(key(4), None).unwrap();
+        let derived = TariKeyId::Derived { key: (&mask).into() };
+
+        let kernel_offset = key_manager.get_txo_private_kernel_offset(&mask, &nonce).unwrap();
+        let burn_sender_offset = key_manager.derive_burn_sender_offset_key(&mask).unwrap().pub_key;
+        let script_spending_key = key_manager
+            .stealth_address_script_spending_key(&mask, &key_manager.get_spend_key().pub_key)
+            .unwrap();
+        let derived_private = key_manager.get_private_key(&derived).unwrap();
+        let derived_public = key_manager.get_public_key_at_key_id(&derived).unwrap();
+        let author_private = key_manager.get_private_key(&TariKeyId::CodeTemplateAuthor).unwrap();
+        let author_public = key_manager
+            .get_public_key_at_key_id(&TariKeyId::CodeTemplateAuthor)
+            .unwrap();
+
+        assert_eq!(
+            kernel_offset.to_hex(),
+            "44f21aa189146c29b6a906f9aa456aa03ede0fb8d6ebc316daeae4f576410d0e"
+        );
+        assert_eq!(
+            burn_sender_offset.to_hex(),
+            "1ed582a27f0597df644d8d4c67a576d6e7592bb4ab083f9e7cdd19aeb8e41804"
+        );
+        assert_eq!(
+            script_spending_key.to_hex(),
+            "ae26395b9f4219637a6d0858a4fb18aac5ec7ba82f8e83ce412723ffdbd16f39"
+        );
+        assert_eq!(
+            derived_private.to_hex(),
+            "4a0ff2c41ec660958747994641223ada4c7ce88d926b8f78ae5d343199717803"
+        );
+        assert_eq!(derived_public, CompressedPublicKey::from_secret_key(&derived_private));
+        assert_eq!(
+            author_private.to_hex(),
+            "2ee5d9279a38dc8ce7fdac110624ba72bf643d6bfb5d2aa05cb9eb5ce5879c07"
+        );
+        assert_eq!(
+            author_public.to_hex(),
+            "148ce2d4d8c0aa0cb89136e50cc8549d5d113fc0b7f977bfa47266bee640b903"
+        );
     }
 }

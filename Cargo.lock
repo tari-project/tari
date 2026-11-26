@@ -4351,6 +4351,7 @@ dependencies = [
  "json5 1.3.3",
  "log",
  "minotari_app_grpc",
+ "minotari_node_grpc_client",
  "rand 0.10.3",
  "serde",
  "tari_common",
@@ -4523,6 +4524,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_common",
+ "tari_utilities",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tonic 0.13.1",
@@ -4615,6 +4618,7 @@ dependencies = [
  "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
+ "minotari_node_grpc_client",
  "native-tls",
  "num_cpus",
  "prost-types 0.13.5",
@@ -4701,8 +4705,13 @@ dependencies = [
 name = "minotari_node_grpc_client"
 version = "6.3.0-pre.5"
 dependencies = [
+ "log",
  "minotari_app_grpc",
+ "tari_common",
+ "tari_common_types",
+ "thiserror 2.0.21",
  "tokio",
+ "tonic 0.13.1",
 ]
 
 [[package]]

@@ -107,8 +107,18 @@ const MIN_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// Lower bound for `join_cooldown_interval`.
 const MIN_JOIN_COOLDOWN_INTERVAL: Duration = Duration::from_secs(60);
+/// Lower bound for `discovery_cooldown_interval`.
+const MIN_DISCOVERY_COOLDOWN_INTERVAL: Duration = Duration::from_secs(10);
 /// Lower bound for `attempted_peers_ttl`.
 const MIN_ATTEMPTED_PEERS_TTL: Duration = Duration::from_secs(1);
+
+const fn default_discovery_cooldown_interval() -> Duration {
+    Duration::from_secs(60)
+}
+
+const fn default_discovery_cooldown_capacity() -> usize {
+    10_000
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -169,6 +179,17 @@ pub struct DhtConfig {
     /// The most Join origins remembered for the receive-side `join_cooldown_interval`. The oldest are forgotten first.
     /// Default: 10,000
     pub join_cooldown_capacity: usize,
+    /// The minimum time before answering another inbound Discovery message from the same origin. Discovery messages
+    /// are dropped while an origin is in cooldown so a known peer cannot force repeated answered Discoveries (the
+    /// peer-DB write and the outbound response) through relays. At least 10 seconds, and clamped below
+    /// `discovery_request_timeout` so a retry after a lost response is not dropped.
+    /// Default: 1 minute
+    #[serde(default = "default_discovery_cooldown_interval", with = "serializers::seconds")]
+    pub discovery_cooldown_interval: Duration,
+    /// The most Discovery origins remembered for `discovery_cooldown_interval`. The oldest are forgotten first.
+    /// Default: 10,000
+    #[serde(default = "default_discovery_cooldown_capacity")]
+    pub discovery_cooldown_capacity: usize,
     pub connectivity: DhtConnectivityConfig,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
@@ -373,6 +394,32 @@ impl DhtConfig {
             warn!(target: LOG_TARGET, "join_cooldown_capacity must be at least 1. Using 1");
             self.join_cooldown_capacity = 1;
         }
+        if self.discovery_cooldown_interval < MIN_DISCOVERY_COOLDOWN_INTERVAL {
+            warn!(
+                target: LOG_TARGET,
+                "discovery_cooldown_interval must be at least {MIN_DISCOVERY_COOLDOWN_INTERVAL:.0?}. Using that"
+            );
+            self.discovery_cooldown_interval = MIN_DISCOVERY_COOLDOWN_INTERVAL;
+        }
+        if self.discovery_request_timeout > MIN_DISCOVERY_COOLDOWN_INTERVAL &&
+            self.discovery_cooldown_interval >= self.discovery_request_timeout
+        {
+            let clamped = self.discovery_request_timeout.saturating_sub(Duration::from_secs(1));
+            warn!(
+                target: LOG_TARGET,
+                "discovery_cooldown_interval ({:.0?}) must be less than discovery_request_timeout ({:.0?}) so retries after a lost response are not dropped. Using {clamped:.0?}",
+                self.discovery_cooldown_interval,
+                self.discovery_request_timeout,
+            );
+            self.discovery_cooldown_interval = clamped;
+        }
+        if self.discovery_cooldown_capacity < 1 {
+            warn!(
+                target: LOG_TARGET,
+                "discovery_cooldown_capacity must be at least 1. Using 1"
+            );
+            self.discovery_cooldown_capacity = 1;
+        }
     }
 
     /// Returns a ban duration from the given severity
@@ -403,6 +450,8 @@ impl Default for DhtConfig {
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             join_cooldown_capacity: 10_000,
+            discovery_cooldown_interval: default_discovery_cooldown_interval(),
+            discovery_cooldown_capacity: default_discovery_cooldown_capacity(),
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(2 * 60 * 60),
             ban_duration_short: Duration::from_secs(10 * 60),
@@ -548,8 +597,11 @@ mod test {
         config.network_discovery.attempted_peers_ttl = Duration::ZERO;
         config.join_cooldown_capacity = 0;
         config.join_cooldown_interval = Duration::ZERO;
+        config.discovery_cooldown_capacity = 0;
+        config.discovery_cooldown_interval = Duration::ZERO;
         config.clamp_rebootstrap_settings();
         assert_eq!(config.join_cooldown_interval, MIN_JOIN_COOLDOWN_INTERVAL);
+        assert_eq!(config.discovery_cooldown_interval, MIN_DISCOVERY_COOLDOWN_INTERVAL);
         assert_eq!(config.network_discovery.max_stored_per_source, 1);
         assert_eq!(config.network_discovery.source_budget_window, MIN_SOURCE_BUDGET_WINDOW);
         assert_eq!(
@@ -558,6 +610,10 @@ mod test {
         );
         assert_eq!(config.network_discovery.attempted_peers_ttl, MIN_ATTEMPTED_PEERS_TTL);
         assert_eq!(config.join_cooldown_capacity, 1);
+        assert_eq!(config.discovery_cooldown_capacity, 1);
+        config.discovery_cooldown_interval = config.discovery_request_timeout;
+        config.clamp_rebootstrap_settings();
+        assert!(config.discovery_cooldown_interval < config.discovery_request_timeout);
         config.network_discovery.on_connect_sync_timeout = Duration::MAX;
         config.clamp_rebootstrap_settings();
         assert_eq!(
@@ -581,5 +637,7 @@ mod test {
         );
         assert_eq!(config.join_cooldown_capacity, defaults.join_cooldown_capacity);
         assert_eq!(config.join_cooldown_interval, defaults.join_cooldown_interval);
+        assert_eq!(config.discovery_cooldown_capacity, defaults.discovery_cooldown_capacity);
+        assert_eq!(config.discovery_cooldown_interval, defaults.discovery_cooldown_interval);
     }
 }

@@ -348,6 +348,10 @@ database_url = "data/base_node/dht.db"
 #join_cooldown_interval = 600 # 10 * 60
 # The most Join origins remembered for the receive-side join cooldown, oldest forgotten first. Default: 10,000
 #join_cooldown_capacity = 10_000
+# The minimum time in seconds before answering another inbound Discovery message from the same origin. Default: 60
+#discovery_cooldown_interval = 60
+# The most Discovery origins remembered for the receive-side discovery cooldown, oldest forgotten first. Default: 10,000
+#discovery_cooldown_capacity = 10_000
 
 # The interval to update the neighbouring and random pools, if necessary. Default: 2 minutes
 #connectivity.update_interval = 120 # 2 * 60

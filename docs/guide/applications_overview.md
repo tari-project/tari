@@ -640,7 +640,9 @@ The wallet supports extensive subcommands for various operations:
 - `merge_mining_proxy.monerod_url=<urls>` - Static monerod URLs list (when dynamic disabled)
   - **Security:** the proxy builds Monero block templates from the monerod it talks to. A public or untrusted monerod
     can return a template that pays the Monero block reward to someone else; run your own monerod if you can.
-    `monerod_username`/`monerod_password` sent to an `http://` URL travel in cleartext; use `https://` for remote nodes.
+    `monerod_username`/`monerod_password` sent to an `http://` URL travel in cleartext. `https://` only hides them from
+    passive observers, because certificates are not checked; they are only safe to a monerod on loopback, a private
+    network or a verified tunnel.
 - `merge_mining_proxy.monerod_username=<user>` - Monerod username
 - `merge_mining_proxy.monerod_password=<pass>` - Monerod password
 - `merge_mining_proxy.monerod_use_auth=<bool>` - Enable monerod authentication (default: false)
