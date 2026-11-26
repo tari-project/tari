@@ -389,9 +389,6 @@ mod test {
     use super::*;
     use crate::proof_of_work::{create_tari_mining_blob, cuckaroo_pow::cuckaroo_pow_data_size};
 
-    /// `PowData`'s bound is applied when a header is decoded, before any of the per-algorithm rules above run. If it
-    /// were ever smaller than what one of those rules accepts, headers that are valid by the rules could not even be
-    /// decoded, which would be a silent consensus change.
     /// The future time limit verdict has two forms: within the margin that a slow local clock can explain (one more
     /// future time limit offset), and beyond it. A timestamp at the limit passes.
     #[test]
@@ -435,6 +432,9 @@ mod test {
         }
     }
 
+    /// `PowData`'s bound is applied when a header is decoded, before any of the per-algorithm rules above run. If it
+    /// were ever smaller than what one of those rules accepts, headers that are valid by the rules could not even be
+    /// decoded, which would be a silent consensus change.
     #[test]
     fn pow_data_decode_bound_covers_every_per_algorithm_limit() {
         use tari_common::configuration::Network;

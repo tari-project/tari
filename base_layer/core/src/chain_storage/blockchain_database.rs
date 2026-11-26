@@ -4963,7 +4963,9 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
 /// out of body validation (`BlockBodyFullValidator::check_monero_seed_height`), and here it is the block's fault: the
 /// seed height index is rewound with the chain, so when the block is validated on top of its own parent the verdict
 /// is a fact about the block's own chain, and it cannot change. (`verdict_can_change` is for header verdicts reached
-/// against some other chain's view.) The other, `InvalidTimestampFutureTimeLimit`, is a header check only.
+/// against some other chain's view.) The others, `InvalidTimestampFutureTimeLimit` and
+/// `InvalidTimestampFarBeyondFutureTimeLimit`, are header checks only. The second carries a ban and so would count as
+/// the block's fault here, but it never comes out of body validation.
 fn is_block_fault(err: &ValidationError) -> bool {
     err.get_ban_reason().is_some()
 }

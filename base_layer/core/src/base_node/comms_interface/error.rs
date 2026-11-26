@@ -79,6 +79,8 @@ pub enum CommsInterfaceError {
     KnownBadBlock { hash: String, reason: String },
     #[error("Block {hash} has a timestamp beyond the future time limit on our clock")]
     BlockBeyondFutureTimeLimit { hash: FixedHash },
+    #[error("Block {hash} was sent again after it was refused for a timestamp beyond the future time limit")]
+    BlockBeyondFutureTimeLimitResent { hash: FixedHash },
     #[error("Block {hash} does not build on our tip and spends outputs we do not have: {details}")]
     UnknownSpentOutputs {
         hash: FixedHash,
@@ -107,6 +109,9 @@ impl CommsInterfaceError {
             err @ CommsInterfaceError::UnexpectedApiResponse |
             err @ CommsInterfaceError::RequestTimedOut |
             err @ CommsInterfaceError::TransportChannelError(_) |
+            // A peer relays a block once. The first refusal is not held against it, a resend is: the block is not
+            // stored or recorded as bad, so this is what bounds how often a peer can have us look at it
+            err @ CommsInterfaceError::BlockBeyondFutureTimeLimitResent { .. } |
             // The block builds on a fork we hold completely, which we searched, and it spends an output that is not on
             // it
             err @ CommsInterfaceError::UnknownSpentOutputs {
@@ -139,8 +144,9 @@ impl CommsInterfaceError {
             // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
             CommsInterfaceError::KnownBadBlock { .. } |
             // The limit is measured from our own clock, so a peer whose clock is ahead of ours relays the block in
-            // good faith. The block is still refused. Only for a timestamp within the margin a slow clock explains;
-            // one beyond it stays a `ChainStorageError` and a long ban.
+            // good faith. The block is still refused. Only for a timestamp within the margin a slow clock explains,
+            // and only the first time the peer sends it; one beyond the margin stays a `ChainStorageError` and a long
+            // ban.
             CommsInterfaceError::BlockBeyondFutureTimeLimit { .. } |
             // A block on a chain we do not hold completely: honest peers relay such blocks across forks, so it says
             // nothing about the peer
