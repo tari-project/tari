@@ -377,6 +377,20 @@ for await (const resp of payrefResponses) {
 ## gRPC Wallet Methods
 These methods are dependent on access to a wallet node and use of the [`wallet.proto`][wallet-proto] file.
 
+Exposed console wallet gRPC methods are controlled by `wallet.grpc_server_allow_methods` in `config.toml` (all methods are enabled by default for backwards compatibility). Operators can restrict exposure to enforce least privilege. For example, a balance-monitoring integration only requires:
+
+```toml
+[wallet]
+grpc_enabled = true
+grpc_server_allow_methods = [
+    "get_version",
+    "get_balance",
+    "get_state",
+    "check_connectivity",
+    "identify",
+]
+```
+
 ### Get Balance
 The wallet gRPC method `GetBalance` is used to retrieve a wallet's total available and pending balances. 
 

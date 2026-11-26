@@ -598,12 +598,29 @@ pub fn create_wallet_outputs<KM: TransactionKeyManagerInterface>(
             params.value = amount_per_input;
         }
 
-        let wallet_output = TestParams::new(key_manager).create_input(params, key_manager);
-        inputs.push(wallet_output);
+        inputs.push(input_with_a_script_key_not_derived_from_the_spend_key(
+            params,
+            key_manager,
+        ));
     }
 
     Ok((inputs, outputs))
 }
+/// A test input whose script key is a random key rather than one derived from the spend key.
+///
+/// [`create_transaction_with`] hands every sender offset key back to the caller and leaves no change, which the
+/// builder only allows for such inputs.
+pub fn input_with_a_script_key_not_derived_from_the_spend_key<KM: TransactionKeyManagerInterface>(
+    params: UtxoTestParams,
+    key_manager: &KM,
+) -> WalletOutput {
+    let mut test_params = TestParams::new(key_manager);
+    let script_key = key_manager.get_random_key(None, None).unwrap();
+    test_params.script_key_id = script_key.key_id;
+    test_params.script_key_pk = script_key.pub_key;
+    test_params.create_input(params, key_manager)
+}
+
 /// Create an unconfirmed transaction for testing with a valid fee, unique excess_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 ///

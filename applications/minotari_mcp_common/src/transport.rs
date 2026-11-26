@@ -22,9 +22,14 @@
 // infrastructure for Tari applications
 //! Transport layer for MCP communication
 
-use std::net::SocketAddr;
+use std::{collections::HashSet, fmt, net::SocketAddr};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Deserializer,
+    Serialize,
+    de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor},
+};
 use serde_json::Value;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -32,6 +37,76 @@ use tokio::{
 };
 
 use crate::error::{McpError, McpResult};
+
+/// Refuse a JSON text in which any object repeats a key. serde_json keeps only the last value, so someone reviewing the
+/// first could approve a call that does something else. Malformed JSON is left for the parser to report.
+pub fn check_duplicate_keys(text: &str) -> McpResult<()> {
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    match NoDuplicateKeys.deserialize(&mut deserializer) {
+        Err(e) if e.is_data() => Err(McpError::invalid_request(e.to_string())),
+        _ => Ok(()),
+    }
+}
+
+/// Walks a JSON value once, keeping only the keys of the object being read
+struct NoDuplicateKeys;
+
+impl<'de> DeserializeSeed<'de> for NoDuplicateKeys {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
+
+impl<'de> Visitor<'de> for NoDuplicateKeys {
+    type Value = ();
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a JSON value")
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_unit<E>(self) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        while seq.next_element_seed(NoDuplicateKeys)?.is_some() {}
+        Ok(())
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        let mut keys = HashSet::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if keys.contains(&key) {
+                return Err(A::Error::custom(format!("duplicate key {key:?}")));
+            }
+            map.next_value_seed(NoDuplicateKeys)?;
+            keys.insert(key);
+        }
+        Ok(())
+    }
+}
 
 /// MCP message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -212,7 +287,9 @@ impl JsonRpcTransport {
                     log::debug!("Received message: {line}");
 
                     // Parse JSON-RPC message
-                    let response = match serde_json::from_str::<McpMessage>(line) {
+                    let parsed = check_duplicate_keys(line)
+                        .and_then(|()| serde_json::from_str::<McpMessage>(line).map_err(McpError::from));
+                    let response = match parsed {
                         Ok(message) => {
                             // Handle the message
                             handler.handle_message(message).await

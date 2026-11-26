@@ -28,15 +28,14 @@ use async_trait::async_trait;
 use minotari_mcp_common::{McpError, McpResource, McpResult};
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Resource providing current network status
 pub struct NetworkStatusResource {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: Arc<BaseNodeGrpcClient>,
 }
 
 impl NetworkStatusResource {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> Self {
         Self { grpc_client }
     }
 }
@@ -63,10 +62,12 @@ impl McpResource for NetworkStatusResource {
         let mut client = self.grpc_client.as_ref().clone();
 
         // Get version info to test connectivity
-        let version_response = client
-            .get_version(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get version: {e}")))?;
+        let version_response = client.get_version(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to get version: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let version = version_response.into_inner();
 

@@ -2596,9 +2596,9 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -4351,6 +4351,7 @@ dependencies = [
  "json5 1.3.3",
  "log",
  "minotari_app_grpc",
+ "minotari_node_grpc_client",
  "rand 0.10.3",
  "serde",
  "tari_common",
@@ -4364,6 +4365,7 @@ dependencies = [
  "tari_script",
  "tari_transaction_components",
  "tari_utilities",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tonic 0.13.1",
@@ -4522,6 +4524,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_common",
+ "tari_utilities",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tonic 0.13.1",
@@ -4614,6 +4618,7 @@ dependencies = [
  "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
+ "minotari_node_grpc_client",
  "native-tls",
  "num_cpus",
  "prost-types 0.13.5",
@@ -4700,8 +4705,13 @@ dependencies = [
 name = "minotari_node_grpc_client"
 version = "6.3.0-pre.5"
 dependencies = [
+ "log",
  "minotari_app_grpc",
+ "tari_common",
+ "tari_common_types",
+ "thiserror 2.0.21",
  "tokio",
+ "tonic 0.13.1",
 ]
 
 [[package]]
@@ -4893,6 +4903,7 @@ dependencies = [
  "minotari_app_grpc",
  "tari_common",
  "tari_common_types",
+ "tari_utilities",
  "thiserror 2.0.21",
  "tokio",
  "tonic 0.13.1",
@@ -8153,9 +8164,9 @@ dependencies = [
 
 [[package]]
 name = "tari_jellyfish"
-version = "7.1.0"
+version = "7.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c76546a09a260003b146dcad761ec0c5052fb947ed4b616b96e88aa753b2c9bd"
+checksum = "7e69df73b38a8ae178e734b9df99b3eb8f9444861bd8aec95fc25399ed2e8a7d"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8335,9 +8346,9 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "9.0.0"
+version = "9.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8fc81efebfab1e692f80b2f61e4cd93949a158d0cb1f254b65a2684d820aac5"
+checksum = "f648116c9e0f8f3a8a6d793beb883eaf0a257290f9367e7b7091ea455ffea4a5"
 dependencies = [
  "base64 0.22.1",
  "borsh",
@@ -9301,9 +9312,9 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",

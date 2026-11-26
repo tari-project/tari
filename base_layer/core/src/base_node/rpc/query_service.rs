@@ -24,6 +24,7 @@ use tari_transaction_components::{
             TipInfoResponse,
             TxLocation,
             TxQueryResponse,
+            TxSubmissionRejectionReason,
         },
     },
     transaction_components::TransactionOutput,
@@ -34,7 +35,7 @@ use thiserror::Error;
 use crate::{
     base_node::{
         StateMachineHandle,
-        rpc::{BaseNodeWalletQueryService, HeightAtTimeError, height_at_time},
+        rpc::{BaseNodeWalletQueryService, HeightAtTimeError, classify_spent_rejection, height_at_time},
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
@@ -99,6 +100,13 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             mempool,
             max_utxo_chunk_size: MAX_UTXO_CHUNK_SIZE,
         }
+    }
+
+    pub async fn classify_spent_rejection(
+        &self,
+        first_kernel_sig: Option<&types::CompressedSignature>,
+    ) -> Result<TxSubmissionRejectionReason, ChainStorageError> {
+        classify_spent_rejection(&self.db, first_kernel_sig).await
     }
 
     fn state_machine(&self) -> StateMachineHandle {
@@ -642,7 +650,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     }
 
     async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error> {
-        let hash: FixedHash = request.output_hash.try_into().map_err(Error::general)?;
+        let hash: FixedHash = request.output_hash.try_into()?;
         let outputs = self.db().fetch_outputs_with_spend_status_at_tip(vec![hash]).await?;
         let output = match outputs.first() {
             Some(Some((output, _spent))) => Some(output.clone()),
@@ -1383,5 +1391,23 @@ mod tests {
 
         assert_eq!(first_page_heights, (7..=30).collect::<Vec<u64>>());
         assert_eq!(visited_heights, (start_height..=tip_height).collect::<Vec<u64>>());
+    }
+
+    #[tokio::test]
+    async fn get_utxo_rejects_invalid_hash_length() {
+        let service = make_service().await;
+
+        for invalid_hash in [vec![], vec![0u8; 31], vec![0u8; 33]] {
+            let err = service
+                .get_utxo(models::GetUtxoRequest {
+                    output_hash: invalid_hash,
+                })
+                .await
+                .unwrap_err();
+            match err {
+                Error::HashConversion(_) => {},
+                other => panic!("unexpected error: {other:?}"),
+            }
+        }
     }
 }

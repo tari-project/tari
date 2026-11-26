@@ -379,5 +379,10 @@ mod connect_error_test {
                 .get_ban_reason()
                 .is_some()
         );
+        assert!(
+            HorizonSyncError::SyncPeerUnavailable(RpcError::ClientClosed)
+                .get_ban_reason()
+                .is_none()
+        );
     }
 }

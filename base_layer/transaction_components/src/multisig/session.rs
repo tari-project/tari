@@ -37,6 +37,7 @@ use crate::{
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::TransactionKeyManagerInterface,
     multisig::script::get_multi_sig_script_components,
+    offline_signing::one_sided_signer::validate_multisig_threshold,
     transaction_builder::{FinalizedTransaction, RecipientSpec},
     transaction_components::{
         OutputFeatures,
@@ -79,21 +80,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         ),
         TransactionBuilderError,
     > {
-        if party_number == 0 || (party_number as usize) > public_keys.len() {
-            return Err(TransactionError::BuilderError(format!(
-                "Invalid multisig threshold party_number={}, participants={}",
-                party_number,
-                public_keys.len()
-            ))
-            .into());
-        }
+        validate_multisig_threshold(party_number, public_keys.len())?;
 
         let mut message = Box::new([0u8; 32]);
         rand::rng().fill_bytes(message.as_mut());
 
         let user_data = uuid.as_bytes().to_vec();
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
-        let payment_id =
+        let mut payment_id =
             MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
@@ -108,6 +102,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized_builder = tx_builder.build()?;
+        // The builder writes the settled fee into the on-chain memo; the copy returned to the wallet must match it.
+        payment_id.set_fee(finalized_builder.transaction.body.get_total_fee()?);
         let output =
             finalized_builder.spec_outputs.first().cloned().ok_or_else(|| {
                 TransactionBuilderError::Other("The multisig recipient output was not built".to_string())
@@ -228,12 +224,19 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
+    use std::{
+        pin::pin,
+        task::{Context, Poll, Waker},
+    };
+
     use tari_common::configuration::Network;
     use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
     use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, Opcode, TariScript};
+    use uuid::Uuid;
 
     use crate::{
         MicroMinotari,
+        TransactionBuilder,
         key_manager::{KeyManager, TransactionKeyManagerInterface},
         multisig::session::MultisigSession,
         test_helpers::create_consensus_manager,
@@ -312,5 +315,41 @@ mod test {
             1,
             "there must be no change output"
         );
+    }
+
+    #[test]
+    fn create_deposit_refuses_an_unmeetable_threshold() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let recipient = TariAddress::new_dual_address(
+            key_manager.get_view_key().pub_key,
+            key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 14), (2, 33)] {
+            let tx_builder = TransactionBuilder::new(
+                create_consensus_manager().consensus_constants(0).clone(),
+                key_manager.clone(),
+                Network::LocalNet,
+            )
+            .unwrap();
+            let mut session = MultisigSession::new(key_manager.clone());
+            let future = session.create_deposit_multisig_transaction(
+                MicroMinotari(1000),
+                m,
+                vec![key_manager.get_spend_key().pub_key; n],
+                recipient.clone(),
+                tx_builder,
+                Uuid::nil(),
+            );
+            // The threshold is checked before anything is awaited, so one poll settles it.
+            let Poll::Ready(result) = pin!(future).poll(&mut Context::from_waker(Waker::noop())) else {
+                panic!("{m} of {n}: the deposit did not fail on the threshold");
+            };
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+        }
     }
 }

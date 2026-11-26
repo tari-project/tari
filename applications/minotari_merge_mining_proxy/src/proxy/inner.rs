@@ -246,8 +246,7 @@ impl InnerService {
                 .pow
                 .as_mut()
                 .ok_or(MmProxyError::UnexpectedMissingData("tari_block.header.pow".to_string()))?;
-            BorshSerialize::serialize(&monero_data, &mut pow_mut.pow_data)
-                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
+            replace_pow_data(&mut pow_mut.pow_data, &monero_data)?;
             let tari_header = tari_header_mut
                 .clone()
                 .try_into()
@@ -914,7 +913,17 @@ impl InnerService {
                 match timeout(self.config.monerod_connection_timeout, builder.body(body).send()).await {
                     // `without_url` keeps the monerod URL (which may carry credentials or a query) out of the error
                     Ok(response) => match response.map_err(|e| MmProxyError::MonerodRequestFailed(e.without_url())) {
-                        Ok(val) => convert_reqwest_response_to_hyper_json_response(val).await?,
+                        Ok(val) => match convert_reqwest_response_to_hyper_json_response(val).await {
+                            Ok(resp) => resp,
+                            Err(e) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "[monerod] '{}' response body '{}' (trace_id: {})",
+                                    monerod_method, e, trace_id
+                                );
+                                self.handle_monerod_error_response(monerod_url.host_str(), e)?
+                            },
+                        },
                         Err(e) => {
                             warn!(
                                 target: LOG_TARGET,
@@ -1062,5 +1071,80 @@ impl InnerService {
                 Err(e)
             },
         }
+    }
+}
+
+fn replace_pow_data<T: BorshSerialize>(pow_data: &mut Vec<u8>, monero_data: &T) -> Result<(), MmProxyError> {
+    pow_data.clear();
+    BorshSerialize::serialize(monero_data, pow_data).map_err(|err| MmProxyError::ConversionError(err.to_string()))
+}
+
+#[cfg(test)]
+mod test {
+    use tari_utilities::ByteArray;
+
+    use super::*;
+
+    #[test]
+    fn replace_pow_data_overwrites_existing_template_bytes() {
+        let monero_data = FixedByteArray::from_canonical_bytes(&[6, 7, 8]).unwrap();
+        let mut expected = Vec::new();
+        BorshSerialize::serialize(&monero_data, &mut expected).unwrap();
+
+        let mut pow_data = vec![0xde, 0xad, 0xbe, 0xef];
+        replace_pow_data(&mut pow_data, &monero_data).unwrap();
+        assert_eq!(pow_data, expected);
+    }
+
+    #[tokio::test]
+    async fn oversized_monerod_response_clears_the_current_server() {
+        use minotari_node_grpc_client::GrpcClientConfig;
+        use tari_common::configuration::StringList;
+
+        use crate::{
+            block_template_data::BlockTemplateRepository,
+            proxy::utils::{
+                MAX_MONEROD_RESPONSE_BYTES,
+                test::{oversized_content_length, serve_mock_monerod},
+            },
+        };
+
+        let addr = serve_mock_monerod(oversized_content_length).await;
+        let mut config = MergeMiningProxyConfig::default();
+        config.monerod_url = StringList::from(vec![format!("http://{addr}")]);
+        let consensus_manager = BaseNodeConsensusManager::builder(config.network).build().unwrap();
+        let channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
+        let service = InnerService {
+            config: Arc::new(config),
+            block_templates: BlockTemplateRepository::new(),
+            http_client: reqwest::Client::new(),
+            base_node_client: BaseNodeGrpcClient::from_channel(channel, &GrpcClientConfig::default()).unwrap(),
+            p2pool_client: None,
+            initial_sync_achieved: Arc::new(AtomicBool::new(true)),
+            current_monerod_server: Arc::new(RwLock::new(None)),
+            last_assigned_monerod_url: Arc::new(RwLock::new(None)),
+            randomx_factory: RandomXFactory::new(1),
+            consensus_manager,
+            wallet_payment_address: TariAddress::default(),
+        };
+
+        let request = Request::post("/json_rpc")
+            .body(Bytes::from_static(
+                br#"{"jsonrpc":"2.0","id":0,"method":"get_version"}"#,
+            ))
+            .unwrap();
+        let err = service
+            .proxy_request_to_monerod(request, MonerodMethod::GetVersion)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, MmProxyError::MonerodResponseTooLarge {
+            limit: MAX_MONEROD_RESPONSE_BYTES
+        }));
+        assert!(service.current_monerod_server.read().unwrap().is_none());
+        assert_eq!(
+            service.last_assigned_monerod_url.read().unwrap().as_deref(),
+            Some(format!("http://{addr}").as_str())
+        );
     }
 }

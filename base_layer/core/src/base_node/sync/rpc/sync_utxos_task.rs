@@ -29,7 +29,7 @@ use std::{
 use log::*;
 use tari_comms::{
     peer_manager::NodeId,
-    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
+    protocol::rpc::{RpcStatus, RpcStatusResultExt},
     utils,
 };
 use tari_node_components::blocks::BlockHeader;
@@ -61,20 +61,18 @@ where B: BlockchainBackend + 'static
         Self { db, peer_node_id }
     }
 
-    pub(crate) async fn run(
-        self,
-        request: Request<SyncUtxosRequest>,
-        mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
-    ) -> Result<(), RpcStatus> {
-        let msg = request.into_message();
+    /// Validates the requested header range before a sync session slot or metric is acquired.
+    pub(crate) async fn validate(
+        db: &AsyncBlockchainDb<B>,
+        msg: &SyncUtxosRequest,
+    ) -> Result<(BlockHeader, BlockHeader), RpcStatus> {
         let start_hash = msg
             .start_header_hash
             .clone()
             .try_into()
             .rpc_status_bad_request("Invalid header hash")?;
 
-        let start_header = self
-            .db
+        let start_header = db
             .fetch_header_by_block_hash(start_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
@@ -86,8 +84,7 @@ where B: BlockchainBackend + 'static
             .try_into()
             .rpc_status_bad_request("Invalid header hash")?;
 
-        let end_header = self
-            .db
+        let end_header = db
             .fetch_header_by_block_hash(end_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
@@ -99,6 +96,26 @@ where B: BlockchainBackend + 'static
             )));
         }
 
+        Ok((start_header, end_header))
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn run(
+        self,
+        request: tari_comms::protocol::rpc::Request<SyncUtxosRequest>,
+        tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+    ) -> Result<(), RpcStatus> {
+        let (start_header, end_header) = Self::validate(&self.db, request.message()).await?;
+        self.run_validated(start_header, end_header, tx);
+        Ok(())
+    }
+
+    pub(crate) fn run_validated(
+        self,
+        start_header: BlockHeader,
+        end_header: BlockHeader,
+        mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+    ) {
         let (start_height, end_height) = (start_header.height, end_header.height);
         task::spawn(async move {
             debug!(
@@ -128,8 +145,6 @@ where B: BlockchainBackend + 'static
             #[cfg(feature = "metrics")]
             metrics::active_sync_peers().dec();
         });
-
-        Ok(())
     }
 
     #[allow(clippy::too_many_lines)]
