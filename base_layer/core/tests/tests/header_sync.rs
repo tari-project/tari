@@ -281,22 +281,17 @@ async fn test_header_sync_uneven_headers_and_blocks_happy_path() {
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 2);
     assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 10);
 
-    // Alice attempts header sync, but her headers are ahead
+    // Alice attempts header sync, but her headers are ahead. Bob's header tip (7) is below Alice's (10), so he
+    // cannot serve block sync to her header tip and is skipped as weaker
     let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
     match event {
-        StateEvent::HeadersSynchronized(_val, sync_result) => {
-            assert_eq!(sync_result.headers_returned, 0);
-            assert_eq!(sync_result.peer_fork_hash_index, 3);
-            if let HeaderSyncStatus::InSyncOrAhead = sync_result.header_sync_status {
-                // Good, headers were in sync
-            } else {
-                panic!("Should be 'InSyncOrAhead'");
-            }
+        StateEvent::HeaderSyncFailed(err) => {
+            assert_eq!(&err, "No more sync peers available: Header sync failed");
         },
-        _ => panic!("Expected HeadersSynchronized event"),
+        event => panic!("Expected HeaderSyncFailed event, got {event:?}"),
     }
-    // All is good, Bob is not banned
+    // Bob's claim is covered by his header tip, so he is not banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 
@@ -355,19 +350,14 @@ async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban()
                 .accumulated_difficulty()
     );
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    // Bob's header tip (7) is below Alice's (10), so he is skipped as weaker rather than chosen for block sync
     match event {
-        StateEvent::HeadersSynchronized(_val, sync_result) => {
-            assert_eq!(sync_result.headers_returned, 0);
-            assert_eq!(sync_result.peer_fork_hash_index, 3);
-            if let HeaderSyncStatus::InSyncOrAhead = sync_result.header_sync_status {
-                // Note: This behaviour is undetected! Bob cannot be banned here, and should be banned by block sync.
-            } else {
-                panic!("Should be 'InSyncOrAhead'");
-            }
+        StateEvent::HeaderSyncFailed(err) => {
+            assert_eq!(&err, "No more sync peers available: Header sync failed");
         },
-        _ => panic!("Expected HeadersSynchronized event"),
+        event => panic!("Expected HeaderSyncFailed event, got {event:?}"),
     }
-    // Bob will not be banned (but should be banned by block sync!)
+    // Bob's inflated claim is still covered by his header tip, so the lie is undetectable and he is not banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 

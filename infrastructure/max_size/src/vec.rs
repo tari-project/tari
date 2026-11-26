@@ -250,7 +250,7 @@ impl<T, const MAX_SIZE: usize> MaxSizeVec<T, MAX_SIZE> {
         if self.vec.len() >= MAX_SIZE {
             return Err(MaxSizeVecError::MaxSizeVecLengthError {
                 expected: MAX_SIZE,
-                actual: self.vec.len(),
+                actual: self.vec.len().saturating_add(1),
             });
         }
         self.vec.push(item);
@@ -527,5 +527,15 @@ mod tests {
         // The sequence form of a struct is accepted too
         let v = serde_json::from_str::<Vec32>(r#"[[1,2,3],null]"#).unwrap();
         assert_eq!(v.into_vec(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn push_at_capacity_reports_max_plus_one() {
+        let mut v = Vec32::try_from(vec![0u32; MAX]).unwrap();
+        let err = v.push(1).unwrap_err();
+        assert_eq!(err, MaxSizeVecError::MaxSizeVecLengthError {
+            expected: MAX,
+            actual: MAX.saturating_add(1),
+        });
     }
 }

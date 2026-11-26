@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::types::{CompressedCommitment, FixedHash};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
@@ -67,6 +67,14 @@ struct State {
     on_mined_info_query: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Outputs `query_deleted_utxos` reports as spent: output hash -> (height, block hash)
     spent_utxos: HashMap<Vec<u8>, (u64, Vec<u8>)>,
+    /// Outputs `fetch_utxo` returns, keyed by output hash
+    utxos: HashMap<Vec<u8>, TransactionOutput>,
+    /// The answer to `submit_transaction`; accepted if not set
+    submit_transaction_response: Option<TxSubmissionResponse>,
+    submit_transaction_calls: usize,
+    /// Split each block's outputs into entries of at most this many outputs, sharing the block's height and hash, as
+    /// the base node does for large blocks. `None` sends each block as one entry.
+    utxo_chunk_size: Option<usize>,
 }
 
 impl State {
@@ -150,9 +158,27 @@ impl HttpBaseNodeMock {
             .collect();
     }
 
+    /// Return each output from `fetch_utxo` when asked for the hash it is paired with.
+    pub async fn set_utxos(&self, utxos: Vec<(FixedHash, TransactionOutput)>) {
+        self.state.write().await.utxos = utxos.into_iter().map(|(hash, o)| (hash.to_vec(), o)).collect();
+    }
+
     /// Run `hook` on every `get_utxos_mined_info` query.
     pub async fn set_on_mined_info_query(&self, hook: Arc<dyn Fn() + Send + Sync>) {
         self.state.write().await.on_mined_info_query = Some(hook);
+    }
+
+    /// Serve each block from `sync_utxos_by_block` as chunks of at most `chunk_size` outputs.
+    pub async fn set_utxo_chunk_size(&self, chunk_size: usize) {
+        self.state.write().await.utxo_chunk_size = Some(chunk_size.max(1));
+    }
+
+    pub async fn set_submit_transaction_response(&self, response: TxSubmissionResponse) {
+        self.state.write().await.submit_transaction_response = Some(response);
+    }
+
+    pub async fn submit_transaction_calls(&self) -> usize {
+        self.state.read().await.submit_transaction_calls
     }
 
     pub async fn set_last_request_latency(&self, last_request_latency: Duration) -> Result<(), Error> {
@@ -208,15 +234,17 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         })
     }
 
-    async fn fetch_utxo(&self, _hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
-        todo!()
+    async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
+        Ok(self.state.read().await.utxos.get(&hash).cloned())
     }
 
     async fn query_deleted_utxos(
         &self,
         hashes: Vec<Vec<u8>>,
-        _must_include_header: Vec<u8>,
+        must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, Error> {
+        // As the base node does, which then also requires the header to be in its chain
+        FixedHash::try_from(must_include_header)?;
         let state = self.state.read().await;
         let mined_utxos = state
             .mined_utxos
@@ -239,12 +267,17 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     }
 
     async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
-        Ok(TxSubmissionResponse {
-            accepted: true,
-            rejection_reason: models::TxSubmissionRejectionReason::None,
-            is_synced: true,
-            details: None,
-        })
+        let mut state = self.state.write().await;
+        state.submit_transaction_calls = state.submit_transaction_calls.saturating_add(1);
+        Ok(state
+            .submit_transaction_response
+            .clone()
+            .unwrap_or(TxSubmissionResponse {
+                accepted: true,
+                rejection_reason: models::TxSubmissionRejectionReason::None,
+                is_synced: true,
+                details: None,
+            }))
     }
 
     async fn transaction_query(
@@ -343,22 +376,31 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
                 if let Some(ub) = state.utxos_by_block.get(&height) {
                     let block_header = state.blocks.get(&height).cloned();
                     if let Some(header) = block_header {
-                        blocks.push(BlockUtxoInfo {
-                            header_hash: header.hash().to_vec(),
-                            height: header.height,
-                            outputs: ub
-                                .utxos
-                                .iter()
-                                .map(|o| models::MinimalUtxoSyncInfo {
-                                    output_hash: o.hash().to_vec(),
-                                    commitment: o.commitment.as_bytes().to_vec(),
-                                    encrypted_data: o.encrypted_data.to_byte_vec(),
-                                    sender_offset_public_key: o.sender_offset_public_key.to_vec(),
-                                })
-                                .collect(),
-                            inputs: Vec::new(),
-                            mined_timestamp: header.timestamp.as_u64(),
-                        });
+                        let outputs = ub
+                            .utxos
+                            .iter()
+                            .map(|o| models::MinimalUtxoSyncInfo {
+                                output_hash: o.hash().to_vec(),
+                                commitment: o.commitment.as_bytes().to_vec(),
+                                encrypted_data: o.encrypted_data.to_byte_vec(),
+                                sender_offset_public_key: o.sender_offset_public_key.to_vec(),
+                            })
+                            .collect::<Vec<_>>();
+                        let chunk_size = state.utxo_chunk_size.unwrap_or(outputs.len()).max(1);
+                        let chunks = if outputs.is_empty() {
+                            vec![Vec::new()]
+                        } else {
+                            outputs.chunks(chunk_size).map(<[_]>::to_vec).collect()
+                        };
+                        for chunk in chunks {
+                            blocks.push(BlockUtxoInfo {
+                                header_hash: header.hash().to_vec(),
+                                height: header.height,
+                                outputs: chunk,
+                                inputs: Vec::new(),
+                                mined_timestamp: header.timestamp.as_u64(),
+                            });
+                        }
                     }
                 }
                 if blocks.len() >= page_size || height == end_height {
@@ -394,6 +436,11 @@ pub struct MockHttpClientFactory {
 }
 
 impl MockHttpClientFactory {
+    /// A factory whose clients all talk to `mock`.
+    pub fn from_mock(mock: HttpBaseNodeMock) -> Self {
+        Self { mock }
+    }
+
     pub fn get_client(&self) -> HttpBaseNodeMock {
         self.mock.clone()
     }

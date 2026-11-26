@@ -29,13 +29,13 @@ chrono = { version = "0.4", default-features = false, features = [
 cidr = "0.1.0"
 data-encoding = "2.2.0"
 derivative = "2.2.0"
-diesel = { version = "2.3.10", features = [
+diesel = { version = "2.4.0", features = [
     "sqlite",
     "serde_json",
     "chrono",
     "numeric",
 ] }
-diesel_migrations = "2.3"
+diesel_migrations = "2.4"
 digest = "0.10"
 futures = { version = "^0.3", features = ["async-await"] }
 log = { workspace = true, features = ["std"] }
@@ -64,7 +64,7 @@ tokio-stream = { version = "0.1.9", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["codec", "compat"] }
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1.26"
-yamux = "0.13.10"
+yamux = "0.14.1"
 zeroize = "1"
 # `#[derive(DecodeBudget)]` on this crate's own protobuf types
 tari_comms_rpc_macros = { workspace = true }

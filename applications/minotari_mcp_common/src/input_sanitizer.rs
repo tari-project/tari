@@ -35,6 +35,19 @@ use crate::{
     error::{McpError, McpResult},
 };
 
+/// Longest accepted hex string for an encoded block, block template or transaction: 4 MiB of protobuf. A block at
+/// the mainnet maximum weight of 127,795 grams is about 2-2.5 MiB (16-20 bytes per gram), so this is roughly 2x that,
+/// and it still fits the node's 8 MiB gRPC message limit.
+pub const MAX_ENCODED_BLOCK_HEX_LEN: usize = 8 * 1024 * 1024;
+
+/// Fields that carry a hex-encoded block, block template or transaction and so get [MAX_ENCODED_BLOCK_HEX_LEN]
+/// instead of the general string limit
+const ENCODED_BLOCK_HEX_FIELDS: [&str; 3] = ["block_hex", "transaction_hex", "new_block_template_hex"];
+
+/// Fields that reach the chain or a wallet query as written, so they are checked but never rewritten: a payment id
+/// that would be changed is refused instead of being silently altered
+const VERBATIM_FIELDS: [&str; 1] = ["payment_id"];
+
 /// Input sanitizer for MCP operations
 pub struct InputSanitizer {
     max_string_length: usize,
@@ -46,7 +59,6 @@ pub struct InputSanitizer {
 impl Default for InputSanitizer {
     fn default() -> Self {
         let mut html_entities = HashMap::new();
-        html_entities.insert("&amp;".to_string(), "&".to_string());
         html_entities.insert("&lt;".to_string(), "<".to_string());
         html_entities.insert("&gt;".to_string(), ">".to_string());
         html_entities.insert("&quot;".to_string(), "\"".to_string());
@@ -81,7 +93,6 @@ impl InputSanitizer {
         let mut html_entities = HashMap::new();
 
         if config.clean_html_entities {
-            html_entities.insert("&amp;".to_string(), "&".to_string());
             html_entities.insert("&lt;".to_string(), "<".to_string());
             html_entities.insert("&gt;".to_string(), ">".to_string());
             html_entities.insert("&quot;".to_string(), "\"".to_string());
@@ -126,12 +137,32 @@ impl InputSanitizer {
 
     /// Sanitize a string value
     fn sanitize_string(&self, s: &str) -> McpResult<Value> {
-        // Check length limit
+        self.sanitize_string_with_limit(s, self.max_string_length)
+    }
+
+    /// Accept `s` unchanged, or refuse it if sanitizing would change it
+    fn check_verbatim(&self, key: &str, s: &str) -> McpResult<Value> {
         if s.len() > self.max_string_length {
             return Err(McpError::invalid_request(format!(
-                "String too long ({} chars, max {})",
+                "{key} too long ({} chars, max {})",
                 s.len(),
                 self.max_string_length
+            )));
+        }
+        if s.chars().any(char::is_control) || !s.nfc().eq(s.chars()) {
+            return Err(McpError::invalid_request(format!(
+                "{key} must not contain control characters and must be NFC-normalized Unicode"
+            )));
+        }
+        Ok(Value::String(s.to_string()))
+    }
+
+    fn sanitize_string_with_limit(&self, s: &str, max_len: usize) -> McpResult<Value> {
+        // Check length limit
+        if s.len() > max_len {
+            return Err(McpError::invalid_request(format!(
+                "String too long ({} chars, max {max_len})",
+                s.len()
             )));
         }
 
@@ -139,6 +170,10 @@ impl InputSanitizer {
         let mut sanitized = s.to_string();
         for (entity, replacement) in &self.allowed_html_entities {
             sanitized = sanitized.replace(entity, replacement);
+        }
+        // Decode &amp; last so double-encoded entities (e.g. &amp;lt;) are not decoded into < or >
+        if !self.allowed_html_entities.is_empty() {
+            sanitized = sanitized.replace("&amp;", "&");
         }
 
         // Remove null bytes and other control characters (except newlines and tabs)
@@ -192,8 +227,15 @@ impl InputSanitizer {
                 _ => return Err(McpError::invalid_request("Object key must be a string")),
             };
 
-            // Validate key format (no leading/trailing whitespace, reasonable length)
+            // Refuse a key that cleaning would change rather than rename it: a lookalike such as "amount " could
+            // otherwise replace the real key. Unchanged keys are distinct, so no two keys can merge.
             let trimmed_key = sanitized_key.trim();
+            if trimmed_key != key {
+                return Err(McpError::invalid_request(format!(
+                    "Object key {key:?} contains control characters, HTML entities, surrounding whitespace or non-NFC \
+                     text"
+                )));
+            }
             if trimmed_key.is_empty() {
                 return Err(McpError::invalid_request("Object key cannot be empty"));
             }
@@ -202,7 +244,13 @@ impl InputSanitizer {
             }
 
             // Sanitize the value
-            let sanitized_value = self.sanitize_value(value, depth.saturating_add(1))?;
+            let sanitized_value = match value {
+                Value::String(s) if ENCODED_BLOCK_HEX_FIELDS.contains(&trimmed_key) => {
+                    self.sanitize_string_with_limit(s, MAX_ENCODED_BLOCK_HEX_LEN)?
+                },
+                Value::String(s) if VERBATIM_FIELDS.contains(&trimmed_key) => self.check_verbatim(trimmed_key, s)?,
+                _ => self.sanitize_value(value, depth.saturating_add(1))?,
+            };
             sanitized_obj.insert(trimmed_key.to_string(), sanitized_value);
         }
 
@@ -345,18 +393,58 @@ impl ValidationPatterns {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use serde_json::json;
 
     use super::*;
 
     #[test]
+    fn keys_that_cleaning_would_change_are_refused() {
+        assert!(sanitize_tool_input(&json!({ "amount": 1, "amount\u{007f}": 2 })).is_err());
+        let err = sanitize_tool_input(&json!({ "address ": "x" }))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(r#""address ""#), "{err}");
+        assert!(sanitize_tool_input(&json!({ "recipients": [{ "address ": "x", "amount": 1 }] })).is_err());
+        assert!(sanitize_tool_input(&json!({ "a&amp;b": 1 })).is_err());
+
+        let normal = json!({ "recipients": [{ "address": "x", "amount": 1 }], "fee_per_gram": 5 });
+        assert_eq!(sanitize_tool_input(&normal).unwrap(), normal);
+    }
+
+    #[test]
+    fn payment_id_is_kept_verbatim_or_refused() {
+        let kept = sanitize_tool_input(&json!({ "recipients": [{ "payment_id": "inv &amp; <7> é" }] })).unwrap();
+        assert_eq!(kept["recipients"][0]["payment_id"], "inv &amp; <7> é");
+        assert!(sanitize_tool_input(&json!({ "payment_id": "line\nbreak" })).is_err());
+        assert!(
+            sanitize_tool_input(&json!({ "payment_id": "e\u{301}" })).is_err(),
+            "not NFC"
+        );
+        // Other fields are still decoded
+        assert_eq!(sanitize_tool_input(&json!({ "memo": "&amp;" })).unwrap()["memo"], "&");
+    }
+
+    #[test]
+    fn encoded_block_hex_fields_get_their_own_limit() {
+        let large = "ab".repeat(64 * 1024);
+        for key in ENCODED_BLOCK_HEX_FIELDS {
+            assert!(sanitize_tool_input(&json!({ key: large })).is_ok());
+            let over = "a".repeat(MAX_ENCODED_BLOCK_HEX_LEN + 1);
+            assert!(sanitize_tool_input(&json!({ key: over })).is_err());
+        }
+        // Every other field keeps the general limit
+        assert!(sanitize_tool_input(&json!({ "memo": large })).is_err());
+    }
+
+    #[test]
     fn test_html_entity_sanitization() {
         let sanitizer = InputSanitizer::default();
 
-        let input = json!("AT&amp;T &lt;test&gt; &quot;quote&quot;");
+        let input = json!("AT&amp;T &lt;test&gt; &quot;quote&quot; &amp;lt;escaped&amp;gt;");
         let result = sanitizer.sanitize_input(&input).unwrap();
 
-        assert_eq!(result, json!("AT&T <test> \"quote\""));
+        assert_eq!(result, json!("AT&T <test> \"quote\" &lt;escaped&gt;"));
     }
 
     #[test]

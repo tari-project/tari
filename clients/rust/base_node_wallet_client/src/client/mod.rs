@@ -77,8 +77,8 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcResponse<T> {
     pub result: Option<T>,
-    pub error: Option<String>,
-    pub id: String,
+    pub error: Option<serde_json::Value>,
+    pub id: serde_json::Value,
 }
 
 impl<T> JsonRpcResponse<T> {

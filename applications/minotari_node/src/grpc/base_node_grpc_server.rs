@@ -140,6 +140,10 @@ const LIST_HEADERS_PAGE_SIZE: usize = 10;
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
 const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
+/// The maximum number of full blocks one GetBlockSize/GetBlockFees request loads into memory.
+const BLOCK_GROUP_MAX_BLOCKS: u64 = 1_000;
+/// The maximum number of blocks one GetSideChainUtxos request may scan.
+const GET_SIDE_CHAIN_UTXOS_MAX_BLOCKS: u64 = 1_000;
 
 const MINING_METHODS: &[GrpcMethod] = &[
     GrpcMethod::GetVersion,
@@ -524,21 +528,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (start_height, end_height) = get_heights(&request, handler.clone())
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
-        let num_requested = end_height.checked_sub(start_height).ok_or_else(|| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("Start height is more than end height"),
-            )
-        })?;
-        if num_requested > GET_DIFFICULTY_MAX_HEIGHTS {
-            return Err(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!(
-                    "Number of headers requested exceeds maximum. Expected less than {GET_DIFFICULTY_MAX_HEIGHTS} but \
-                     got {num_requested}"
-                )),
-            ));
-        }
+        let num_requested = check_range_len(start_height, end_height, GET_DIFFICULTY_MAX_HEIGHTS)
+            .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
         let (mut tx, rx) = mpsc::channel(cmp::min(
             usize::try_from(num_requested).map_err(|e| {
                 obscure_error_if_true(
@@ -2149,6 +2140,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             txn.body.inputs().len()
         );
 
+        let first_kernel_sig = txn.first_kernel_excess_sig().cloned();
         let mut handler = self.mempool_service.clone();
         let res = handler.submit_transaction(txn).await.map_err(|e| {
             error!(target: LOG_TARGET, "Error submitting:{e}");
@@ -2160,8 +2152,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredAlreadySpent |
-            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
-                result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
+            TxStorageResponse::NotStoredAlreadyMined => {
+                // Only this exact transaction being in the chain counts as mined; anything else is a double spend
+                let is_mined = match first_kernel_sig {
+                    Some(sig) => !self
+                        .node_service
+                        .clone()
+                        .get_kernel_by_excess_sig(sig)
+                        .await
+                        .map_err(|e| {
+                            error!(target: LOG_TARGET, "Error looking up the rejected transaction's kernel: {e}");
+                            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                        })?
+                        .is_empty(),
+                    None => false,
+                };
+                let result = if is_mined {
+                    tari_rpc::SubmitTransactionResult::AlreadyMined
+                } else {
+                    tari_rpc::SubmitTransactionResult::Rejected
+                };
+                tari_rpc::SubmitTransactionResponse { result: result.into() }
             },
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredOrphan |
@@ -2170,6 +2181,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Rejected.into(),
+            },
+            // Not a validation failure: it may be stored once the mempool changes
+            TxStorageResponse::NotStoredMempoolPolicy(_) => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::NotProcessableAtThisTime.into(),
             },
         };
 
@@ -2252,6 +2267,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredValidatorNodeSlotTaken |
+            TxStorageResponse::NotStoredMempoolPolicy(_) |
             TxStorageResponse::NotStoredTimeLocked |
             TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::NotStored.into(),
@@ -2593,21 +2609,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         let mut handler = self.node_service.clone();
-        let (start, end) = get_heights(&request, handler.clone()).await?;
+        let (start, end) = get_heights(&request, handler.clone())
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
 
-        let num_requested = end.saturating_sub(start);
-        if num_requested > BLOCK_TIMING_MAX_BLOCKS {
-            warn!(
-                target: LOG_TARGET,
-                "GetBlockTiming request for too many blocks. Requested: {num_requested}. Max: {BLOCK_TIMING_MAX_BLOCKS}."
-            );
-            return Err(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!(
-                    "Exceeded max blocks request limit of {BLOCK_TIMING_MAX_BLOCKS}"
-                )),
-            ));
-        }
+        check_range_len(start, end, BLOCK_TIMING_MAX_BLOCKS).map_err(|e| {
+            warn!(target: LOG_TARGET, "GetBlockTiming request rejected: {}", e.message());
+            obscure_error_if_true(report_error_flag, e)
+        })?;
 
         let headers = handler.get_headers(start..=end).await.map_err(|err| {
             obscure_error_if_true(
@@ -3144,125 +3153,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn get_side_chain_utxos(
         &self,
         request: Request<tari_rpc::GetSideChainUtxosRequest>,
     ) -> Result<Response<Self::GetSideChainUtxosStream>, Status> {
         self.check_method_enabled(GrpcMethod::GetSideChainUtxos)?;
-        let request = request.into_inner();
-        let report_error_flag = self.report_error_flag();
-        trace!(target: LOG_TARGET, "Incoming GRPC request for GetSideChainUtxos");
-
-        let (mut tx, rx) = mpsc::channel(10);
-
-        let start_hash = Some(request.start_hash)
-            .filter(|x| !x.is_empty())
-            .map(FixedHash::try_from)
-            .transpose()
-            .map_err(|e| Status::invalid_argument(format!("Invalid start_hash '{e}'")))?;
-
-        let mut node_service = self.node_service.clone();
-
-        let start_header = match start_hash {
-            Some(hash) => node_service
-                .get_header_by_hash(hash)
-                .await
-                .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?
-                .ok_or_else(|| Status::not_found("Start hash not found"))?,
-            None => node_service
-                .get_header(0)
-                .await
-                .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?
-                .ok_or_else(|| Status::unavailable("Genesis block not available"))?,
-        };
-
-        if request.count == 0 {
-            return Ok(Response::new(rx));
-        }
-
-        let start_height = start_header.height();
-        let end_height = start_height
-            .checked_add(request.count.saturating_sub(1))
-            .ok_or_else(|| Status::invalid_argument("Request start height + count overflows u64"))?;
-
-        task::spawn(async move {
-            let mut current_header = start_header;
-
-            for height in start_height..=end_height {
-                let header_hash = *current_header.hash();
-                let utxos = match node_service.fetch_unspent_utxos_in_block(header_hash).await {
-                    Ok(utxos) => utxos,
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "Base node service error: {e}");
-                        return;
-                    },
-                };
-
-                let next_header = match node_service.get_header(height.saturating_add(1)).await {
-                    Ok(h) => h,
-                    Err(e) => {
-                        let _ignore = tx.send(Err(obscure_error_if_true(
-                            report_error_flag,
-                            Status::internal(e.to_string()),
-                        )));
-                        return;
-                    },
-                };
-
-                let sidechain_outputs = utxos
-                    .into_iter()
-                    .filter(|u| u.features.output_type.is_sidechain_type() || u.is_burned_to_sidechain())
-                    .map(|o| grpc_output_with_payref(o, Some(header_hash)))
-                    .collect::<Result<Vec<_>, _>>();
-
-                match sidechain_outputs {
-                    Ok(outputs) => {
-                        let resp = tari_rpc::GetSideChainUtxosResponse {
-                            block_info: Some(tari_rpc::BlockInfo {
-                                height: current_header.height(),
-                                hash: header_hash.to_vec(),
-                                next_block_hash: next_header.as_ref().map(|h| h.hash().to_vec()).unwrap_or_default(),
-                            }),
-                            outputs,
-                        };
-
-                        if tx.send(Ok(resp)).await.is_err() {
-                            trace!(
-                                target: LOG_TARGET,
-                                "[get_side_chain_utxos] Client has disconnected before stream completed"
-                            );
-                            return;
-                        }
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending converting sidechain output for GRPC: {e}"
-                        );
-                        let _ignore = tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal(format!("Error converting sidechain output: {e}")),
-                            )))
-                            .await;
-                        return;
-                    },
-                };
-
-                match next_header {
-                    Some(header) => {
-                        current_header = header;
-                    },
-                    None => break,
-                }
-            }
-        });
-        trace!(
-            target: LOG_TARGET,
-            "Sending GetSideChainUtxos response stream to client"
-        );
-        Ok(Response::new(rx))
+        get_side_chain_utxos(self.node_service.clone(), request, self.report_error_flag()).await
     }
 
     #[allow(clippy::too_many_lines)]
@@ -3506,6 +3402,20 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 }
 
+/// Returns the number of blocks in `start..=end`, rejecting an inverted range or one longer than `max`.
+fn check_range_len(start: u64, end: u64, max: u64) -> Result<u64, Status> {
+    let count = end
+        .checked_sub(start)
+        .ok_or_else(|| Status::invalid_argument("Start height is more than end height"))?
+        .saturating_add(1);
+    if count > max {
+        return Err(Status::invalid_argument(format!(
+            "Requested {count} blocks, maximum is {max}"
+        )));
+    }
+    Ok(count)
+}
+
 enum BlockGroupType {
     BlockFees,
     BlockSize,
@@ -3534,16 +3444,18 @@ async fn get_block_group(
         .await
         .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
 
-    let blocks = match handler.get_blocks(start..=end, false).await {
-        Err(err) => {
-            warn!(
-                target: LOG_TARGET,
-                "Error communicating with local base node: {err:?}"
-            );
-            vec![]
-        },
-        Ok(data) => data,
-    };
+    check_range_len(start, end, BLOCK_GROUP_MAX_BLOCKS).map_err(|e| obscure_error_if_true(report_error_flag, e))?;
+
+    let blocks = handler.get_blocks(start..=end, false).await.map_err(|err| {
+        warn!(
+            target: LOG_TARGET,
+            "Error communicating with local base node: {err:?}"
+        );
+        obscure_error_if_true(
+            report_error_flag,
+            Status::internal(format!("Could not fetch blocks: {err}")),
+        )
+    })?;
     let extractor = match block_group_type {
         BlockGroupType::BlockFees => block_fees,
         BlockGroupType::BlockSize => block_size,
@@ -3574,6 +3486,185 @@ async fn get_block_group(
         value,
         calc_type: calc_type_response,
     }))
+}
+
+#[allow(clippy::too_many_lines)]
+async fn get_side_chain_utxos(
+    mut node_service: LocalNodeCommsInterface,
+    request: Request<tari_rpc::GetSideChainUtxosRequest>,
+    report_error_flag: bool,
+) -> Result<Response<mpsc::Receiver<Result<tari_rpc::GetSideChainUtxosResponse, Status>>>, Status> {
+    let request = request.into_inner();
+    trace!(target: LOG_TARGET, "Incoming GRPC request for GetSideChainUtxos");
+
+    if request.count > GET_SIDE_CHAIN_UTXOS_MAX_BLOCKS {
+        return Err(obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!(
+                "Requested {} blocks, maximum is {GET_SIDE_CHAIN_UTXOS_MAX_BLOCKS}",
+                request.count
+            )),
+        ));
+    }
+
+    let start_hash = Some(request.start_hash)
+        .filter(|x| !x.is_empty())
+        .map(FixedHash::try_from)
+        .transpose()
+        .map_err(|e| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Invalid start_hash '{e}'")),
+            )
+        })?;
+
+    let start_header = match start_hash {
+        Some(hash) => node_service
+            .get_header_by_hash(hash)
+            .await
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?
+            .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::not_found("Start hash not found")))?,
+        None => node_service
+            .get_header(0)
+            .await
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?
+            .ok_or_else(|| {
+                obscure_error_if_true(report_error_flag, Status::unavailable("Genesis block not available"))
+            })?,
+    };
+
+    let (mut tx, rx) = mpsc::channel(10);
+
+    if request.count == 0 {
+        return Ok(Response::new(rx));
+    }
+
+    let start_height = start_header.height();
+    let end_height = start_height
+        .checked_add(request.count.saturating_sub(1))
+        .ok_or_else(|| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Request start height + count overflows u64"),
+            )
+        })?;
+
+    task::spawn(async move {
+        let mut current_hash = *start_header.hash();
+
+        for height in start_height..=end_height {
+            if tx.is_closed() {
+                trace!(
+                    target: LOG_TARGET,
+                    "[get_side_chain_utxos] Client has disconnected before stream completed"
+                );
+                return;
+            }
+
+            let next_height = height.saturating_add(1);
+            let (utxos, header_at_height, second_header, best_block_height) = match node_service
+                .fetch_outputs_in_block_and_header_pair(current_hash, height, next_height)
+                .await
+            {
+                Ok(res) => res,
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Base node service error: {e}");
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(e.to_string()),
+                        )))
+                        .await;
+                    return;
+                },
+            };
+
+            let is_on_main_chain = header_at_height
+                .as_ref()
+                .is_some_and(|header| header.height == height && header.hash() == current_hash);
+            // Headers stored ahead of best_block_height during header sync do not have their bodies stored yet;
+            // treat any height above best_block_height as not yet available so we never stream an empty block or
+            // advertise an unstored next_block_hash.
+            if is_on_main_chain && height > best_block_height {
+                break;
+            }
+            let next_header = if height < u64::MAX && next_height <= best_block_height {
+                second_header
+            } else {
+                None
+            };
+            let next_links_to_current = next_header
+                .as_ref()
+                .is_none_or(|header| header.prev_hash == current_hash);
+
+            if !is_on_main_chain || !next_links_to_current {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block #{height} ({current_hash}) is not on the main chain during GetSideChainUtxos"
+                );
+                let _ignore = tx
+                    .send(Err(obscure_error_if_true(
+                        report_error_flag,
+                        Status::aborted(format!("Block #{height} ({current_hash}) is not on the main chain")),
+                    )))
+                    .await;
+                return;
+            }
+
+            let sidechain_outputs = utxos
+                .into_iter()
+                .filter(|u| u.features.output_type.is_sidechain_type() || u.is_burned_to_sidechain())
+                .map(|o| grpc_output_with_payref(o, Some(current_hash)))
+                .collect::<Result<Vec<_>, _>>();
+
+            let next_hash = next_header.map(|header| header.hash());
+            match sidechain_outputs {
+                Ok(outputs) => {
+                    let resp = tari_rpc::GetSideChainUtxosResponse {
+                        block_info: Some(tari_rpc::BlockInfo {
+                            height,
+                            hash: current_hash.to_vec(),
+                            next_block_hash: next_hash.map(|h| h.to_vec()).unwrap_or_default(),
+                        }),
+                        outputs,
+                    };
+
+                    if tx.send(Ok(resp)).await.is_err() {
+                        trace!(
+                            target: LOG_TARGET,
+                            "[get_side_chain_utxos] Client has disconnected before stream completed"
+                        );
+                        return;
+                    }
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error converting sidechain output for GRPC: {e}"
+                    );
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Error converting sidechain output: {e}")),
+                        )))
+                        .await;
+                    return;
+                },
+            }
+
+            match next_hash {
+                Some(hash) => {
+                    current_hash = hash;
+                },
+                None => break,
+            }
+        }
+    });
+    trace!(
+        target: LOG_TARGET,
+        "Sending GetSideChainUtxos response stream to client"
+    );
+    Ok(Response::new(rx))
 }
 
 #[cfg(test)]
@@ -3982,6 +4073,155 @@ mod test {
         assert!(value_at_height_response(&values, 6).is_none());
     }
 
+    /// A mock base node at `tip` that records every block range it is asked for and answers with one empty block per
+    /// height, or with an error when `fail_fetch` is set.
+    fn mock_node_service(
+        tip: u64,
+        fail_fetch: bool,
+    ) -> (
+        LocalNodeCommsInterface,
+        std::sync::Arc<std::sync::Mutex<Vec<std::ops::RangeInclusive<u64>>>>,
+    ) {
+        use futures::StreamExt;
+        use tari_common_types::chain_metadata::ChainMetadata;
+        use tari_core::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
+        use tari_node_components::blocks::{BlockHeaderAccumulatedData, HistoricalBlock};
+        use tari_service_framework::reply_channel;
+
+        let (request_tx, mut request_rx) = reply_channel::unbounded();
+        let (block_tx, _block_rx) = reply_channel::unbounded();
+        let (block_event_tx, _block_event_rx) = tokio::sync::broadcast::channel(1);
+        let requested = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = requested.clone();
+        task::spawn(async move {
+            while let Some(request) = request_rx.next().await {
+                let (request, reply) = request.split();
+                let response = match request {
+                    NodeCommsRequest::FetchMatchingBlocks { range, .. } => {
+                        recorded.lock().unwrap().push(range.clone());
+                        if fail_fetch {
+                            Err(CommsInterfaceError::UnexpectedApiResponse)
+                        } else {
+                            let blocks = range
+                                .map(|height| {
+                                    let mut header = BlockHeader::new(0);
+                                    header.height = height;
+                                    HistoricalBlock::new(
+                                        Block::new(header, AggregateBody::empty()),
+                                        1,
+                                        BlockHeaderAccumulatedData::genesis(FixedHash::zero(), PrivateKey::default()),
+                                    )
+                                })
+                                .collect();
+                            Ok(NodeCommsResponse::HistoricalBlocks(blocks))
+                        }
+                    },
+                    NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
+                        ChainMetadata::new(tip, FixedHash::zero(), 0, 0, 1.into(), 0).unwrap(),
+                    )),
+                    _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+                };
+                let _result = reply.send(response);
+            }
+        });
+        (
+            LocalNodeCommsInterface::new(request_tx, block_tx, block_event_tx),
+            requested,
+        )
+    }
+
+    fn block_group_request(from_tip: u64, start_height: u64, end_height: u64) -> Request<tari_rpc::BlockGroupRequest> {
+        Request::new(tari_rpc::BlockGroupRequest {
+            from_tip,
+            start_height,
+            end_height,
+            calc_type: CalcType::Mean.into(),
+        })
+    }
+
+    #[tokio::test]
+    async fn block_group_rejects_a_range_over_the_limit_without_fetching() {
+        let (handler, requested) = mock_node_service(2_000, false);
+        let status = get_block_group(
+            handler,
+            block_group_request(0, 0, 1_000),
+            BlockGroupType::BlockSize,
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(requested.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn block_group_accepts_a_range_at_the_limit() {
+        let (handler, requested) = mock_node_service(2_000, false);
+        get_block_group(handler, block_group_request(0, 0, 999), BlockGroupType::BlockFees, true)
+            .await
+            .unwrap();
+        assert_eq!(*requested.lock().unwrap(), vec![0..=999]);
+    }
+
+    #[tokio::test]
+    async fn block_group_reports_a_fetch_error_as_internal() {
+        let (handler, _requested) = mock_node_service(2_000, true);
+        let status = get_block_group(handler, block_group_request(0, 0, 10), BlockGroupType::BlockSize, true)
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::Internal);
+    }
+
+    #[tokio::test]
+    async fn block_group_limit_applies_to_the_from_tip_range() {
+        let (handler, requested) = mock_node_service(2_000_000, false);
+        let status = get_block_group(
+            handler,
+            block_group_request(5_000, 0, 0),
+            BlockGroupType::BlockSize,
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(requested.lock().unwrap().is_empty());
+
+        let (handler, requested) = mock_node_service(2_000_000, false);
+        get_block_group(handler, block_group_request(999, 0, 0), BlockGroupType::BlockSize, true)
+            .await
+            .unwrap();
+        assert_eq!(*requested.lock().unwrap(), vec![1_999_001..=2_000_000]);
+    }
+
+    #[test]
+    fn check_range_len_counts_both_ends() {
+        let max = BLOCK_TIMING_MAX_BLOCKS;
+        assert_eq!(
+            check_range_len(1, 0, max).unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(check_range_len(5, 5, max).unwrap(), 1);
+        assert_eq!(check_range_len(0, max - 1, max).unwrap(), max);
+        assert_eq!(
+            check_range_len(0, max, max).unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(check_range_len(u64::MAX - (max - 1), u64::MAX, max).unwrap(), max);
+        assert_eq!(
+            check_range_len(0, u64::MAX, max).unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(
+            check_range_len(0, GET_DIFFICULTY_MAX_HEIGHTS, GET_DIFFICULTY_MAX_HEIGHTS)
+                .unwrap_err()
+                .message(),
+            format!(
+                "Requested {} blocks, maximum is {GET_DIFFICULTY_MAX_HEIGHTS}",
+                GET_DIFFICULTY_MAX_HEIGHTS + 1
+            )
+        );
+    }
+
     #[test]
     fn enabled_grpc_methods_logs_mining_methods_when_mining_enabled_with_default_allow_list() {
         let mut config = BaseNodeConfig::default();
@@ -4068,5 +4308,556 @@ mod test {
             lines.get(2).unwrap(),
             &format!("gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}")
         );
+    }
+
+    #[derive(Clone)]
+    struct MockSideChainBlock {
+        header: BlockHeader,
+        outputs: Vec<tari_transaction_components::transaction_components::TransactionOutput>,
+    }
+
+    fn build_mock_chain(heights: usize) -> Vec<MockSideChainBlock> {
+        let genesis = mainnet_genesis();
+        let regular_output = genesis.body.outputs().first().unwrap().clone();
+        let mut sidechain_output = regular_output.clone();
+        sidechain_output.features.output_type =
+            tari_transaction_components::transaction_components::OutputType::ValidatorNodeRegistration;
+        sidechain_output.features.sidechain_feature = Some(validator_node_exit_feature());
+
+        let mut chain = Vec::with_capacity(heights);
+        let mut prev_header: Option<BlockHeader> = None;
+        for height in 0..heights {
+            let mut header = match prev_header {
+                None => {
+                    let mut h = BlockHeader::new(0);
+                    h.height = 0;
+                    h
+                },
+                Some(ref prev) => BlockHeader::from_previous(prev),
+            };
+            header.nonce = u64::try_from(height).unwrap();
+            let outputs = if height == 1 {
+                vec![regular_output.clone(), sidechain_output.clone()]
+            } else {
+                vec![regular_output.clone()]
+            };
+            prev_header = Some(header.clone());
+            chain.push(MockSideChainBlock { header, outputs });
+        }
+        chain
+    }
+
+    struct MockPauseHook {
+        pause_at_height: u64,
+        paused_tx: tokio::sync::oneshot::Sender<()>,
+        resume_rx: tokio::sync::oneshot::Receiver<()>,
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn mock_side_chain_node_service(
+        chain: std::sync::Arc<std::sync::Mutex<Vec<MockSideChainBlock>>>,
+        fail_at_height: Option<u64>,
+    ) -> (LocalNodeCommsInterface, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        mock_side_chain_node_service_with_options(chain, fail_at_height, None, None)
+    }
+
+    #[allow(clippy::type_complexity, clippy::too_many_lines)]
+    fn mock_side_chain_node_service_with_options(
+        chain: std::sync::Arc<std::sync::Mutex<Vec<MockSideChainBlock>>>,
+        fail_at_height: Option<u64>,
+        mut pause_hook: Option<MockPauseHook>,
+        best_block_height_override: Option<u64>,
+    ) -> (LocalNodeCommsInterface, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use futures::StreamExt;
+        use tari_core::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
+        use tari_node_components::blocks::{BlockHeaderAccumulatedData, ChainHeader};
+        use tari_service_framework::reply_channel;
+
+        let (request_tx, mut request_rx) = reply_channel::unbounded();
+        let (block_tx, _block_rx) = reply_channel::unbounded();
+        let (block_event_tx, _block_event_rx) = tokio::sync::broadcast::channel(1);
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = calls.clone();
+
+        let to_chain_header = |header: BlockHeader| {
+            let mut acc = BlockHeaderAccumulatedData::genesis(FixedHash::zero(), PrivateKey::default());
+            acc.hash = header.hash();
+            ChainHeader::try_construct(header, acc).unwrap()
+        };
+
+        task::spawn(async move {
+            while let Some(request) = request_rx.next().await {
+                let (request, reply) = request.split();
+                let response = match request {
+                    NodeCommsRequest::GetHeaderByHash(hash) => {
+                        recorded.lock().unwrap().push("GetHeaderByHash".to_string());
+                        let guard = chain.lock().unwrap();
+                        let found = guard
+                            .iter()
+                            .find(|b| b.header.hash() == hash)
+                            .map(|b| to_chain_header(b.header.clone()));
+                        Ok(NodeCommsResponse::BlockHeader(found))
+                    },
+                    NodeCommsRequest::FetchHeaders(range) => {
+                        recorded.lock().unwrap().push(format!("FetchHeaders({range:?})"));
+                        let guard = chain.lock().unwrap();
+                        let headers = range
+                            .filter_map(|h| guard.iter().find(|b| b.header.height == h))
+                            .map(|b| to_chain_header(b.header.clone()))
+                            .collect();
+                        Ok(NodeCommsResponse::BlockHeaders(headers))
+                    },
+                    NodeCommsRequest::FetchOutputsInBlockAndHeaderPair {
+                        block_hash,
+                        first_height,
+                        second_height,
+                    } => {
+                        if let Some(hook) = pause_hook.take_if(|hook| hook.pause_at_height == first_height) {
+                            let _sent = hook.paused_tx.send(());
+                            let _resumed = hook.resume_rx.await;
+                        }
+                        recorded
+                            .lock()
+                            .unwrap()
+                            .push(format!("FetchPair({first_height},{second_height})"));
+                        if fail_at_height == Some(first_height) {
+                            Err(CommsInterfaceError::UnexpectedApiResponse)
+                        } else {
+                            let guard = chain.lock().unwrap();
+                            let best_block_height = best_block_height_override
+                                .unwrap_or_else(|| guard.last().map(|b| b.header.height).unwrap_or(0));
+                            let outputs = guard
+                                .iter()
+                                .find(|b| b.header.hash() == block_hash && b.header.height <= best_block_height)
+                                .map(|b| b.outputs.clone())
+                                .unwrap_or_default();
+                            let first_header = guard
+                                .iter()
+                                .find(|b| b.header.height == first_height)
+                                .map(|b| b.header.clone());
+                            let second_header = guard
+                                .iter()
+                                .find(|b| b.header.height == second_height)
+                                .map(|b| b.header.clone());
+                            Ok(NodeCommsResponse::OutputsInBlockAndHeaderPair {
+                                outputs,
+                                first_header: Box::new(first_header),
+                                second_header: Box::new(second_header),
+                                best_block_height,
+                            })
+                        }
+                    },
+                    _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+                };
+                let _result = reply.send(response);
+            }
+        });
+
+        (
+            LocalNodeCommsInterface::new(request_tx, block_tx, block_event_tx),
+            calls,
+        )
+    }
+
+    #[tokio::test]
+    async fn side_chain_utxos_rejects_a_count_over_the_limit_without_fetching() {
+        let chain = std::sync::Arc::new(std::sync::Mutex::new(build_mock_chain(4)));
+        let (handler, calls) = mock_side_chain_node_service(chain.clone(), None);
+
+        let over_limit = GET_SIDE_CHAIN_UTXOS_MAX_BLOCKS.saturating_add(1);
+        let status = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: over_limit,
+            }),
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert_eq!(
+            status.message(),
+            format!("Requested {over_limit} blocks, maximum is {GET_SIDE_CHAIN_UTXOS_MAX_BLOCKS}")
+        );
+        assert!(calls.lock().unwrap().is_empty());
+
+        let (handler, calls) = mock_side_chain_node_service(chain, None);
+        let obscured = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: u64::MAX,
+            }),
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(obscured.code(), tonic::Code::InvalidArgument);
+        assert_eq!(obscured.message(), "Error has occurred. Details are obscured.");
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn side_chain_utxos_validates_start_hash_and_zero_count() {
+        use futures::StreamExt;
+
+        let chain = std::sync::Arc::new(std::sync::Mutex::new(build_mock_chain(3)));
+        let (handler, calls) = mock_side_chain_node_service(chain.clone(), None);
+
+        // Malformed start_hash fails before touching node_service
+        let bad_hash = get_side_chain_utxos(
+            handler.clone(),
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![1, 2, 3],
+                count: 5,
+            }),
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(bad_hash.code(), tonic::Code::InvalidArgument);
+        assert!(calls.lock().unwrap().is_empty());
+
+        // Unknown start_hash returns NotFound
+        let missing = get_side_chain_utxos(
+            handler.clone(),
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![0xAA; 32],
+                count: 0,
+            }),
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(missing.code(), tonic::Code::NotFound);
+
+        // count == 0 returns an empty stream without scanning block outputs
+        calls.lock().unwrap().clear();
+        let mut rx = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: 0,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+        assert!(rx.next().await.is_none());
+        assert_eq!(*calls.lock().unwrap(), vec!["FetchHeaders(0..=0)"]);
+
+        // Overflowing start_height + count - 1 is rejected with InvalidArgument
+        let mut high_header = BlockHeader::new(0);
+        high_header.height = u64::MAX;
+        let high_hash = high_header.hash();
+        let high_chain = std::sync::Arc::new(std::sync::Mutex::new(vec![MockSideChainBlock {
+            header: high_header,
+            outputs: vec![],
+        }]));
+        let (high_handler, _) = mock_side_chain_node_service(high_chain, None);
+        let overflow = get_side_chain_utxos(
+            high_handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: high_hash.to_vec(),
+                count: 2,
+            }),
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(overflow.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn side_chain_utxos_accepts_limit_filters_outputs_and_populates_block_info() {
+        use futures::StreamExt;
+
+        let blocks = build_mock_chain(4);
+        let hashes: Vec<FixedHash> = blocks.iter().map(|b| b.header.hash()).collect();
+        let chain = std::sync::Arc::new(std::sync::Mutex::new(blocks));
+        let (handler, _) = mock_side_chain_node_service(chain, None);
+
+        let rx = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: GET_SIDE_CHAIN_UTXOS_MAX_BLOCKS,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        let items: Vec<_> = rx.map(|r| r.unwrap()).collect().await;
+        assert_eq!(items.len(), 4);
+
+        for (idx, item) in items.iter().enumerate() {
+            let info = item.block_info.as_ref().unwrap();
+            assert_eq!(info.height, u64::try_from(idx).unwrap());
+            assert_eq!(info.hash, hashes.get(idx).unwrap().to_vec());
+            let expected_next = hashes
+                .get(idx.saturating_add(1))
+                .map(|h| h.to_vec())
+                .unwrap_or_default();
+            assert_eq!(info.next_block_hash, expected_next);
+            if idx == 1 {
+                assert_eq!(item.outputs.len(), 1);
+            } else {
+                assert!(item.outputs.is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn side_chain_utxos_stops_at_best_block_when_headers_are_stored_ahead_of_bodies() {
+        use futures::StreamExt;
+
+        // 4 headers stored (heights 0..=3), but best_block_height is 1 (heights 2..=3 have headers only, no bodies).
+        let blocks = build_mock_chain(4);
+        let hashes: Vec<FixedHash> = blocks.iter().map(|b| b.header.hash()).collect();
+        let header2_hash = *hashes.get(2).unwrap();
+        let chain = std::sync::Arc::new(std::sync::Mutex::new(blocks));
+        let (handler, _) = mock_side_chain_node_service_with_options(chain.clone(), None, None, Some(1));
+
+        let rx = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: 4,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        let items: Vec<_> = rx.map(|r| r.unwrap()).collect().await;
+        assert_eq!(items.len(), 2);
+        let b0 = items.first().unwrap().block_info.as_ref().unwrap();
+        assert_eq!(b0.height, 0);
+        assert_eq!(b0.next_block_hash, hashes.get(1).unwrap().to_vec());
+
+        // At best_block_height (1), next_block_hash must be empty rather than pointing to header-only height 2
+        let b1 = items.get(1).unwrap().block_info.as_ref().unwrap();
+        assert_eq!(b1.height, 1);
+        assert!(b1.next_block_hash.is_empty());
+
+        // Starting directly at a header-only height above best_block_height ends the stream cleanly with 0 items
+        let (handler_above, _) = mock_side_chain_node_service_with_options(chain, None, None, Some(1));
+        let rx_above = get_side_chain_utxos(
+            handler_above,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: header2_hash.to_vec(),
+                count: 2,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+        let items_above: Vec<_> = rx_above.collect().await;
+        assert!(items_above.is_empty());
+    }
+
+    #[tokio::test]
+    async fn side_chain_utxos_propagates_storage_error_on_stream() {
+        use futures::StreamExt;
+
+        let chain = std::sync::Arc::new(std::sync::Mutex::new(build_mock_chain(3)));
+        let (handler, _) = mock_side_chain_node_service(chain, Some(1));
+
+        let mut rx = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: 3,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        let first = rx.next().await.unwrap().unwrap();
+        assert_eq!(first.block_info.unwrap().height, 0);
+
+        let second = rx.next().await.unwrap().unwrap_err();
+        assert_eq!(second.code(), tonic::Code::Internal);
+        assert!(rx.next().await.is_none());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn side_chain_utxos_aborts_on_mid_stream_reorg() {
+        use futures::StreamExt;
+
+        let mut blocks = build_mock_chain(3);
+        let orphaned_b1_hash = blocks.get(1).unwrap().header.hash();
+        let mut fork_b1 = BlockHeader::from_previous(&blocks.first().unwrap().header);
+        fork_b1.nonce = 999;
+
+        // Case 1: broken parent linkage between height #1 (`fork_b1`) and height #2 (still pointing at `orphaned_b1`)
+        let chain = std::sync::Arc::new(std::sync::Mutex::new(blocks.clone()));
+        let (handler, _) = mock_side_chain_node_service(chain.clone(), None);
+
+        blocks.get_mut(1).unwrap().header = fork_b1.clone();
+        assert_ne!(
+            blocks.get(2).unwrap().header.prev_hash,
+            blocks.get(1).unwrap().header.hash()
+        );
+        assert_eq!(blocks.get(2).unwrap().header.prev_hash, orphaned_b1_hash);
+        *chain.lock().unwrap() = blocks;
+
+        let mut rx = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: 3,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        let first = rx.next().await.unwrap().unwrap();
+        assert_eq!(first.block_info.unwrap().height, 0);
+
+        let aborted = rx.next().await.unwrap().unwrap_err();
+        assert_eq!(aborted.code(), tonic::Code::Aborted);
+        assert!(rx.next().await.is_none());
+
+        // Case 2: height #1 is replaced by `fork_b1` after `start_header` (`start_b1`) was resolved, before the stream
+        // task reads height #1 (`header_at_height.hash() != current_hash`).
+        let mut rewound_blocks = build_mock_chain(2);
+        let start_b1 = rewound_blocks.get(1).unwrap().clone();
+        let start_b1_hash = start_b1.header.hash();
+        let rewound_chain = std::sync::Arc::new(std::sync::Mutex::new(vec![rewound_blocks.remove(0), start_b1]));
+        let (handler2, _) = mock_side_chain_node_service(rewound_chain.clone(), None);
+
+        let mut rx2 = get_side_chain_utxos(
+            handler2,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: start_b1_hash.to_vec(),
+                count: 2,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        rewound_chain.lock().unwrap().get_mut(1).unwrap().header = fork_b1;
+
+        let err = rx2.next().await.unwrap().unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Aborted);
+        assert!(rx2.next().await.is_none());
+
+        // Case 3: true between-block reorg — stream emits block #0 from a valid 3-block chain, pauses before fetching
+        // height #1, then heights #1..=#2 are replaced with a valid competing fork carrying sidechain outputs.
+        // Resuming must abort immediately without emitting an empty orphaned block #1 or competing-fork outputs.
+        let initial_blocks = build_mock_chain(3);
+        let b0 = initial_blocks.first().unwrap().clone();
+        let original_b0_hash = b0.header.hash();
+        let original_b1_hash = initial_blocks.get(1).unwrap().header.hash();
+        let fork_sidechain_outputs = initial_blocks.get(1).unwrap().outputs.clone();
+
+        let mut competing_b1_header = BlockHeader::from_previous(&b0.header);
+        competing_b1_header.nonce = 1_001;
+        let mut competing_b2_header = BlockHeader::from_previous(&competing_b1_header);
+        competing_b2_header.nonce = 1_002;
+        assert_eq!(competing_b1_header.prev_hash, original_b0_hash);
+        assert_eq!(competing_b2_header.prev_hash, competing_b1_header.hash());
+        assert_ne!(competing_b1_header.hash(), original_b1_hash);
+
+        let (paused_tx, paused_rx) = tokio::sync::oneshot::channel();
+        let (resume_tx, resume_rx) = tokio::sync::oneshot::channel();
+        let live_chain = std::sync::Arc::new(std::sync::Mutex::new(initial_blocks));
+        let (handler3, calls3) = mock_side_chain_node_service_with_options(
+            live_chain.clone(),
+            None,
+            Some(MockPauseHook {
+                pause_at_height: 1,
+                paused_tx,
+                resume_rx,
+            }),
+            None,
+        );
+
+        let mut rx3 = get_side_chain_utxos(
+            handler3,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: 3,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        let streamed_b0 = rx3.next().await.unwrap().unwrap();
+        let streamed_b0_info = streamed_b0.block_info.unwrap();
+        assert_eq!(streamed_b0_info.height, 0);
+        assert_eq!(streamed_b0_info.hash, original_b0_hash.to_vec());
+        assert_eq!(streamed_b0_info.next_block_hash, original_b1_hash.to_vec());
+
+        paused_rx.await.unwrap();
+
+        *live_chain.lock().unwrap() = vec![
+            b0,
+            MockSideChainBlock {
+                header: competing_b1_header,
+                outputs: fork_sidechain_outputs.clone(),
+            },
+            MockSideChainBlock {
+                header: competing_b2_header,
+                outputs: fork_sidechain_outputs,
+            },
+        ];
+        let _resumed = resume_tx.send(());
+
+        let mid_stream_err = rx3.next().await.unwrap().unwrap_err();
+        assert_eq!(mid_stream_err.code(), tonic::Code::Aborted);
+        assert!(rx3.next().await.is_none());
+        assert!(!calls3.lock().unwrap().iter().any(|c| c == "FetchPair(2,3)"));
+    }
+
+    #[tokio::test]
+    async fn side_chain_utxos_stops_fetching_after_client_disconnects() {
+        use futures::StreamExt;
+
+        let chain = std::sync::Arc::new(std::sync::Mutex::new(build_mock_chain(50)));
+        let (handler, calls) = mock_side_chain_node_service(chain, None);
+
+        let mut rx = get_side_chain_utxos(
+            handler,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: 50,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        let first = rx.next().await.unwrap().unwrap();
+        assert_eq!(first.block_info.unwrap().height, 0);
+        drop(rx);
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Bounded mpsc(10) buffers at most 11 items plus the initial header lookup, never scanning all 50 blocks.
+        let total_pair_fetches = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("FetchPair("))
+            .count();
+        assert!(total_pair_fetches < 20, "expected early stop, got {total_pair_fetches}");
     }
 }

@@ -542,7 +542,7 @@ async fn get_peers(
         let new_peer_candidate: UnvalidatedPeerInfo = match peer_info_proto.clone().try_into() {
             Ok(p) => p,
             Err(e) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data received, skipping: {}",
                     seed_peer_node_id_str,
@@ -639,7 +639,7 @@ async fn get_peers(
                 }
             },
             Err(e) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data for {} received from seed peer '{}': {}",
                     seed_peer_node_id_str,

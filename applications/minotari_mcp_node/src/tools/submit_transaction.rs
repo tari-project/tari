@@ -23,21 +23,24 @@
 //! Submit transaction MCP tool
 
 use async_trait::async_trait;
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
-use minotari_node_grpc_client::{
-    BaseNodeGrpcClient,
-    grpc::{SubmitTransactionRequest, Transaction},
+use minotari_mcp_common::{
+    MAX_ENCODED_BLOCK_HEX_LEN,
+    McpError,
+    McpResult,
+    McpTool,
+    get_required_string_param,
+    node_rpc,
 };
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Tool for submitting transactions to the mempool
 pub struct SubmitTransactionTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl SubmitTransactionTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -49,8 +52,8 @@ impl McpTool for SubmitTransactionTool {
     }
 
     fn description(&self) -> &str {
-        "Submit a pre-signed transaction to the Tari mempool for inclusion in the blockchain. This tool accepts a \
-         serialized transaction in hexadecimal format and broadcasts it to the network. The transaction must be \
+        "Submit a pre-signed transaction to the Tari mempool for inclusion in the blockchain. This tool accepts the \
+         hex of a protobuf-encoded tari.rpc.Transaction and broadcasts it to the network. The transaction must be \
          properly formatted, signed, and have valid inputs. Once submitted, the transaction will be validated by nodes \
          and miners for inclusion in the next block. Use this for broadcasting transactions created offline or by \
          other applications."
@@ -66,21 +69,24 @@ impl McpTool for SubmitTransactionTool {
             "properties": {
                 "transaction_hex": {
                     "type": "string",
-                    "description": "Complete transaction in hexadecimal format (serialized binary transaction). Must be a valid hex string containing a fully formed, signed Tari transaction. Example: '01a2b3c4d5e6f7...'. Minimum length varies based on transaction complexity, typically 200+ characters for simple transactions.",
+                    "description": "Hex of the protobuf-encoded tari.rpc.Transaction to submit (fully formed and signed).",
                     "pattern": "^[0-9a-fA-F]+$",
-                    "minLength": 100
-                },
-                "dry_run": {
-                    "type": "boolean",
-                    "description": "If true, validate the transaction without actually submitting it to the mempool. Useful for testing transaction validity before broadcast.",
-                    "default": false
+                    "minLength": 100,
+                    "maxLength": MAX_ENCODED_BLOCK_HEX_LEN
                 }
             },
-            "required": ["transaction_hex"]
+            "required": ["transaction_hex"],
+            "additionalProperties": false
         })
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
+        if params
+            .as_object()
+            .is_some_and(|o| o.keys().any(|k| k != "transaction_hex"))
+        {
+            return Err(McpError::invalid_request("Only transaction_hex is accepted"));
+        }
         let tx_hex = get_required_string_param(params, "transaction_hex")?;
 
         if tx_hex.is_empty() {
@@ -100,41 +106,6 @@ impl McpTool for SubmitTransactionTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let tx_hex = get_required_string_param(&params, "transaction_hex")?;
-
-        // For simplicity, we'll create a minimal transaction structure
-        // In a real implementation, you'd properly decode the hex into a Transaction
-        let _tx_bytes =
-            hex::decode(&tx_hex).map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {e}")))?;
-
-        // Create a minimal transaction - this is a placeholder
-        // In practice, you'd need to properly deserialize the transaction from bytes
-        let transaction = Transaction {
-            offset: vec![],
-            body: None,
-            script_offset: vec![],
-        };
-
-        // Create submit request with transaction
-        let request = SubmitTransactionRequest {
-            transaction: Some(transaction),
-        };
-
-        // Submit transaction to mempool
-        let response = self
-            .grpc_client
-            .clone()
-            .submit_transaction(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit transaction: {e}")))?;
-
-        let response = response.into_inner();
-
-        // Return result
-        Ok(serde_json::json!({
-            "success": true,
-            "result": response.result,
-            "message": "Transaction submitted successfully to mempool"
-        }))
+        node_rpc::submit_transaction(self.grpc_client.clone(), &params).await
     }
 }

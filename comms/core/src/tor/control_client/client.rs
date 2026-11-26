@@ -20,10 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
+use std::{
+    borrow::Cow,
+    fmt,
+    fmt::Display,
+    fs,
+    io,
+    num::NonZeroU16,
+    path::{Path, PathBuf},
+};
 
 use log::*;
 use serde::{Deserialize, Serialize};
+use tari_utilities::hex::Hex;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc},
@@ -81,10 +90,6 @@ impl TorControlPortClient {
         !self.cmd_tx.is_closed()
     }
 
-    pub(in crate::tor) fn event_sender(&self) -> &broadcast::Sender<TorControlEvent> {
-        &self.event_tx
-    }
-
     pub fn get_event_stream(&self) -> BroadcastStream<TorControlEvent> {
         BroadcastStream::new(self.event_tx.subscribe())
     }
@@ -100,6 +105,10 @@ impl TorControlPortClient {
                     .await?;
             },
             Authentication::Cookie(cookie) => {
+                self.send_line(format!("AUTHENTICATE {cookie}")).await?;
+            },
+            Authentication::CookieFile(path) => {
+                let cookie = read_cookie_file_hex(path)?;
                 self.send_line(format!("AUTHENTICATE {cookie}")).await?;
             },
         }
@@ -242,8 +251,19 @@ impl TorControlPortClient {
     }
 }
 
+pub(in crate::tor) fn read_cookie_file_hex(path: &Path) -> Result<String, io::Error> {
+    let data = fs::read(path)?;
+    if data.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "tor control auth cookie file is empty",
+        ));
+    }
+    Ok(data.to_hex())
+}
+
 /// Represents tor control port authentication mechanisms
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
     /// Attempt to configure authentication automatically. This only works for no auth, or cookie auth.
     /// The cookie must be readable by the current process user.
@@ -255,16 +275,33 @@ pub enum Authentication {
     HashedPassword(String),
     /// Cookie authentication. The contents of the cookie file encoded as hex
     Cookie(String),
+    /// File-backed cookie authentication. The cookie file is read and hex-encoded on each authentication attempt so
+    /// rotated cookies are picked up after a Tor restart.
+    CookieFile(PathBuf),
+}
+
+impl fmt::Debug for Authentication {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Authentication::{Auto, Cookie, CookieFile, HashedPassword, None};
+        match self {
+            Auto => write!(f, "Auto"),
+            None => write!(f, "None"),
+            HashedPassword(_) => write!(f, "HashedPassword(...)"),
+            Cookie(_) => write!(f, "Cookie(...)"),
+            CookieFile(path) => f.debug_tuple("CookieFile").field(path).finish(),
+        }
+    }
 }
 
 impl fmt::Display for Authentication {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Authentication::{Auto, Cookie, HashedPassword, None};
+        use Authentication::{Auto, Cookie, CookieFile, HashedPassword, None};
         match self {
             Auto => write!(f, "Auto"),
             None => write!(f, "None"),
             HashedPassword(_) => write!(f, "HashedPassword"),
             Cookie(_) => write!(f, "Cookie"),
+            CookieFile(_) => write!(f, "CookieFile"),
         }
     }
 }
@@ -328,6 +365,51 @@ mod test {
         let mut req = mock_state.take_requests().await;
         assert_eq!(req.len(), 1);
         assert_eq!(req.remove(0), "AUTHENTICATE NOTACTUALLYHEXENCODED");
+    }
+
+    #[tokio::test]
+    async fn authenticate_cookie_file_rereads_rotated_bytes() {
+        let (mut tor, mock_state) = setup_test().await;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cookie_path = temp_dir.path().join("control_auth_cookie");
+
+        fs::write(&cookie_path, [0x12, 0x34, 0xab, 0xcd]).unwrap();
+        let auth = Authentication::CookieFile(cookie_path.clone());
+
+        tor.authenticate(&auth).await.unwrap();
+        let mut req = mock_state.take_requests().await;
+        assert_eq!(req.len(), 1);
+        assert_eq!(req.remove(0), "AUTHENTICATE 1234abcd");
+
+        // Rotate the cookie file on disk and verify the same Authentication::CookieFile value re-reads it.
+        fs::write(&cookie_path, [0xfe, 0xdc, 0xba, 0x98]).unwrap();
+        tor.authenticate(&auth).await.unwrap();
+        let mut req = mock_state.take_requests().await;
+        assert_eq!(req.len(), 1);
+        assert_eq!(req.remove(0), "AUTHENTICATE fedcba98");
+
+        // An empty (0-byte) cookie file must fail before sending an accidental NULL-auth AUTHENTICATE command.
+        fs::write(&cookie_path, []).unwrap();
+        let err = tor.authenticate(&auth).await.unwrap_err();
+        unpack_enum!(TorClientError::Io(io_err) = err);
+        assert_eq!(io_err.kind(), io::ErrorKind::UnexpectedEof);
+        assert!(mock_state.take_requests().await.is_empty());
+    }
+
+    #[test]
+    fn authentication_debug_and_display_redact_secrets() {
+        let passwd = Authentication::HashedPassword("super-secret-password".to_string());
+        assert_eq!(format!("{passwd:?}"), "HashedPassword(...)");
+        assert_eq!(format!("{passwd}"), "HashedPassword");
+
+        let cookie = Authentication::Cookie("deadbeefcafebabe".to_string());
+        assert_eq!(format!("{cookie:?}"), "Cookie(...)");
+        assert_eq!(format!("{cookie}"), "Cookie");
+
+        let cookie_file = Authentication::CookieFile(PathBuf::from("/run/tor/control.authcookie"));
+        assert!(format!("{cookie_file:?}").contains("CookieFile"));
+        assert!(format!("{cookie_file:?}").contains("/run/tor/control.authcookie"));
+        assert_eq!(format!("{cookie_file}"), "CookieFile");
     }
 
     #[tokio::test]

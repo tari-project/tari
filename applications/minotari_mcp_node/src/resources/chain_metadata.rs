@@ -28,15 +28,14 @@ use async_trait::async_trait;
 use minotari_mcp_common::{McpError, McpResource, McpResult};
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Resource providing current blockchain metadata
 pub struct ChainMetadataResource {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: Arc<BaseNodeGrpcClient>,
 }
 
 impl ChainMetadataResource {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> Self {
         Self { grpc_client }
     }
 }
@@ -62,10 +61,12 @@ impl McpResource for ChainMetadataResource {
     async fn read(&self) -> McpResult<Value> {
         let mut client = self.grpc_client.as_ref().clone();
 
-        let response = client
-            .get_tip_info(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get chain metadata: {e}")))?;
+        let response = client.get_tip_info(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to get chain metadata: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let tip_info = response.into_inner();
 

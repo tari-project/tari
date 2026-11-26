@@ -202,10 +202,11 @@ impl<H: Digest<OutputSize = U32>> ExclusionProof<H> {
     /// Validates the exclusion proof against the given key and root hash. The function reconstructs the tree using the
     /// expected key and places the leaf node provided in the proof at the terminal position. It then calculates the
     /// root hash. Validation succeeds if the calculated root hash matches the given root hash, and the leaf node is
-    /// empty, or the existing leaf node has a different key to the expected key.
+    /// empty, or the existing leaf node has a different key to the expected key. The leaf hash is always recomputed
+    /// from the leaf's key and value; the hash stored in the leaf is never trusted.
     pub fn validate(&self, expected_key: &NodeKey, expected_root: &NodeHash) -> bool {
         let leaf_hash = match &self.leaf {
-            Some(leaf) => leaf.hash().clone(),
+            Some(leaf) => LeafNode::<H>::hash_value(leaf.key(), leaf.value()),
             None => (EmptyNode {}).hash().clone(),
         };
         // If the proof is malformed, a root cannot be calculated and the proof cannot be valid

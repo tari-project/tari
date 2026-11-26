@@ -12,15 +12,13 @@ license.workspace = true
 
 [dependencies]
 minotari_app_grpc = { workspace = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
 
-#tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "prost"] }
-#prost = "0.11.0"
-#prost-types = "0.11.1"
-#thiserror = { workspace = true }
-#url = "2.3"
+log = { workspace = true }
+thiserror = { workspace = true }
+tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring", "tls-native-roots"] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros"] }
-
-#[build-dependencies]
-#tonic-build = "0.13.1"
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "time"] }
+tonic = { version = "0.13.1", default-features = false, features = ["prost", "router", "server"] }

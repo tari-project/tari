@@ -234,6 +234,7 @@ fn main_inner() -> Result<(), ExitError> {
         cli.non_interactive_mode || cli.init,
         PeerFeatures::COMMUNICATION_NODE,
         config.base_node.p2p.transport.transport_type,
+        true,
     )?;
 
     if cli.init {

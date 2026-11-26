@@ -26,17 +26,17 @@
 //! which uses standard input/output streams for communication. All messages
 //! are JSON-RPC 2.0 formatted and line-delimited. Logs go to stderr only.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use serde_json::Value;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter},
     sync::mpsc,
 };
 
 use crate::{
     error::{McpError, McpResult},
-    transport::{McpMessage, McpResponse, MessageHandler},
+    transport::{McpMessage, McpResponse, MessageHandler, check_duplicate_keys},
 };
 
 /// Stdio transport implementation for MCP
@@ -89,22 +89,39 @@ impl StdioTransport {
             });
         }
 
-        // Setup stdin reader and stdout writer
-        let stdin = tokio::io::stdin();
-        let stdout = tokio::io::stdout();
-        let mut reader = BufReader::new(stdin);
-        let mut writer = BufWriter::new(stdout);
-        let mut line = String::new();
+        self.run(
+            tokio::io::stdin(),
+            tokio::io::stdout(),
+            &mut shutdown_rx,
+            Duration::from_secs(10),
+        )
+        .await;
+
+        log::info!("MCP stdio transport stopped");
+        Ok(())
+    }
+
+    /// Serve line-delimited JSON-RPC from `reader` to `writer` until EOF, a write error or a shutdown signal
+    async fn run<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+        &self,
+        reader: R,
+        writer: W,
+        shutdown_rx: &mut mpsc::UnboundedReceiver<()>,
+        heartbeat: Duration,
+    ) {
+        // `next_line` is cancellation-safe, so a heartbeat tick mid-line keeps the bytes read so far.
+        // shortcut: lines are unbounded here and the input sanitizer limits strings only after parsing; bound the
+        // line length if the transport is ever exposed beyond the local client process.
+        let mut lines = BufReader::new(reader).lines();
+        let mut writer = BufWriter::new(writer);
 
         log::info!("MCP stdio transport started");
 
         // Send a keepalive/heartbeat every 10 seconds to prevent client timeout
-        let mut heartbeat_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+        let mut heartbeat_interval = tokio::time::interval(heartbeat);
         heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
-            line.clear();
-
             tokio::select! {
                 // Handle shutdown signal
                 _ = shutdown_rx.recv() => {
@@ -119,14 +136,14 @@ impl StdioTransport {
                 }
 
                 // Read from stdin
-                result = reader.read_line(&mut line) => {
+                result = lines.next_line() => {
                     match result {
-                        Ok(0) => {
+                        Ok(None) => {
                             // EOF - client disconnected
                             log::info!("Client disconnected (EOF)");
                             break;
                         }
-                        Ok(_) => {
+                        Ok(Some(line)) => {
                             let line_content = line.trim();
                             if line_content.is_empty() {
                                 continue;
@@ -153,7 +170,7 @@ impl StdioTransport {
                                 }
 
                                 log::debug!("Sent response: {response_json}");
-                                 log::info!("Response sent successfully to client");
+                                log::info!("Response sent successfully to client");
                             }
                         }
                         Err(e) => {
@@ -164,9 +181,6 @@ impl StdioTransport {
                 }
             }
         }
-
-        log::info!("MCP stdio transport stopped");
-        Ok(())
     }
 
     /// Extract request ID from JSON line, even if malformed
@@ -224,16 +238,19 @@ impl StdioTransport {
         // Try to extract ID from JSON even if parsing fails
         let request_id = self.extract_request_id(line);
         // First try to parse the JSON as-is
-        let message_result = match serde_json::from_str::<McpMessage>(line) {
-            Ok(message) => Ok(message),
-            Err(_) => {
+        let message_result = match check_duplicate_keys(line).map(|()| serde_json::from_str::<McpMessage>(line)) {
+            Err(duplicate_key) => Err(duplicate_key),
+            Ok(Ok(message)) => Ok(message),
+            Ok(Err(_)) => {
                 // If parsing fails, try to repair the JSON
                 log::debug!("Initial JSON parse failed, attempting repair");
                 match self.repair_and_parse_json(line) {
                     Some(repaired) => {
                         log::debug!("JSON repair successful: {repaired}");
-                        serde_json::from_str::<McpMessage>(&repaired)
-                            .map_err(|e| McpError::invalid_request(format!("JSON repair failed: {e}")))
+                        check_duplicate_keys(&repaired).and_then(|()| {
+                            serde_json::from_str::<McpMessage>(&repaired)
+                                .map_err(|e| McpError::invalid_request(format!("JSON repair failed: {e}")))
+                        })
                     },
                     None => Err(McpError::invalid_request("Unable to repair malformed JSON")),
                 }
@@ -296,13 +313,13 @@ impl StdioTransport {
         let unquoted_values = regex::Regex::new(r#":\s*([^{"\[\d\s][\w\s]*[^,}\]]*)"#).ok()?;
         repaired = unquoted_values.replace_all(&repaired, r#": "$1""#).to_string();
 
-        // 4. Fix HTML entities
+        // 4. Fix HTML entities (decode &amp; last to avoid double-decoding &amp;lt; into <)
         repaired = repaired
-            .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
-            .replace("&#39;", "'");
+            .replace("&#39;", "'")
+            .replace("&amp;", "&");
 
         // 5. Replace single quotes with double quotes for strings
         let single_quotes = regex::Regex::new(r#"'([^']*)'"#).ok()?;
@@ -356,6 +373,74 @@ mod tests {
                 error: None,
             })
         }
+    }
+
+    /// Records the length of each tools/call `block_hex` argument it receives
+    #[derive(Default)]
+    struct RecordingHandler {
+        block_hex_lens: std::sync::Mutex<Vec<usize>>,
+    }
+
+    #[async_trait]
+    impl MessageHandler for RecordingHandler {
+        async fn handle_message(&self, message: McpMessage) -> McpResult<McpResponse> {
+            if let McpMessage::CallTool { params, .. } = message {
+                let len = params
+                    .arguments
+                    .as_ref()
+                    .and_then(|a| a.get("block_hex"))
+                    .and_then(|v| v.as_str())
+                    .map_or(0, str::len);
+                self.block_hex_lens.lock().unwrap().push(len);
+            }
+            TestMessageHandler
+                .handle_message(McpMessage::ListTools { id: Value::Null })
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn a_line_with_a_repeated_key_is_refused_before_the_handler() {
+        let handler = Arc::new(RecordingHandler::default());
+        let transport = StdioTransport::new(handler.clone());
+
+        let repeated = r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"Transfer","arguments":{"recipients":[{"address":"A","address":"B","amount":1}]}}}"#;
+        let response = transport.handle_json_message(repeated).await.unwrap();
+        assert!(response.contains(r#"duplicate key \"address\""#), "{response}");
+        assert!(response.contains(r#""id":7"#), "{response}");
+        assert!(handler.block_hex_lens.lock().unwrap().is_empty());
+
+        // The same key in two sibling objects is fine
+        let siblings = r#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"Transfer","arguments":{"recipients":[{"address":"A","amount":1},{"address":"B","amount":2}]}}}"#;
+        transport.handle_json_message(siblings).await.unwrap();
+        assert_eq!(handler.block_hex_lens.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_line_split_across_heartbeats_arrives_whole() {
+        let handler = Arc::new(RecordingHandler::default());
+        let transport = StdioTransport::new(handler.clone());
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
+
+        let block_hex = "ab".repeat(100_000);
+        let line = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{{"name":"SubmitBlock","arguments":{{"block_hex":"{block_hex}"}}}}}}"#
+        ) + "\n";
+        let writer = async move {
+            for chunk in line.as_bytes().chunks(line.len() / 10 + 1) {
+                client.write_all(chunk).await.unwrap();
+                // Longer than the heartbeat, so ticks fire while the line is part read
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            // Dropping the client end closes the stream, which ends `run`
+        };
+
+        tokio::join!(
+            transport.run(server, tokio::io::sink(), &mut shutdown_rx, Duration::from_millis(5)),
+            writer
+        );
+        assert_eq!(*handler.block_hex_lens.lock().unwrap(), vec![block_hex.len()]);
     }
 
     #[tokio::test]

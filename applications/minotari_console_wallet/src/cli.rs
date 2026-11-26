@@ -35,7 +35,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     seeds::seed_words::SeedWords,
     tari_address::TariAddress,
-    types::CompressedCommitment,
+    types::{CompressedCommitment, FixedHash},
 };
 use tari_comms::multiaddr::Multiaddr;
 use tari_transaction_components::tari_amount::{self, MicroMinotari};
@@ -63,8 +63,10 @@ pub struct Cli {
     /// Force wallet recovery
     #[clap(long, alias = "recover")]
     pub recovery: bool,
-    /// Supply the optional wallet seed words for recovery on the command line. They should be in one string space
-    /// separated. e.g. --seed-words "seed1 seed2 ..."
+    /// Supply the optional wallet seed words for recovery. They should be in one string space separated, e.g.
+    /// MINOTARI_WALLET_SEED_WORDS="seed1 seed2 ...". The seed words give full control of the wallet's funds. It's
+    /// very bad security practice to provide them on the command line, since they're visible using `ps ax` from
+    /// anywhere on the system, so always use the env var where possible.
     #[clap(
         long,
         alias = "seed-words",
@@ -98,9 +100,12 @@ pub struct Cli {
     pub command2: Option<CliCommands>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
-    // For read only wallets
+    /// Supply the private view key (hex) to create a read-only wallet. The view key reveals every incoming
+    /// transaction of the wallet. It's very bad security practice to provide it on the command line, since it's
+    /// visible using `ps ax` from anywhere on the system, so always use the env var where possible.
     #[clap(long, env = "MINOTARI_WALLET_VIEW_PRIVATE_KEY", hide_env_values = true)]
     pub view_private_key: Option<String>,
+    /// Supply the public spend key (hex) to create a read-only wallet, together with the private view key.
     #[clap(long, env = "MINOTARI_WALLET_SPEND_KEY", hide_env_values = true)]
     pub spend_key: Option<String>,
     #[clap(long)]
@@ -198,14 +203,22 @@ pub enum CliCommands {
     ImportPaperWallet(ImportPaperWalletArgs),
 
     GetMultisigUtxoData(GetMultisigUtxoDataArgs),
+    /// Spend a multisig UTXO with the co-signers' signatures. The signatures do not cover the recipient, amount or
+    /// fee: whoever holds enough of them decides where the funds go
     SendMultisigUtxo(SendMultisigUtxoArgs),
+    /// Create an m-of-n multisig UTXO. Co-signers' signatures will cover only its script message, so whoever later
+    /// holds enough of them decides where the funds go
     CreateMultisigUtxo(CreateMultisigUtxoArgs),
 
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListTx,
 
+    /// Prepare an m-of-n multisig deposit for offline signing. Co-signers' signatures will cover only its script
+    /// message, so whoever later holds enough of them decides where the funds go
     PrepareDepositMultisigTransaction(PrepareDepositMultisigTransactionArgs),
+    /// Prepare a multisig withdrawal for offline signing. The co-signers' signatures do not cover the recipient,
+    /// amount or fee: whoever holds enough of them decides where the funds go
     PrepareWithdrawMultisigTransaction(PrepareWithdrawMultisigTransactionArgs),
 
     PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
@@ -216,7 +229,16 @@ pub enum CliCommands {
 
     BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
 
+    /// Import the offline signer's payload key, so prepared payloads are signed with it instead of the view key
+    ImportPayloadKey(ImportPayloadKeyArgs),
+    /// Remove the imported payload key, so prepared payloads are signed with the view key again
+    ClearPayloadKey,
+
     SignMessage(SignMessageArgs),
+    /// Co-sign a multisig UTXO's script message. The signature lets whoever builds the spending transaction send the
+    /// funds of any output whose script has this message and your key, anywhere. Take the message from an output you
+    /// know independently; --output-hash checks that output with the base node. Handle the signature, in the file or
+    /// on stdout, as sensitive
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),
@@ -240,6 +262,9 @@ pub struct PrepareDepositMultisigTransactionArgs {
     #[clap(long)]
     /// The recipient address of the multisig UTXO
     pub recipient_address: TariAddress,
+    /// Hours the offline signer accepts the prepared payload for (default 24, at most 168, `MAX_PAYLOAD_LIFETIME`)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..=168))]
+    pub payload_expiry_hours: Option<u64>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -251,6 +276,9 @@ pub struct PrepareWithdrawMultisigTransactionArgs {
     #[clap(long)]
     /// The recipient address that will receive the funds
     pub recipient_address: TariAddress,
+    /// Hours the offline signer accepts the prepared payload for (default 24, at most 168, `MAX_PAYLOAD_LIFETIME`)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..=168))]
+    pub payload_expiry_hours: Option<u64>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -261,6 +289,33 @@ pub struct PrepareOneSidedTransactionForSigningArgs {
     pub payment_id: String,
     #[clap(short, long)]
     pub output_file: PathBuf,
+    /// Hours the offline signer accepts the prepared payload for (default 24, at most 168, `MAX_PAYLOAD_LIFETIME`)
+    #[clap(long, value_parser = clap::value_parser!(u64).range(1..=168))]
+    pub payload_expiry_hours: Option<u64>,
+}
+
+#[derive(Args, Clone)]
+pub struct ImportPayloadKeyArgs {
+    /// The payload key index given to `minotari_offline_signer export-payload-key`
+    #[clap(long)]
+    pub index: u64,
+    /// The payload private key in hex. Visible in shell history and to `ps`; prefer --file
+    #[clap(long, conflicts_with = "file", required_unless_present = "file")]
+    pub key: Option<String>,
+    /// The file written by `minotari_offline_signer export-payload-key --output`
+    #[clap(long)]
+    pub file: Option<PathBuf>,
+}
+
+/// Commands are echoed with `Debug`, so the private key is left out.
+impl std::fmt::Debug for ImportPayloadKeyArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportPayloadKeyArgs")
+            .field("index", &self.index)
+            .field("key", &self.key.as_ref().map(|_| "<hidden>"))
+            .field("file", &self.file)
+            .finish()
+    }
 }
 
 #[derive(Debug, Args, Clone)]
@@ -279,7 +334,7 @@ pub struct BroadcastSignedOneSidedTransactionArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct SignMessageArgs {
-    /// The message to be signed (UTF-8 string)
+    /// The 32-byte message to be signed, in hex
     #[clap(long)]
     pub message: String,
     /// Optional output file path
@@ -292,9 +347,18 @@ pub struct SignMessageArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct SignScriptMessageArgs {
-    /// The message to be signed (UTF-8 string)
+    /// The 32-byte script message to be signed, in hex
     #[clap(long)]
     pub message: String,
+    /// Hash of the multisig UTXO being signed for. The wallet refuses to sign unless its base node has this output
+    /// unspent with this message and your key; the signature is still valid for any output with the same message and
+    /// key
+    #[clap(long, value_parser = parse_fixed_hash)]
+    pub output_hash: Option<FixedHash>,
+    /// Commitment of the multisig UTXO being signed for. With --output-hash it must match the fetched output;
+    /// without it, it is only printed, not checked
+    #[clap(long, value_parser = parse_compressed_commitment)]
+    pub utxo_commitment: Option<CompressedCommitment>,
     /// Optional output file path
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
@@ -658,6 +722,10 @@ pub struct FindPayRefArgs {
 // Helper function to parse CompressedCommitment from hex string
 fn parse_compressed_commitment(s: &str) -> Result<CompressedCommitment, String> {
     CompressedCommitment::from_hex(s).map_err(|e| format!("Invalid CompressedCommitment: {}", e))
+}
+
+fn parse_fixed_hash(s: &str) -> Result<FixedHash, String> {
+    FixedHash::from_hex(s).map_err(|e| format!("Invalid hash: {}", e))
 }
 
 #[derive(Debug, Args, Clone)]

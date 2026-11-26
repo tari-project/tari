@@ -63,6 +63,10 @@ pub enum BlockHeaderSyncError {
     ChainChangedDuringSync,
     #[error("Sync attempts with the peer ended {count} times because our chain changed")]
     RepeatedChainChangesDuringSync { count: usize },
+    #[error(
+        "Our chain has caught up with the peer's claim since the sync round started. Claimed {claimed}, local: {local}"
+    )]
+    PeerClaimNoLongerAhead { claimed: U512, local: U512 },
     #[error("The rewind to the chain split reset the chain to the genesis block. Header sync starts again.")]
     ChainResetToGenesis { removed: Vec<Arc<ChainBlock>> },
     #[error(
@@ -150,6 +154,8 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::SyncPeerUnavailable(_) |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
             BlockHeaderSyncError::PeerNotFound => None,
+            // Not counted as a chain change either: the peer has not been asked for anything yet
+            BlockHeaderSyncError::PeerClaimNoLongerAhead { .. } => None,
             BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),
 
             // short ban

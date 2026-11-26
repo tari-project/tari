@@ -27,6 +27,9 @@
 #[cfg(test)]
 mod test;
 
+mod admission;
+pub(crate) use admission::SharedSourceBudget;
+
 mod config;
 pub use config::NetworkDiscoveryConfig;
 

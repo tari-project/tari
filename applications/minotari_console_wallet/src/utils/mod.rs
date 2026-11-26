@@ -24,3 +24,28 @@ pub mod crossterm_events;
 pub mod db;
 pub mod events;
 pub mod signal_handler;
+
+use std::sync::OnceLock;
+
+use tari_common::configuration::Network;
+use tari_common_types::types::FixedHash;
+use tari_core::blocks::genesis_block::get_genesis_block;
+
+/// A header hash every base node of this network holds, pruned or not: `query_deleted_utxos` refuses a request whose
+/// `must_include_header` is not a header in the node's chain.
+pub fn genesis_header_hash() -> FixedHash {
+    static HASH: OnceLock<FixedHash> = OnceLock::new();
+    *HASH.get_or_init(|| *get_genesis_block(Network::get_current_or_user_setting_or_default()).hash())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn genesis_header_hash_is_this_networks_genesis_header() {
+        let genesis = get_genesis_block(Network::get_current_or_user_setting_or_default());
+        assert_eq!(genesis_header_hash(), *genesis.hash());
+        assert_eq!(genesis_header_hash(), genesis.header().hash());
+    }
+}

@@ -33,10 +33,20 @@ use thiserror::Error;
 
 use crate::{BalancedBinaryMerkleTree, Hash, common::hash_together};
 
+/// Node indices are `u32`, so no balanced tree has more than 32 levels.
+const MAX_HEIGHT: u32 = 32;
+
 fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleProofError> {
     u32::try_from(value).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)
 }
 
+/// Inclusion proof for a single node of a [`BalancedBinaryMerkleTree`].
+///
+/// Leaves and internal nodes are hashed identically (no domain separation). `node_index` is bound to the path length:
+/// the proof only verifies if the walk from `node_index` ends exactly at the root, so a leaf's index cannot be reused
+/// with a shorter path. An internal node with its own index and path still verifies, so callers must check that
+/// `node_index()` is a leaf index (`leaf_count - 1 <= node_index() < 2 * leaf_count - 1`) or domain-separate leaf
+/// hashes before relying on the position.
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct BalancedBinaryMerkleProof<D> {
     /// Since this is balanced tree, the index `2k+1` is always left child and `2k` is right child
@@ -48,6 +58,11 @@ pub struct BalancedBinaryMerkleProof<D> {
 impl<D> BalancedBinaryMerkleProof<D>
 where D: Digest
 {
+    /// Returns true if `leaf_hash` at `node_index` hashes up `path` to `root`. The proof verifies only if `node_index`
+    /// and `path.len()` describe a walk that ends exactly at the root (node index 0), so a leaf's index cannot be
+    /// reused with a shorter path. Leaves and internal nodes are hashed identically, so callers must check that
+    /// `node_index()` is a leaf index (`leaf_count - 1 <= node_index() < 2 * leaf_count - 1`) or domain-separate leaf
+    /// hashes before relying on the position.
     #[must_use = "Must use the result of the proof verification"]
     pub fn verify(&self, root: &Hash, leaf_hash: Hash) -> bool {
         let mut computed_root = leaf_hash;
@@ -66,7 +81,7 @@ where D: Digest
                 None => return false,
             }
         }
-        computed_root == *root
+        computed_root == *root && node_index == 0
     }
 
     pub fn generate_proof(
@@ -129,6 +144,11 @@ pub enum MergedBalancedBinaryMerkleIndexOrHash {
     Hash(Hash),
 }
 
+/// Several [`BalancedBinaryMerkleProof`]s for the same tree merged into one, sharing the common parts of their paths.
+///
+/// Leaves and internal nodes are hashed identically (no domain separation), so callers must domain-separate leaf
+/// hashes. The proof whose walk reaches the root must end at node index 0 and no walk may step past the root; node
+/// indices of proofs merged into another only decide left/right order. Proofs with heights above 32 are rejected.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MergedBalancedBinaryMerkleProof<D> {
     paths: Vec<Vec<MergedBalancedBinaryMerkleIndexOrHash>>,
@@ -140,6 +160,7 @@ pub struct MergedBalancedBinaryMerkleProof<D> {
 impl<D> MergedBalancedBinaryMerkleProof<D>
 where D: Digest
 {
+    /// Merges proofs for distinct leaves of the same tree. Rejects heights above 32 and duplicate leaves.
     pub fn create_from_proofs(proofs: &[BalancedBinaryMerkleProof<D>]) -> Result<Self, BalancedBinaryMerkleProofError> {
         let heights = proofs
             .iter()
@@ -149,6 +170,10 @@ where D: Digest
             .iter()
             .max()
             .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
+        let mut seen = HashSet::new();
+        if max_height > MAX_HEIGHT || !proofs.iter().all(|proof| seen.insert(proof.node_index)) {
+            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+        }
 
         let mut indices = proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>();
         let mut paths = vec![Vec::new(); proofs.len()];
@@ -200,6 +225,8 @@ where D: Digest
 
     /// Verify the merged proof for the given leaf hashes against the root, consuming the proof. Returns
     /// `Err(BalancedBinaryMerkleProofError::RootMismatch)` if the computed root does not match `root`.
+    ///
+    /// Node indices are `u32`, so no balanced tree has more than 32 levels; proofs with a larger height are rejected.
     pub fn verify_consume(mut self, root: &Hash, leaf_hashes: Vec<Hash>) -> Result<(), BalancedBinaryMerkleProofError> {
         // Check that the proof and verifier data match
         let n = self.node_indices.len(); // number of merged proofs
@@ -213,10 +240,27 @@ where D: Digest
             .iter()
             .max()
             .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
+        if max_height > MAX_HEIGHT {
+            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+        }
         let mut consumed = HashSet::new();
         // We need to compute the hashes row by row to be sure they are processed correctly.
         for height in (0..max_height).rev() {
-            let hashes = computed_hashes.clone();
+            // Snapshot only the hashes referenced by an `Index` this round, rather than cloning every hash each round
+            let referenced = self
+                .paths
+                .iter()
+                .zip(&self.heights)
+                .filter(|(_, h)| **h > height)
+                .filter_map(|(path, _)| match path.last() {
+                    Some(MergedBalancedBinaryMerkleIndexOrHash::Index(i)) => usize::try_from(*i).ok(),
+                    _ => None,
+                })
+                // Dedup before cloning so a repeated index clones its hash only once
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .filter_map(|i| computed_hashes.get(i).map(|hash| (i, hash.clone())))
+                .collect::<HashMap<_, _>>();
             let mut dangling_paths = HashSet::new();
             for (index, leaf) in computed_hashes.iter_mut().enumerate().rev() {
                 if *self.heights.get(index).expect("Should exist") <= height {
@@ -234,6 +278,10 @@ where D: Digest
                     // Path at this index already completely processed
                     continue;
                 };
+                // No walk may step past the root
+                if *self.node_indices.get(index).expect("Should exist") == 0 {
+                    return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+                }
 
                 let hash = match hash_or_index {
                     MergedBalancedBinaryMerkleIndexOrHash::Index(index) => {
@@ -248,12 +296,9 @@ where D: Digest
                         let index = usize::try_from(index).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)?;
 
                         // The index must also point to one of the proofs
-                        hashes
-                            .get(index)
-                            .ok_or(BalancedBinaryMerkleProofError::IndexOutOfRange {
-                                index,
-                                len: hashes.len(),
-                            })?
+                        referenced
+                            .get(&index)
+                            .ok_or(BalancedBinaryMerkleProofError::IndexOutOfRange { index, len: n })?
                     },
                     MergedBalancedBinaryMerkleIndexOrHash::Hash(ref hash) => hash,
                 };
@@ -274,6 +319,15 @@ where D: Digest
         }
         if consumed.len().saturating_add(1) < self.paths.len() {
             // If the proof is valid then all but one paths will be consumed by other paths.
+            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+        }
+        // Every proof that was not merged into another must have walked up to the root
+        if self
+            .node_indices
+            .iter()
+            .enumerate()
+            .any(|(i, node_index)| *node_index != 0 && !consumed.contains(&i))
+        {
             return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }
         let computed_root = computed_hashes
@@ -489,6 +543,193 @@ mod test {
         assert!(matches!(
             err,
             BalancedBinaryMerkleProofError::TreeDoesNotContainLeafIndex { leaf_index: 1 }
+        ));
+    }
+
+    #[test]
+    fn verify_rejects_mutated_node_index() {
+        let leaves = (0..4u8).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
+        let root = bmt.get_merkle_root();
+        let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
+        assert_eq!(proof.node_index, 3);
+        assert!(proof.verify(&root, leaves[0].clone()));
+        let mutated = BalancedBinaryMerkleProof::<TestHasher> { node_index: 7, ..proof };
+        assert!(!mutated.verify(&root, leaves[0].clone()));
+    }
+
+    #[test]
+    fn verify_rejects_internal_node_as_leaf() {
+        let leaves = (0..4u8).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves);
+        let root = bmt.get_merkle_root();
+        let mut proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
+        // Keep the leaf's node index but only the path above internal node 1
+        proof.path.remove(0);
+        assert!(!proof.verify(&root, bmt.get_hash(1).unwrap().clone()));
+    }
+
+    #[test]
+    fn verify_accepts_index_past_leaf_range() {
+        // Why callers need the upper bound of the leaf range: leaf 0 (node 2) of a 3-leaf tree is H(a || b), so a
+        // proof for "node 5" below it verifies
+        let (a, b) = (vec![1u8; 32], vec![2u8; 32]);
+        let leaves = vec![hash_together::<TestHasher>(&a, &b), vec![3u8; 32], vec![4u8; 32]];
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves);
+        let proof = BalancedBinaryMerkleProof::<TestHasher> {
+            path: vec![b, bmt.get_hash(1).unwrap().clone()],
+            node_index: 5,
+            _phantom: PhantomData,
+        };
+        assert!(proof.verify(&bmt.get_merkle_root(), a));
+    }
+
+    #[test]
+    fn verify_rejects_truncated_path() {
+        let leaves = (0..4u8).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
+        let root = bmt.get_merkle_root();
+        let mut proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
+        proof.path.pop();
+        assert!(!proof.verify(&root, leaves[0].clone()));
+    }
+
+    #[test]
+    fn merged_rejects_height_above_32() {
+        let proof = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths: vec![vec![]],
+            node_indices: vec![0],
+            heights: vec![33],
+            _phantom: PhantomData,
+        };
+        assert!(matches!(
+            proof.verify_consume(&vec![0u8; 32], vec![vec![0u8; 32]]).unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merged_rejects_repeated_index() {
+        let n = 1000;
+        let proof = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths: vec![vec![MergedBalancedBinaryMerkleIndexOrHash::Index(1)]; n],
+            node_indices: vec![1; n],
+            heights: vec![1; n],
+            _phantom: PhantomData,
+        };
+        assert!(matches!(
+            proof
+                .verify_consume(&vec![0u8; 32], vec![vec![0u8; 32]; n])
+                .unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merge_rejects_height_above_32() {
+        let proof = BalancedBinaryMerkleProof::<TestHasher> {
+            path: vec![vec![0u8; 32]; 33],
+            node_index: 0,
+            _phantom: PhantomData,
+        };
+        assert!(matches!(
+            MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof]).unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merge_rejects_duplicate_leaf() {
+        let leaves = (0..4u8).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves);
+        let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
+        assert!(matches!(
+            MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof.clone(), proof]).unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merged_verify_is_linear() {
+        let n = 4096usize;
+        // A 4096-long path is rejected up front by the height bound
+        let mut paths = vec![Vec::new(); n];
+        paths[0] = vec![MergedBalancedBinaryMerkleIndexOrHash::Hash(vec![0u8; 32]); n];
+        let proof = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths,
+            node_indices: vec![0; n],
+            heights: vec![u32::try_from(n).unwrap(); n],
+            _phantom: PhantomData,
+        };
+        let start = std::time::Instant::now();
+        let err = proof
+            .verify_consume(&vec![0u8; 32], vec![vec![0u8; 32]; n])
+            .unwrap_err();
+        assert!(matches!(err, BalancedBinaryMerkleProofError::BadProofSemantics));
+        assert!(start.elapsed() < std::time::Duration::from_millis(100));
+
+        // Honest merge of every leaf verified against a wrong root. Not timed: with heights capped at 32 the cost is
+        // dominated by the n honest hashes, and a wall-clock bound on that in a debug build is flaky on loaded CI.
+        let leaves = (0..n)
+            .map(|i| [i.to_le_bytes().to_vec(), vec![0u8; 24]].concat())
+            .collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
+        let proofs = (0..n)
+            .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, i))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&proofs).unwrap();
+        let err = merged
+            .clone()
+            .verify_consume(&vec![0u8; 32], leaves.clone())
+            .unwrap_err();
+        assert!(matches!(err, BalancedBinaryMerkleProofError::RootMismatch));
+
+        // The same merge with heights raised to 32 and proof 0 padded runs every round over n proofs, then is rejected
+        // when proof 0 steps past the root
+        let mut merged = merged;
+        let padding = 32 - merged.heights[0] as usize;
+        merged.paths[0].splice(0..0, vec![
+            MergedBalancedBinaryMerkleIndexOrHash::Hash(vec![1u8; 32]);
+            padding
+        ]);
+        merged.heights = vec![32; n];
+        let err = merged.verify_consume(&bmt.get_merkle_root(), leaves).unwrap_err();
+        assert!(matches!(err, BalancedBinaryMerkleProofError::BadProofSemantics));
+    }
+
+    #[test]
+    fn merged_rejects_step_past_root() {
+        let sibling = vec![1u8; 32];
+        let leaf = vec![2u8; 32];
+        let proof = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths: vec![vec![MergedBalancedBinaryMerkleIndexOrHash::Hash(sibling.clone())]],
+            node_indices: vec![0],
+            heights: vec![1],
+            _phantom: PhantomData,
+        };
+        // Node index 0 is even, so the sibling would be hashed on the left
+        let root = hash_together::<TestHasher>(&sibling, &leaf);
+        assert!(matches!(
+            proof.verify_consume(&root, vec![leaf]).unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
+        ));
+    }
+
+    #[test]
+    fn merged_rejects_walk_not_ending_at_root() {
+        let leaves = (0..4u8).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
+        let root = bmt.get_merkle_root();
+        let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
+        let mut merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof]).unwrap();
+        merged.clone().verify_consume(&root, vec![leaves[0].clone()]).unwrap();
+        // 7 -> 3 -> 1 has the same left/right order as 3 -> 1 -> 0 but ends at node 1, never stepping past the root
+        assert_eq!(merged.node_indices, vec![3]);
+        merged.node_indices = vec![7];
+        assert!(matches!(
+            merged.verify_consume(&root, vec![leaves[0].clone()]).unwrap_err(),
+            BalancedBinaryMerkleProofError::BadProofSemantics
         ));
     }
 

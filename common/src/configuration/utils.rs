@@ -671,8 +671,9 @@ pub fn emit_warning(message: &str) {
     warn!(target: LOG_TARGET, "⚠️  {message}");
 }
 
-/// Like [`emit_warning`], but also records the message as a security warning (see [`warnings_emitted`]).
-pub(crate) fn emit_security_warning(message: &str) {
+/// Like [`emit_warning`], but also records the message as a security warning (see [`warnings_emitted`]), so that
+/// applications can show it again before a full-screen UI hides the terminal.
+pub fn emit_security_warning(message: &str) {
     let message = escape_display_chars(message);
     print_security_warning(&message);
     warn!(target: LOG_TARGET, "⚠️  {message}");

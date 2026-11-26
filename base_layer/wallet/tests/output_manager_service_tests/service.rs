@@ -58,7 +58,7 @@ use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{ExecutionStack, TariScript, inputs, push_pubkey_script, script};
@@ -1289,6 +1289,192 @@ async fn cancel_transaction() {
         oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(),
         num_outputs
     );
+}
+
+/// Adds a new `Unspent` output to the wallet, received under `tx_id` if given.
+async fn add_unspent(
+    oms: &mut TestOmsService,
+    backend: &OutputManagerSqliteDatabase,
+    tx_id: Option<TxId>,
+) -> WalletOutput {
+    let output = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(1000),
+        &OutputFeatures::default(),
+        oms.key_manager_handle.key_manager(),
+    );
+    match tx_id {
+        Some(tx_id) => {
+            oms.output_manager_handle
+                .add_output_with_tx_id(tx_id, output.clone(), None)
+                .await
+        },
+        None => oms.output_manager_handle.add_output(output.clone(), None).await,
+    }
+    .unwrap();
+    backend
+        .mark_outputs_as_unspent(vec![(output.output_hash(), true)])
+        .unwrap();
+    output
+}
+
+/// Locks `input` under `tx_id` and confirms it with `change`.
+async fn lock_with_change(oms: &mut TestOmsService, tx_id: TxId, input: &WalletOutput, change: &WalletOutput) {
+    oms.output_manager_handle
+        .encumber_outputs(tx_id, vec![input.commitment().clone()])
+        .await
+        .unwrap();
+    oms.output_manager_handle
+        .confirm_pending_transaction(tx_id, None, Some(vec![change.clone()]))
+        .await
+        .unwrap();
+}
+
+/// Releasing a transaction whose record was never written frees its inputs and removes its change, so the same
+/// transaction can be confirmed again. Outputs it did not receive, or received as `Unspent`, are left alone.
+#[tokio::test]
+async fn release_unrecorded_transaction_removes_its_change() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+    let make = |oms: &TestOmsService| {
+        make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(1000),
+            &OutputFeatures::default(),
+            oms.key_manager_handle.key_manager(),
+        )
+    };
+    let input = add_unspent(&mut oms, &backend, None).await;
+    let change = make(&oms);
+    let tx_id = TxId::from(5u64);
+
+    // Bystanders: an `Unspent` output received under the same tx_id, and change cancelled under another tx_id.
+    let received = add_unspent(&mut oms, &backend, Some(tx_id)).await;
+    let other_input = add_unspent(&mut oms, &backend, None).await;
+    let other_change = make(&oms);
+    let other_tx_id = TxId::from(6u64);
+    lock_with_change(&mut oms, other_tx_id, &other_input, &other_change).await;
+    oms.output_manager_handle
+        .cancel_pending_transaction(other_tx_id)
+        .await
+        .unwrap();
+
+    for _ in 0..2 {
+        lock_with_change(&mut oms, tx_id, &input, &change).await;
+        oms.output_manager_handle
+            .release_unrecorded_transaction(tx_id)
+            .await
+            .unwrap();
+        let outputs = oms
+            .output_manager_handle
+            .get_outputs_by_commitments(vec![input.commitment().clone(), change.commitment().clone()])
+            .await
+            .unwrap();
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].commitment, *input.commitment());
+        assert_eq!(outputs[0].status, OutputStatus::Unspent);
+    }
+
+    // A plain cancel leaves the change row behind; releasing afterwards, with nothing locked, still removes it.
+    lock_with_change(&mut oms, tx_id, &input, &change).await;
+    oms.output_manager_handle
+        .cancel_pending_transaction(tx_id)
+        .await
+        .unwrap();
+    oms.output_manager_handle
+        .release_unrecorded_transaction(tx_id)
+        .await
+        .unwrap();
+    let outputs = oms
+        .output_manager_handle
+        .get_outputs_by_commitments(vec![change.commitment().clone()])
+        .await
+        .unwrap();
+    assert!(outputs.is_empty());
+    assert!(matches!(
+        oms.output_manager_handle.release_unrecorded_transaction(tx_id).await,
+        Err(OutputManagerError::OutputManagerStorageError(
+            OutputManagerStorageError::ValueNotFound
+        ))
+    ));
+
+    let bystanders = oms
+        .output_manager_handle
+        .get_outputs_by_commitments(vec![received.commitment().clone(), other_change.commitment().clone()])
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|o| o.status)
+        .collect::<Vec<_>>();
+    assert_eq!(bystanders, vec![OutputStatus::Unspent, OutputStatus::CancelledInbound]);
+}
+
+/// `encumber_outputs` locks exactly the listed outputs, and nothing at all if any of them is unknown or not `Unspent`.
+#[tokio::test]
+async fn encumber_outputs_is_all_or_nothing() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    let mut outputs = Vec::new();
+    for _ in 0..3 {
+        let uo = make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(1000),
+            &OutputFeatures::default(),
+            oms.key_manager_handle.key_manager(),
+        );
+        oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+        backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
+        outputs.push(uo.commitment().clone());
+    }
+    let (tx1, tx2) = (TxId::from(1u64), TxId::from(2u64));
+    let statuses = async |oms: &mut TestOmsService| {
+        oms.output_manager_handle
+            .get_outputs_by_commitments(outputs.clone())
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|o| (o.status, o.spent_in_tx_id))
+            .collect::<Vec<_>>()
+    };
+
+    oms.output_manager_handle
+        .encumber_outputs(tx1, vec![outputs[2].clone()])
+        .await
+        .unwrap();
+    let before = statuses(&mut oms).await;
+    assert_eq!(before, vec![
+        (OutputStatus::Unspent, None),
+        (OutputStatus::Unspent, None),
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx1)),
+    ]);
+
+    // One output is already encumbered, or one commitment is unknown: nothing changes.
+    let unknown = CompressedCommitment::default();
+    for commitments in [vec![outputs[0].clone(), outputs[2].clone()], vec![
+        outputs[0].clone(),
+        unknown,
+    ]] {
+        assert!(
+            oms.output_manager_handle
+                .encumber_outputs(tx2, commitments)
+                .await
+                .is_err()
+        );
+        assert_eq!(statuses(&mut oms).await, before);
+    }
+
+    oms.output_manager_handle
+        .encumber_outputs(tx2, outputs[..2].to_vec())
+        .await
+        .unwrap();
+    assert_eq!(statuses(&mut oms).await, vec![
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx2)),
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx2)),
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(tx1)),
+    ]);
 }
 
 #[tokio::test]
@@ -2884,6 +3070,53 @@ async fn coin_split_even_builds_a_valid_transaction() {
     assert_eq!(tx.body.inputs().len(), 1);
     assert_eq!(tx.body.outputs().len(), split_count);
     assert_validates(&tx);
+}
+
+#[tokio::test]
+async fn coin_split_even_allocates_full_remainder_when_remainder_exceeds_quotient() {
+    let split_count = 5usize;
+    let fee_per_gram = MicroMinotari::from(1);
+
+    let (mut probe_oms, _probe_dir, probe_uo) = oms_with_spendable_input(MicroMinotari::from(100_000)).await;
+    let (_probe_outputs, exact_split_fee) = probe_oms
+        .output_manager_handle
+        .preview_coin_split_with_commitments_no_amount(vec![probe_uo.commitment().clone()], split_count, fee_per_gram)
+        .await
+        .unwrap();
+
+    // Choose aftertax_amount = 5 * 2 + 4 = 14 uT so the remainder R = 4 exceeds the quotient Q = 2.
+    let aftertax_amount = MicroMinotari::from(14);
+    let (mut preview_oms, _preview_dir, preview_uo) = oms_with_spendable_input(exact_split_fee + aftertax_amount).await;
+    let (evaluated_outputs, evaluated_fee) = preview_oms
+        .output_manager_handle
+        .preview_coin_split_with_commitments_no_amount(vec![preview_uo.commitment().clone()], split_count, fee_per_gram)
+        .await
+        .unwrap();
+    assert_eq!(evaluated_fee, exact_split_fee);
+    assert_eq!(evaluated_outputs, vec![
+        MicroMinotari::from(2),
+        MicroMinotari::from(2),
+        MicroMinotari::from(2),
+        MicroMinotari::from(2),
+        MicroMinotari::from(6),
+    ]);
+    let evaluated_sum: MicroMinotari = evaluated_outputs.iter().copied().sum();
+    assert_eq!(evaluated_sum, aftertax_amount);
+
+    let (mut oms, _tempdir, uo) = oms_with_spendable_input(aftertax_amount).await;
+    let (_tx_id, tx, total_amount) = oms
+        .output_manager_handle
+        .create_coin_split_even(vec![uo.commitment().clone()], split_count, MicroMinotari::from(0))
+        .await
+        .unwrap();
+
+    assert_validates(&tx);
+    assert_eq!(tx.body.inputs().len(), 1);
+    assert_eq!(tx.body.outputs().len(), split_count);
+    assert_eq!(total_amount, aftertax_amount);
+
+    let balance = oms.output_manager_handle.get_balance().await.unwrap();
+    assert_eq!(balance.pending_incoming_balance, aftertax_amount);
 }
 
 #[tokio::test]

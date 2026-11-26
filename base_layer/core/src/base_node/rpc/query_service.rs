@@ -24,6 +24,7 @@ use tari_transaction_components::{
             TipInfoResponse,
             TxLocation,
             TxQueryResponse,
+            TxSubmissionRejectionReason,
         },
     },
     transaction_components::TransactionOutput,
@@ -32,7 +33,11 @@ use tari_utilities::{ByteArray, ByteArrayError, hex::Hex};
 use thiserror::Error;
 
 use crate::{
-    base_node::{StateMachineHandle, rpc::BaseNodeWalletQueryService, state_machine_service::states::StateInfo},
+    base_node::{
+        StateMachineHandle,
+        rpc::{BaseNodeWalletQueryService, HeightAtTimeError, classify_spent_rejection, height_at_time},
+        state_machine_service::states::StateInfo,
+    },
     chain_storage::{BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
     mempool::{MempoolServiceError, TxStorageResponse, service::MempoolHandle},
 };
@@ -97,6 +102,13 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         }
     }
 
+    pub async fn classify_spent_rejection(
+        &self,
+        first_kernel_sig: Option<&types::CompressedSignature>,
+    ) -> Result<TxSubmissionRejectionReason, ChainStorageError> {
+        classify_spent_rejection(&self.db, first_kernel_sig).await
+    }
+
     fn state_machine(&self) -> StateMachineHandle {
         self.state_machine.clone()
     }
@@ -145,6 +157,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredValidatorNodeSlotTaken |
+            TxStorageResponse::NotStoredMempoolPolicy(_) |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored,
                 mined_timestamp: None,
@@ -186,6 +199,8 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         Ok(utxo_block_response)
     }
 
+    /// `next_header_to_scan` in the response is the hash of the first block not included in this response; empty
+    /// when the response reached the tip.
     #[allow(clippy::too_many_lines)]
     async fn fetch_utxos(&self, request: SyncUtxosByBlockRequest) -> Result<SyncUtxosByBlockResponseV0, Error> {
         // validate and fetch inputs
@@ -201,11 +216,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let tip_header = self.db.fetch_tip_header().await?;
         // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
         // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
-        // we can cache all wallet's queries
+        // we can cache all wallet's queries. The next multiple of 100 is excluded, so a batch that ends there hands
+        // the wallet a cursor back on the 100-block grid.
         let increase = (start_header.height.saturating_add(WALLET_MAX_BLOCKS_PER_REQUEST) /
             WALLET_MAX_BLOCKS_PER_REQUEST)
             .saturating_mul(WALLET_MAX_BLOCKS_PER_REQUEST);
-        let end_height = cmp::min(tip_header.header().height, increase);
+        let end_height = cmp::min(tip_header.header().height, increase.saturating_sub(1));
         // pagination
         let start_header_height = start_header
             .height
@@ -245,7 +261,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             })?
             .hash();
         let next_header_to_request;
-        let mut has_next_page = true;
+        let has_next_page;
         loop {
             let current_header_hash = current_header.hash();
             trace!(
@@ -291,6 +307,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(block_response);
+                fetched_chunks = fetched_chunks.saturating_add(1);
             }
             for output_chunk in outputs.chunks(self.max_utxo_chunk_size) {
                 let inputs_to_send = if inputs.is_empty() {
@@ -336,22 +353,31 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break;
             }
+            // Below the tip, so the next header exists.
+            let next_height = current_header.height.saturating_add(1);
+            let next_header = self
+                .db
+                .fetch_header(next_height)
+                .await?
+                .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
             if fetched_chunks > request.limit {
-                next_header_to_request = current_header_hash.to_vec();
                 // This is a special edge case, our request has reached the page limit, but we are also not done with
                 // the block. We also dont want to split up the block over two requests. So we need to ensure that we
                 // remove the partial block we added so that it can be requested fully in the next request. We also dont
                 // want to get in a loop where the block cannot fit into the page limit, so if the block is the same as
-                // the first one, we just send it as is, partial. If not we remove it and let it be sent in the next
-                // request.
+                // the first one, we send it whole even though it exceeds the page. If not we remove it and let it be
+                // sent in the next request.
                 if utxos.first().ok_or(Error::General(anyhow::anyhow!("No utxos founds")))? // should never happen as we always add at least one block
                     .header_hash ==
                     current_header_hash.to_vec()
                 {
-                    // special edge case where the first block is also the last block we can send, so we just send it as
-                    // is, partial
+                    // special edge case where the first block is also the last block we can send, so we send it
+                    // whole and the next request starts after it
+                    next_header_to_request = next_header.hash().to_vec();
+                    has_next_page = false;
                     break;
                 }
+                next_header_to_request = current_header_hash.to_vec();
                 while !utxos.is_empty() &&
                     utxos.last().ok_or(Error::General(anyhow::anyhow!("No utxos found")))? // should never happen as we always add at least one block
                     .header_hash ==
@@ -362,22 +388,18 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 has_next_page = false;
                 break;
             }
-            let next_height = current_header.height.saturating_add(1);
             if next_height > end_height {
-                next_header_to_request = current_header.hash().to_vec();
+                next_header_to_request = next_header.hash().to_vec();
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break; // Stop if we reach the end height
             }
-            current_header = self
-                .db
-                .fetch_header(next_height)
-                .await?
-                .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
+            current_header = next_header;
 
             if current_header.height == next_page_start_height {
-                // we are on the limit, stop here
+                // we are on the limit, stop here; end_height is the last block of the batch, so there is a next
+                // page if it is not past it
                 next_header_to_request = current_header.hash().to_vec();
-                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+                has_next_page = end_height >= current_header.height;
                 break;
             }
         }
@@ -421,66 +443,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error> {
         trace!(target: LOG_TARGET, "requested_epoch_time: {}", epoch_time);
-        let tip_header = self.db.fetch_tip_header().await?;
-
-        let mut left_height = 0u64;
-        let mut right_height = tip_header.height();
-
-        while left_height <= right_height {
-            let mut mid_height = left_height.saturating_add(right_height) / 2;
-
-            if mid_height == 0 {
-                return Ok(0u64);
-            }
-            // If the two bounds are adjacent then perform the test between the right and left sides
-            if left_height == mid_height {
-                mid_height = right_height;
-            }
-
-            let mid_header = self
-                .db
-                .fetch_header(mid_height)
-                .await?
-                .ok_or_else(|| Error::HeaderNotFound { height: mid_height })?;
-            let before_mid_header = self
-                .db
-                .fetch_header(mid_height.saturating_sub(1))
-                .await?
-                .ok_or_else(|| Error::HeaderNotFound {
-                    height: mid_height.saturating_sub(1),
-                })?;
-            trace!(
-                target: LOG_TARGET,
-                "requested_epoch_time: {}, left: {}, mid: {}/{} ({}/{}), right: {}",
-                epoch_time,
-                left_height,
-                mid_height,
-                mid_height.saturating_sub(1),
-                mid_header.timestamp.as_u64(),
-                before_mid_header.timestamp.as_u64(),
-                right_height
-            );
-            if epoch_time < mid_header.timestamp.as_u64() && epoch_time >= before_mid_header.timestamp.as_u64() {
-                trace!(
-                    target: LOG_TARGET,
-                    "requested_epoch_time: {}, selected height: {}",
-                    epoch_time, before_mid_header.height
-                );
-                return Ok(before_mid_header.height);
-            } else if mid_height == right_height {
-                trace!(
-                    target: LOG_TARGET,
-                    "requested_epoch_time: {epoch_time}, selected height: {right_height}"
-                );
-                return Ok(right_height);
-            } else if epoch_time <= mid_header.timestamp.as_u64() {
-                right_height = mid_height;
-            } else {
-                left_height = mid_height;
-            }
-        }
-
-        Ok(0u64)
+        height_at_time(&self.db, epoch_time).await.map_err(|e| match e {
+            HeightAtTimeError::HeaderNotFound(height) => Error::HeaderNotFound { height },
+            HeightAtTimeError::Storage(e) => e.into(),
+        })
     }
 
     async fn transaction_query(
@@ -684,7 +650,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     }
 
     async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error> {
-        let hash: FixedHash = request.output_hash.try_into().map_err(Error::general)?;
+        let hash: FixedHash = request.output_hash.try_into()?;
         let outputs = self.db().fetch_outputs_with_spend_status_at_tip(vec![hash]).await?;
         let output = match outputs.first() {
             Some(Some((output, _spent))) => Some(output.clone()),
@@ -1113,6 +1079,135 @@ mod tests {
         assert!(!resp.has_next_page, "Should have no more pages");
     }
 
+    fn sync_request(start_header_hash: Vec<u8>, limit: u64) -> SyncUtxosByBlockRequest {
+        SyncUtxosByBlockRequest {
+            start_header_hash,
+            limit,
+            page: 0,
+            exclude_spent: false,
+            exclude_inputs: false,
+            version: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_first_block_cursor_points_past_it() {
+        use tari_transaction_components::{tari_amount::T, test_helpers::schema_to_transaction, txn_schema};
+
+        use crate::{consensus::BaseNodeConsensusManager, test_helpers::blockchain::TestBlockchain};
+
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let mut blockchain = TestBlockchain::create(rules);
+        let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+        blockchain.add_next_tip(block_spec!("B")).unwrap();
+        // C has one input and several outputs, so with a chunk size of 1 it does not fit a page of 1
+        let schema = txn_schema!(from: vec![coinbase_a], to: vec![1 * T]);
+        let (txs, _) = schema_to_transaction(&[schema], &blockchain.km);
+        let txs = txs.iter().map(|t| (**t).clone()).collect();
+        let (block_c, _) = blockchain.add_next_tip(block_spec!("C", transactions: txs)).unwrap();
+        let num_chunks = block_c.block().body.outputs().len();
+        assert!(num_chunks > 1);
+
+        let mut service = Service::new(
+            blockchain.db().clone().into(),
+            make_state_machine_handle(),
+            make_mempool_handle(),
+        );
+        service.max_utxo_chunk_size = 1;
+
+        // C is the tip: the whole block is sent and the cursor is empty
+        let resp = service
+            .fetch_utxos(sync_request(block_c.hash().to_vec(), 1))
+            .await
+            .unwrap();
+        assert_eq!(resp.blocks.len(), num_chunks);
+        assert!(resp.blocks.iter().all(|b| b.height == block_c.height()));
+        assert!(resp.next_header_to_scan.is_empty());
+        assert!(!resp.has_next_page);
+
+        // Below the tip: the whole block is sent and the cursor points at the next block
+        let (block_d, _) = blockchain.add_next_tip(block_spec!("D")).unwrap();
+        let resp = service
+            .fetch_utxos(sync_request(block_c.hash().to_vec(), 1))
+            .await
+            .unwrap();
+        assert_eq!(resp.blocks.len(), num_chunks);
+        assert!(resp.blocks.iter().all(|b| b.height == block_c.height()));
+        assert_eq!(resp.next_header_to_scan, block_d.hash().to_vec());
+        assert!(!resp.has_next_page);
+
+        let resp = service
+            .fetch_utxos(sync_request(resp.next_header_to_scan, 1))
+            .await
+            .unwrap();
+        assert_eq!(resp.blocks[0].height, block_d.height());
+    }
+
+    #[tokio::test]
+    async fn batch_ends_before_next_multiple_of_100() {
+        use crate::{consensus::BaseNodeConsensusManager, test_helpers::blockchain::TestBlockchain};
+
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let mut blockchain = TestBlockchain::create(rules);
+        // Tip exactly on the 100-block grid
+        for i in 1..=WALLET_MAX_BLOCKS_PER_REQUEST {
+            let name: &'static str = Box::leak(i.to_string().into_boxed_str());
+            blockchain.add_next_tip(block_spec!(name)).unwrap();
+        }
+        let service = Service::new(
+            blockchain.db().clone().into(),
+            make_state_machine_handle(),
+            make_mempool_handle(),
+        );
+        let header_hash = |height| blockchain.db().fetch_header(height).unwrap().unwrap().hash().to_vec();
+        let hash_100 = header_hash(100);
+
+        // Aligned start: the last page of the batch ends at 99 and points at 100
+        let resp = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                page: 3,
+                ..sync_request(header_hash(0), 25)
+            })
+            .await
+            .unwrap();
+        assert_eq!(resp.blocks.first().unwrap().height, 75);
+        assert_eq!(resp.blocks.last().unwrap().height, 99);
+        assert_eq!(resp.next_header_to_scan, hash_100);
+        assert!(!resp.has_next_page);
+
+        // Unaligned start: the batch also ends at 99 and points at 100
+        let resp = service.fetch_utxos(sync_request(header_hash(95), 25)).await.unwrap();
+        assert_eq!(resp.blocks.first().unwrap().height, 95);
+        assert_eq!(resp.blocks.last().unwrap().height, 99);
+        assert_eq!(resp.next_header_to_scan, hash_100);
+        assert!(!resp.has_next_page);
+
+        // A page that stops just before the last block of the batch still has a next page
+        let resp = service.fetch_utxos(sync_request(header_hash(74), 25)).await.unwrap();
+        assert_eq!(resp.blocks.first().unwrap().height, 74);
+        assert_eq!(resp.blocks.last().unwrap().height, 98);
+        assert_eq!(resp.next_header_to_scan, header_hash(99));
+        assert!(resp.has_next_page);
+        let resp = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                page: 1,
+                ..sync_request(header_hash(74), 25)
+            })
+            .await
+            .unwrap();
+        assert_eq!(resp.blocks.len(), 1);
+        assert_eq!(resp.blocks[0].height, 99);
+        assert_eq!(resp.next_header_to_scan, hash_100);
+        assert!(!resp.has_next_page);
+
+        // From the cursor the tip is reached and the cursor is empty
+        let resp = service.fetch_utxos(sync_request(hash_100, 25)).await.unwrap();
+        assert_eq!(resp.blocks.len(), 1);
+        assert_eq!(resp.blocks[0].height, 100);
+        assert!(resp.next_header_to_scan.is_empty());
+        assert!(!resp.has_next_page);
+    }
+
     #[tokio::test]
     async fn duplicate_output_deleted_queries_ignore_previous_lifecycle() {
         let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
@@ -1135,5 +1230,184 @@ mod tests {
         assert_eq!(response.utxos[0].found_in_header.as_ref().unwrap().0, remined.height());
         assert_eq!(response.utxos[0].spent_in_header, None);
         assert_eq!(response.utxos[0].spent_timestamp, None);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn empty_block_placeholders_count_towards_page_chunk_limit_across_batches() {
+        use tari_common_types::types::{
+            CompressedCommitment,
+            CompressedPublicKey,
+            CompressedSignature,
+            PrivateKey,
+            UncompressedPublicKey,
+        };
+        use tari_crypto::keys::{PublicKey as _, SecretKey as _};
+        use tari_transaction_components::{
+            test_helpers::schema_to_transaction,
+            transaction_components::{KernelBuilder, KernelFeatures, RangeProofType, Transaction},
+            txn_schema,
+        };
+
+        use crate::test_helpers::{
+            BlockSpec,
+            BlockSpecs,
+            blockchain::{TestBlockchain, create_custom_blockchain},
+            create_consensus_rules,
+        };
+
+        let rules = create_consensus_rules();
+        let mut blockchain = TestBlockchain::new(create_custom_blockchain(rules.clone()), rules)
+            .with_coinbase_range_proof_type(RangeProofType::RevealedValue);
+
+        let (_, coinbase_1) = blockchain.add_next_tip(block_spec!("B1", parent: "GB")).unwrap();
+        let (txs, _) = schema_to_transaction(
+            &[txn_schema!(from: vec![coinbase_1], to: vec![1_000.into(), 2_000.into()])],
+            &blockchain.km,
+        );
+        let two_output_txs = txs.into_iter().map(|t| (*t).clone()).collect::<Vec<_>>();
+
+        let kernel_only_tx = || {
+            let sk = PrivateKey::random(&mut rand::rng());
+            let nonce_sk = PrivateKey::random(&mut rand::rng());
+            let excess = CompressedCommitment::from_public_key(UncompressedPublicKey::from_secret_key(&sk));
+            let sig = CompressedSignature::new(CompressedPublicKey::from_secret_key(&nonce_sk), sk);
+            let kernel = KernelBuilder::new()
+                .with_fee(0.into())
+                .with_features(KernelFeatures::empty())
+                .with_lock_height(0)
+                .with_excess(&excess)
+                .with_signature(sig)
+                .build()
+                .unwrap();
+            Transaction::new(
+                vec![],
+                vec![],
+                vec![kernel],
+                PrivateKey::default(),
+                PrivateKey::default(),
+            )
+        };
+
+        let mut specs = Vec::with_capacity(114);
+        for i in 2..=115u64 {
+            let name = format!("B{}->B{}", i, i - 1);
+            let mut builder = BlockSpec::builder().with_name(Box::leak(name.into_boxed_str()));
+            match i {
+                10..=15 => {
+                    builder = builder.skip_coinbase().with_transactions(vec![kernel_only_tx()]);
+                },
+                31 => {
+                    // Block 31 has its coinbase + 2 transaction outputs (3 outputs -> 2 chunks when max_utxo_chunk_size
+                    // = 2). Starting at height 7 with limit = 25, blocks 7..=30 (including 6 empty
+                    // blocks 10..=15) consume 24 chunks; block 31 adds 2 chunks -> 26 > 25, so block 31
+                    // is deferred to the next cursor.
+                    builder = builder.with_transactions(two_output_txs.clone());
+                },
+                _ => {},
+            }
+            specs.push(builder.finish());
+        }
+        blockchain.append_chain(BlockSpecs::from(specs)).unwrap();
+
+        let adb = AsyncBlockchainDb::from(blockchain.db().clone());
+        let mut service = Service::new(adb, make_state_machine_handle(), make_mempool_handle());
+        service.max_utxo_chunk_size = 2;
+
+        let start_height = 7u64;
+        let tip_height = 115u64;
+        let limit = 25u64;
+        let mut start_header_hash = service
+            .db()
+            .fetch_header(start_height)
+            .await
+            .unwrap()
+            .unwrap()
+            .hash()
+            .to_vec();
+
+        let mut visited_heights = Vec::new();
+        let mut first_page_heights = Vec::new();
+        while !start_header_hash.is_empty() {
+            let mut page = 0u64;
+            let mut has_next_page = true;
+            let mut next_round_hash = Vec::new();
+            while has_next_page {
+                let resp = service
+                    .fetch_utxos(SyncUtxosByBlockRequest {
+                        start_header_hash: start_header_hash.clone(),
+                        limit,
+                        page,
+                        exclude_spent: false,
+                        exclude_inputs: false,
+                        version: 0,
+                    })
+                    .await
+                    .unwrap();
+                assert!(!resp.blocks.is_empty(), "non-empty page expected");
+                if first_page_heights.is_empty() {
+                    for b in resp.blocks.iter().filter(|b| (10..=15).contains(&b.height)) {
+                        assert!(b.outputs.is_empty() && b.inputs.is_empty());
+                    }
+                    first_page_heights = resp.blocks.iter().map(|b| b.height).collect();
+                }
+
+                // Collect unique block heights within this response (a multi-chunk block shares a height within a
+                // single response, never across separate responses).
+                let mut response_heights = Vec::new();
+                for block in &resp.blocks {
+                    if let Some(&last_in_resp) = response_heights.last() {
+                        assert!(
+                            block.height == last_in_resp || block.height == last_in_resp + 1,
+                            "non-consecutive height within response: {last_in_resp} followed by {}",
+                            block.height
+                        );
+                        if block.height != last_in_resp {
+                            response_heights.push(block.height);
+                        }
+                    } else {
+                        response_heights.push(block.height);
+                    }
+                }
+                if let Some(&prev) = visited_heights.last() {
+                    assert_eq!(
+                        response_heights[0],
+                        prev + 1,
+                        "next response must start strictly at {} after {prev}, got {}",
+                        prev + 1,
+                        response_heights[0]
+                    );
+                }
+                visited_heights.extend(response_heights);
+
+                has_next_page = resp.has_next_page;
+                next_round_hash = resp.next_header_to_scan;
+                if has_next_page {
+                    page += 1;
+                }
+            }
+            start_header_hash = next_round_hash;
+        }
+
+        assert_eq!(first_page_heights, (7..=30).collect::<Vec<u64>>());
+        assert_eq!(visited_heights, (start_height..=tip_height).collect::<Vec<u64>>());
+    }
+
+    #[tokio::test]
+    async fn get_utxo_rejects_invalid_hash_length() {
+        let service = make_service().await;
+
+        for invalid_hash in [vec![], vec![0u8; 31], vec![0u8; 33]] {
+            let err = service
+                .get_utxo(models::GetUtxoRequest {
+                    output_hash: invalid_hash,
+                })
+                .await
+                .unwrap_err();
+            match err {
+                Error::HashConversion(_) => {},
+                other => panic!("unexpected error: {other:?}"),
+            }
+        }
     }
 }

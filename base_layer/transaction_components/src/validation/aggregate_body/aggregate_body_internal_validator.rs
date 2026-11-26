@@ -189,6 +189,10 @@ pub fn validate_individual_output(
     network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     check_permitted_output_types(consensus_constants, output)?;
+    AggregateBody::check_output_coinbase_extra(
+        output,
+        consensus_constants.coinbase_output_features_extra_max_length(),
+    )?;
     check_script_size(output, consensus_constants.max_script_byte_size())?;
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
     check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
@@ -565,6 +569,11 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), AggregatedBodyValidati
         }
     }
     for kernel in body.kernels() {
+        if !kernel.is_burned() && kernel.burn_commitment.is_some() {
+            return Err(AggregatedBodyValidationError::InvalidBurnError(
+                "Non-burn kernel must not have a burn commitment".to_string(),
+            ));
+        }
         if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
             return Err(AggregatedBodyValidationError::InvalidBurnError(
                 "Burned kernel does not match burned output".to_string(),
@@ -801,6 +810,27 @@ mod test {
         // Lets try one with a commitment with no kernel
         let body2 = AggregateBody::new_unsorted(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
         assert!(check_total_burned(&body2).is_err());
+    }
+
+    #[test]
+    fn check_burned_rejects_burn_commitment_on_non_burn_kernel() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (output, _, _) = test_helpers::create_utxo(
+            100.into(),
+            &key_manager,
+            &OutputFeatures::default(),
+            &script!(Nop).unwrap(),
+            &Covenant::default(),
+            0.into(),
+        );
+        let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
+        kernel.burn_commitment = Some(output.commitment.clone());
+
+        let body = AggregateBody::new_unsorted(Vec::new(), vec![output], vec![kernel]);
+        assert!(matches!(
+            check_total_burned(&body),
+            Err(AggregatedBodyValidationError::InvalidBurnError(_))
+        ));
     }
 
     /// `is_all_unique_and_sorted` is what makes an output commitment unique within a body: `Ord for
@@ -1316,6 +1346,73 @@ mod test {
                     range_proof_type: RangeProofType::RevealedValue,
                     proof_present: true
                 }
+            ));
+        }
+    }
+
+    mod coinbase_extra {
+        use super::*;
+        use crate::transaction_components::{CoinBaseExtra, RangeProofType};
+
+        fn extra(len: usize) -> CoinBaseExtra {
+            CoinBaseExtra::try_from(vec![1u8; len]).unwrap()
+        }
+
+        fn coinbase(key_manager: &KeyManager, extra_len: usize) -> TransactionOutput {
+            test_helpers::create_coinbase_wallet_output(
+                &test_helpers::TestParams::new(key_manager),
+                1,
+                Some(extra(extra_len)),
+                RangeProofType::RevealedValue,
+                key_manager,
+            )
+            .to_transaction_output()
+            .unwrap()
+        }
+
+        #[test]
+        fn non_coinbase_output_with_coinbase_extra_is_rejected() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let consensus_manager = test_helpers::create_consensus_manager();
+            let constants = consensus_manager.consensus_constants(0);
+            let (output, _, _) = test_helpers::create_utxo(
+                MicroMinotari(100),
+                &key_manager,
+                &OutputFeatures {
+                    coinbase_extra: extra(1),
+                    ..Default::default()
+                },
+                &script!(Nop).unwrap(),
+                &Covenant::default(),
+                MicroMinotari::zero(),
+            );
+            output.verify_metadata_signature().unwrap();
+            let err = validate_individual_output(&output, constants, Network::LocalNet).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::TransactionError(
+                    TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra
+                )
+            ));
+        }
+
+        #[test]
+        fn coinbase_output_coinbase_extra_is_capped_at_max() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let consensus_manager = test_helpers::create_consensus_manager();
+            let constants = consensus_manager.consensus_constants(0);
+            let max = constants.coinbase_output_features_extra_max_length();
+
+            validate_individual_output(&coinbase(&key_manager, max as usize), constants, Network::LocalNet).unwrap();
+
+            let output = coinbase(&key_manager, max as usize + 1);
+            output.verify_metadata_signature().unwrap();
+            let err = validate_individual_output(&output, constants, Network::LocalNet).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::TransactionError(
+                    TransactionError::InvalidOutputFeaturesCoinbaseExtraSize { len, max: m }
+                ) if len == max as usize + 1 && m == max
             ));
         }
     }

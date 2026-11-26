@@ -263,6 +263,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// reason to give up.
     fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError>;
 
+    /// Fetch the distinct hashes of the parents of the orphans that have no accumulated data (unlinked orphans)
+    fn fetch_parents_of_unlinked_orphans(&self) -> Result<Vec<HashOutput>, ChainStorageError>;
+
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(
         &mut self,
@@ -282,6 +285,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
 
     /// Verify that the JMT output root at the given version matches the expected root.
     fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError>;
+
+    /// Fetch the number of leaves in the output tree at the current JMT version.
+    fn fetch_output_smt_leaf_count(&self) -> Result<u64, ChainStorageError>;
 
     /// Returns basic database stats for each internal database, such as number of entries and page sizes. This call may
     /// not apply to every database implementation.

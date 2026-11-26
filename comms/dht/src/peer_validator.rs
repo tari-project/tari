@@ -105,7 +105,15 @@ impl<'a> PeerValidator<'a> {
             });
         }
 
-        let most_recent_claim = find_most_recent_claim(&new_peer.claims).expect("new_peer.claims is not empty");
+        // Older servers send one copy of a claim per address it covers; each distinct claim is checked once.
+        let mut claims = Vec::with_capacity(new_peer.claims.len());
+        for claim in new_peer.claims {
+            if !claims.contains(&claim) {
+                claims.push(claim);
+            }
+        }
+
+        let most_recent_claim = find_most_recent_claim(&claims).expect("new_peer.claims is not empty");
 
         let node_id = NodeId::from_public_key(&new_peer.public_key);
 
@@ -122,7 +130,7 @@ impl<'a> PeerValidator<'a> {
         });
 
         let mut accepted_address_count = 0usize;
-        for claim in new_peer.claims {
+        for claim in claims {
             let valid_addresses = peer_validator::validate_and_filter_peer_identity_claim_addresses(
                 &self.config.peer_validator_config,
                 &new_peer.public_key,
@@ -413,5 +421,44 @@ mod tests {
         for address in addresses {
             assert!(peer.addresses.contains(&address));
         }
+    }
+
+    #[test]
+    fn duplicate_claims_are_accepted_once() {
+        let config = DhtConfig::default_local_test();
+        let validator = PeerValidator::new(&config);
+        let single = make_unvalidated_peer(vec!["/ip4/23.23.23.23/tcp/18189".parse().unwrap()]);
+        let repeated = UnvalidatedPeerInfo {
+            public_key: single.public_key.clone(),
+            claims: vec![single.claims.first().unwrap().clone(); 3],
+        };
+
+        let expected = validator.validate_peer(single, None).unwrap();
+        let peer = validator.validate_peer(repeated, None).unwrap();
+
+        let claims_of = |peer: &Peer| {
+            peer.addresses
+                .iter()
+                .map(|address| {
+                    (
+                        address.address().clone(),
+                        address.source().peer_identity_claim().cloned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(peer.addresses.len(), 1);
+        assert_eq!(claims_of(&peer), claims_of(&expected));
+    }
+
+    #[test]
+    fn duplicate_claims_still_count_against_the_claim_limit() {
+        let config = DhtConfig::default_local_test();
+        let mut new_peer = make_unvalidated_peer(vec!["/ip4/23.23.23.23/tcp/18189".parse().unwrap()]);
+        new_peer.claims = vec![new_peer.claims.first().unwrap().clone(); config.max_permitted_peer_claims + 1];
+
+        let err = PeerValidator::new(&config).validate_peer(new_peer, None).unwrap_err();
+
+        assert!(matches!(err, DhtPeerValidatorError::IdentityTooManyClaims { .. }));
     }
 }

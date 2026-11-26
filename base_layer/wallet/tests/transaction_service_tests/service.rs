@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{mem::size_of, sync::Arc, time::Duration};
+use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -29,18 +29,20 @@ use chrono::{Days, Utc};
 use digest::consts::U32;
 use minotari_wallet::{
     base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     output_manager_service::{
         OutputManagerServiceInitializer,
         UtxoSelectionCriteria,
         config::OutputManagerServiceConfig,
-        error::OutputManagerError,
+        error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
+            OutputSource,
+            OutputStatus,
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
-            sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
+            sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         },
     },
     storage::{
@@ -57,16 +59,17 @@ use minotari_wallet::{
         service::TransactionService,
         storage::{
             database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-            models::{CompletedTransaction, WalletTransaction},
+            models::{CompletedTransaction, TxCancellationReason, WalletTransaction},
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
     util::watch::Watch,
     utxo_scanner_service::{
-        handle::UtxoScannerHandle,
+        handle::{UtxoScannerEvent, UtxoScannerHandle},
         imported_output_source_address,
         initializer::UtxoScannerServiceInitializer,
         service::ScannedBlock,
+        uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
     },
 };
 use rand::Rng;
@@ -79,7 +82,15 @@ use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
-    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+    },
 };
 use tari_comms::{
     PeerConnection,
@@ -94,8 +105,17 @@ use tari_core::base_node::{
     rpc::BaseNodeWalletRpcServer,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SK};
+use tari_node_components::blocks::BlockHeader as NodeBlockHeader;
 use tari_p2p::Network;
-use tari_script::{ExecutionStack, Opcode, TariScript, push_pubkey_script};
+use tari_script::{
+    CompressedCheckSigSchnorrSignature,
+    ExecutionStack,
+    Opcode,
+    TariScript,
+    inputs,
+    push_pubkey_script,
+    script,
+};
 use tari_service_framework::{RegisterHandle, StackBuilder, reply_channel};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -116,11 +136,12 @@ use tari_transaction_components::{
         OfflinePayload,
         PayloadSummary,
         PaymentRecipient,
-        one_sided_signer::withdraw_pending_output,
+        models::SignedOneSidedTransactionResult,
+        one_sided_signer::{multisig_pending_output, withdraw_pending_output},
         prepare_withdraw_multisig_transaction,
         present_payload_summary,
     },
-    rpc::models::TipInfoResponse,
+    rpc::models::{TipInfoResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
     tari_amount::*,
     transaction_builder::{TransactionBuilder, TransactionBuilderError},
     transaction_components::{
@@ -140,6 +161,7 @@ use tari_transaction_components::{
             public_key_to_output_spending_key,
         },
     },
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 use tari_transaction_key_manager::{
     legacy_key_manager::{
@@ -163,7 +185,7 @@ use url::Url;
 
 use crate::support::{
     base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory},
-    comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     utils::make_input,
 };
 
@@ -1490,8 +1512,6 @@ async fn recover_stealth_one_sided_transaction() {
     assert!(recovered_outputs_2.is_empty());
 }
 
-// test is broken
-#[ignore]
 #[tokio::test]
 async fn test_htlc_send_and_claim() {
     let network = Network::LocalNet;
@@ -1520,7 +1540,7 @@ async fn test_htlc_send_and_claim() {
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
         alice_node_identity,
-        consensus_manager,
+        consensus_manager.clone(),
         factories.clone(),
         alice_connection,
         shutdown.to_signal(),
@@ -1554,10 +1574,12 @@ async fn test_htlc_send_and_claim() {
         .unwrap();
 
     let value = 10000.into();
-    let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
-    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key();
-    let bob_address =
-        TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network).unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_ts_interface.key_manager_handle.get_view_key().pub_key,
+        bob_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        network,
+    )
+    .unwrap();
     let (tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
             bob_address,
@@ -1598,12 +1620,60 @@ async fn test_htlc_send_and_claim() {
         }
     }
     let hash = output.hash();
-    bob_ts_interface.base_node_rpc_mock_state.set_utxos(vec![output]);
+    let bob_oms = &mut bob_ts_interface.output_manager_service_handle;
+
+    // A base node answering with some other output for the requested hash is refused.
+    let other_output = completed_tx
+        .transaction
+        .body
+        .outputs()
+        .iter()
+        .find(|o| o.hash() != hash)
+        .unwrap()
+        .clone();
+    bob_ts_interface
+        .base_node_mock
+        .set_utxos(vec![(hash, other_output)])
+        .await;
+    let err = bob_oms
+        .create_claim_sha_atomic_swap_transaction(hash, pre_image.clone(), 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::BaseNodeClientError(_)), "got {err:?}");
+
+    // The HTLC is refused with a pre-image it is not locked to.
+    bob_ts_interface.base_node_mock.set_utxos(vec![(hash, output)]).await;
+    let wrong_pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    let err = bob_oms
+        .create_claim_sha_atomic_swap_transaction(hash, wrong_pre_image, 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(
+        bob_oms.get_balance().await.unwrap().pending_incoming_balance,
+        MicroMinotari::zero()
+    );
+
     let (tx_id_htlc, _htlc_fee, htlc_amount, tx) = bob_ts_interface
         .output_manager_service_handle
         .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
         .await
         .unwrap();
+    // The claimed HTLC output was never in Bob's output DB; the claim records only its change.
+    let claim_outputs = bob_ts_interface
+        .output_manager_service_handle
+        .fetch_outputs_by_tx_id(tx_id_htlc)
+        .await
+        .unwrap();
+    let [claim_change] = claim_outputs.as_slice() else {
+        panic!("expected only the claim's change output, got {claim_outputs:?}");
+    };
+    assert_eq!(claim_change.source, OutputSource::AtomicSwap);
+    assert_eq!(claim_change.wallet_output.value(), htlc_amount);
+    // The pre-image unlocks the claim branch at any height.
+    TransactionInternalConsistencyValidator::new(false, consensus_manager, factories)
+        .validate(&tx, None, None, 0)
+        .expect("the claim must validate");
 
     bob_ts_interface
         .transaction_service_handle
@@ -1618,6 +1688,133 @@ async fn test_htlc_send_and_claim() {
             .unwrap()
             .pending_incoming_balance,
         htlc_amount
+    );
+}
+
+#[tokio::test]
+async fn test_htlc_send_and_refund() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager.clone(),
+        factories.clone(),
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+
+    let uo1 = make_input(
+        &mut rand::rng(),
+        25000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
+        .unwrap();
+
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+    let value = 10000.into();
+    let (_tx_id, pre_image, output) = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address,
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect("Alice sending HTLC transaction");
+
+    // The HTLC output is mined and unspent, and so spendable by the refund.
+    let hash = output.hash();
+    alice_db.mark_outputs_as_unspent(vec![(hash, true)]).unwrap();
+    let balance_before = alice_oms.get_balance().await.unwrap();
+    assert_eq!(balance_before.available_balance, value);
+
+    // The sender knows the pre-image, but the claim branch is locked to the recipient's spend key.
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_utxos(vec![(hash, output)])
+        .await;
+    let err = alice_oms
+        .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(alice_oms.get_balance().await.unwrap(), balance_before);
+
+    let (refund_tx_id, fee, refund_amount, refund_tx) =
+        alice_oms.create_htlc_refund_transaction(hash, 20.into()).await.unwrap();
+    assert_eq!(refund_amount, value - fee);
+    // The send locks the refund branch until 720 blocks past the wallet's last scanned height, which is 0 here.
+    let validator = TransactionInternalConsistencyValidator::new(false, consensus_manager, factories);
+    validator
+        .validate(&refund_tx, None, None, 719)
+        .expect_err("the refund must not validate before the lock height");
+    validator
+        .validate(&refund_tx, None, None, 720)
+        .expect("the refund must validate at the lock height");
+
+    let outputs = alice_oms.fetch_outputs_by_tx_id(refund_tx_id).await.unwrap();
+    let htlc = outputs
+        .iter()
+        .find(|o| o.hash == hash)
+        .expect("HTLC output is spent by the refund");
+    assert_eq!(htlc.status, OutputStatus::EncumberedToBeSpent);
+    let change = outputs.iter().find(|o| o.hash != hash).expect("refund change output");
+    assert_eq!(change.source, OutputSource::HtlcRefund);
+    assert_eq!(change.payment_id.get_type(), TxType::HtlcAtomicSwapRefund);
+    assert_eq!(change.status, OutputStatus::EncumberedToBeReceived);
+    assert_eq!(change.wallet_output.value(), refund_amount);
+
+    let balance_after = alice_oms.get_balance().await.unwrap();
+    assert_eq!(balance_after.available_balance, MicroMinotari::zero());
+    assert_eq!(
+        balance_after.pending_incoming_balance,
+        balance_before.pending_incoming_balance + refund_amount
+    );
+
+    // A normal output is not an HTLC, so it is refused and left unspent.
+    let uo2 = make_input(
+        &mut rand::rng(),
+        5000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo2.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo2.output_hash(), true)])
+        .unwrap();
+    let balance_before = alice_oms.get_balance().await.unwrap();
+    let err = alice_oms
+        .create_htlc_refund_transaction(uo2.output_hash(), 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(alice_oms.get_balance().await.unwrap(), balance_before);
+    assert!(
+        alice_oms
+            .get_unspent_outputs()
+            .await
+            .unwrap()
+            .iter()
+            .any(|o| o.hash == uo2.output_hash())
     );
 }
 
@@ -2163,6 +2360,107 @@ async fn transaction_service_tx_broadcast() {
     //     alice_output_value - amount_sent1 - tx1_fee
     // );
     // assert_eq!(balance.available_balance, alice_output_value);
+}
+
+/// A submission the base node refuses by mempool policy is retried, and only cancelled once the wallet's submission
+/// attempt budget (5) is spent
+#[tokio::test]
+async fn a_mempool_policy_refusal_is_retried_until_the_submission_budget_is_spent() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let config = TransactionServiceConfig {
+        broadcast_monitoring_timeout: Duration::from_millis(10),
+        ..Default::default()
+    };
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, Some(config)).await;
+    alice_ts_interface
+        .base_node_mock
+        .set_submit_transaction_response(TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::MempoolPolicy,
+            is_synced: true,
+            details: None,
+        })
+        .await;
+
+    let kernel = KernelBuilder::new()
+        .with_excess(&CompressedCommitment::from_commitment(factories.commitment.zero()))
+        .with_signature(CompressedSignature::default())
+        .build()
+        .unwrap();
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![kernel],
+        PrivateKey::random(&mut rand::rng()),
+        PrivateKey::random(&mut rand::rng()),
+    );
+    let address = || {
+        TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            Network::LocalNet,
+        )
+        .unwrap()
+    };
+    let tx_id = TxId::from(1u64);
+    let completed_tx = CompletedTransaction {
+        tx_id,
+        source_address: address(),
+        destination_address: address(),
+        amount: 5000 * uT,
+        fee: MicroMinotari::from(20),
+        transaction: tx.clone(),
+        status: LegacyTransactionStatus::Completed,
+        timestamp: Utc::now(),
+        cancelled: None,
+        direction: TransactionDirection::Outbound,
+        send_count: 0,
+        last_send_timestamp: None,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap().clone(),
+        mined_height: None,
+        mined_in_block: None,
+        mined_timestamp: None,
+        payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+        change_output_hashes: vec![],
+        received_output_hashes: vec![],
+        sent_output_hashes: vec![],
+        lock_height: 0,
+        rejection_reason: None,
+        source_address_claimed: false,
+    };
+    alice_ts_interface
+        .ts_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            tx_id,
+            Box::new(completed_tx),
+        )))
+        .unwrap();
+
+    let mut event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
+    alice_ts_interface
+        .transaction_service_handle
+        .restart_broadcast_protocols()
+        .await
+        .unwrap();
+
+    let delay = sleep(Duration::from_secs(60));
+    tokio::pin!(delay);
+    let reason = loop {
+        tokio::select! {
+            event = event_stream.recv() => {
+                if let TransactionEvent::TransactionCancelled(id, reason, _) = (*event.unwrap()).clone() &&
+                    id == tx_id
+                {
+                    break reason;
+                }
+            },
+            () = &mut delay => panic!("the transaction was not cancelled"),
+        }
+    };
+    assert_eq!(reason, TxCancellationReason::InvalidTransaction);
+    // Cancelled on the last of the budget's submissions, not before
+    assert_eq!(alice_ts_interface.base_node_mock.submit_transaction_calls().await, 5);
 }
 
 #[tokio::test]
@@ -3249,6 +3547,7 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         OutputFeatures::default(),
         own_address.clone(),
         own_address,
+        None,
     )
     .unwrap();
 
@@ -3319,6 +3618,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payload_without_cha
                 OutputFeatures::default(),
                 fee_per_gram,
                 MemoField::new_empty(),
+                None,
             )
             .await;
         match result {
@@ -3354,6 +3654,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payload_without_cha
             OutputFeatures::default(),
             fee_per_gram,
             MemoField::new_empty(),
+            None,
         )
         .await
         .unwrap();
@@ -3420,6 +3721,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change()
                 OutputFeatures::default(),
                 fee_per_gram,
                 MemoField::new_empty(),
+                None,
             )
             .await;
         match result {
@@ -3461,6 +3763,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change()
             OutputFeatures::default(),
             fee_per_gram,
             MemoField::new_empty(),
+            None,
         )
         .await
         .unwrap();
@@ -3520,7 +3823,7 @@ async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change()
     let (remainder, change_fee) = loop {
         let result = alice_ts_interface
             .transaction_service_handle
-            .prepare_deposit_multisig_transaction(amount, party_number, public_keys.clone(), bob_address.clone())
+            .prepare_deposit_multisig_transaction(amount, party_number, public_keys.clone(), bob_address.clone(), None)
             .await;
         match result {
             Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
@@ -3548,12 +3851,12 @@ async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change()
     let amount = amount + remainder - change_fee - MicroMinotari(1);
     let prepared = alice_ts_interface
         .transaction_service_handle
-        .prepare_deposit_multisig_transaction(amount, party_number, public_keys, bob_address)
+        .prepare_deposit_multisig_transaction(amount, party_number, public_keys, bob_address, None)
         .await
         .unwrap();
     let signed = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_deposit_multisig_transaction(confirmed(PayloadSummary::from_multisig(prepared)))
+        .sign_one_sided_deposit_multisig_transaction(confirmed(PayloadSummary::from_multisig(prepared).unwrap()))
         .await
         .unwrap();
     assert_eq!(
@@ -3604,6 +3907,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payment_id_the_chan
             OutputFeatures::default(),
             MicroMinotari(1),
             MemoField::new_open_from_string(&"x".repeat(200), TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await;
     assert!(
@@ -3672,6 +3976,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_no_input_when_the_builde
                 OutputFeatures::default(),
                 fee_per_gram,
                 MemoField::new_empty(),
+                None,
             )
             .await;
         match result {
@@ -3714,6 +4019,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_no_input_when_the_builde
             OutputFeatures::default(),
             fee_per_gram,
             MemoField::new_empty(),
+            None,
         )
         .await
         .unwrap();
@@ -3772,6 +4078,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_an_amount_below_the_f
             OutputFeatures::default(),
             MicroMinotari(1),
             MemoField::new_empty(),
+            None,
         )
         .await;
     assert!(
@@ -3832,7 +4139,7 @@ async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() 
     // No transaction pays a fee of a single microminotari, so this amount is below any fee.
     let result = alice_ts_interface
         .transaction_service_handle
-        .prepare_deposit_multisig_transaction(MicroMinotari(1), 2, public_keys, bob_address)
+        .prepare_deposit_multisig_transaction(MicroMinotari(1), 2, public_keys, bob_address, None)
         .await;
     assert!(
         matches!(
@@ -3851,6 +4158,876 @@ async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() 
         .unwrap();
     assert_eq!(balance.available_balance, input_value);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}
+
+/// A deposit no spend could ever meet the threshold of is refused before any input is locked.
+#[tokio::test]
+async fn prepare_deposit_multisig_transaction_refuses_an_unmeetable_threshold() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    for (m, n) in [(0u8, 2usize), (3, 2), (1, 0), (2, 14), (2, 33)] {
+        let err = alice_ts_interface
+            .transaction_service_handle
+            .prepare_deposit_multisig_transaction(
+                MicroMinotari(100_000),
+                m,
+                vec![bob_key_manager.get_spend_key().pub_key; n],
+                bob_address.clone(),
+                None,
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+    }
+
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}
+
+/// Adds a 1-of-1 multisig output over the wallet's own spend key to the wallet, as `Unspent`.
+async fn add_unspent_multisig_output(
+    ts: &mut TransactionServiceNoCommsInterface,
+    amount: MicroMinotari,
+) -> WalletOutput {
+    let key_manager = ts.key_manager_handle.key_manager();
+    let spend_key = key_manager.get_spend_key();
+    let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+    let sender_offset = key_manager.get_random_key(None, None).unwrap();
+    let script_pubkey = key_manager
+        .stealth_address_script_spending_key(&commitment_mask.key_id, &spend_key.pub_key)
+        .unwrap();
+    let script = TariScript::new(vec![
+        Opcode::CheckMultiSigVerify(1, 1, vec![spend_key.pub_key.clone()], Box::new([0u8; 32])),
+        Opcode::PushPubKey(Box::new(script_pubkey)),
+    ])
+    .unwrap();
+    let output = WalletOutputBuilder::new(amount, commitment_mask.key_id)
+        .with_script(script)
+        .with_features(OutputFeatures::default())
+        .with_input_data(ExecutionStack::default())
+        .with_script_key(script_key.key_id)
+        .encrypt_data_for_recovery(key_manager, None, MemoField::default())
+        .unwrap()
+        .with_sender_offset_public_key(sender_offset.pub_key.clone())
+        .sign_metadata_signature(key_manager, &sender_offset.key_id)
+        .unwrap()
+        .try_build(key_manager)
+        .unwrap();
+    ts.output_manager_service_handle
+        .add_output(output.clone(), None)
+        .await
+        .unwrap();
+    ts.oms_db
+        .mark_outputs_as_unspent(vec![(output.output_hash(), true)])
+        .unwrap();
+    output
+}
+
+async fn output_status(
+    ts: &mut TransactionServiceNoCommsInterface,
+    output: &WalletOutput,
+) -> (OutputStatus, Option<TxId>) {
+    let outputs = ts
+        .output_manager_service_handle
+        .get_outputs_by_commitments(vec![output.commitment().clone()])
+        .await
+        .unwrap();
+    (outputs[0].status, outputs[0].spent_in_tx_id)
+}
+
+/// The multisig input of a prepared withdrawal is locked until the withdrawal is cancelled, across restarts, so it can
+/// be neither prepared again nor counted as available.
+#[tokio::test]
+async fn prepare_withdraw_multisig_transaction_locks_the_multisig_input() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let amount = MicroMinotari(100_000);
+    let output = add_unspent_multisig_output(&mut alice, amount).await;
+    let key_manager = alice.key_manager_handle.key_manager();
+    let own_address = TariAddress::new_dual_address_with_default_features(
+        key_manager.get_view_key().pub_key,
+        key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let balance = alice.output_manager_service_handle.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, amount);
+
+    let prepare = |mut handle: TransactionServiceHandle| {
+        let (commitment, address) = (output.commitment().clone(), own_address.clone());
+        async move {
+            handle
+                .prepare_withdraw_multisig_transaction(
+                    commitment,
+                    vec![CompressedCheckSigSchnorrSignature::default()],
+                    address,
+                    None,
+                )
+                .await
+        }
+    };
+    let prepared = prepare(alice.transaction_service_handle.clone()).await.unwrap();
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(prepared.tx_id))
+    );
+    let balance = alice.output_manager_service_handle.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, MicroMinotari::zero());
+    assert!(prepare(alice.transaction_service_handle.clone()).await.is_err());
+
+    // What a restart clears does not release it.
+    alice
+        .output_manager_service_handle
+        .clear_short_term_encumberances()
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(prepared.tx_id))
+    );
+
+    alice
+        .output_manager_service_handle
+        .cancel_pending_transaction(prepared.tx_id)
+        .await
+        .unwrap();
+    assert_eq!(output_status(&mut alice, &output).await.0, OutputStatus::Unspent);
+}
+
+/// A multisig input sent online is locked under the returned transaction, so it cannot be sent a second time.
+#[tokio::test]
+async fn send_multisig_utxo_locks_the_multisig_input() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let output = add_unspent_multisig_output(&mut alice, MicroMinotari(100_000)).await;
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    let tx_id = alice
+        .transaction_service_handle
+        .send_multisig_utxo(output.commitment().clone(), bob_address.clone(), vec![
+            CompressedCheckSigSchnorrSignature::default(),
+        ])
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(tx_id))
+    );
+
+    let result = alice
+        .transaction_service_handle
+        .send_multisig_utxo(output.commitment().clone(), bob_address, vec![
+            CompressedCheckSigSchnorrSignature::default(),
+        ])
+        .await;
+    assert!(result.is_err());
+    // The refused send recorded nothing to broadcast and left the input with the first transaction.
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert_eq!(completed.iter().map(|tx| tx.tx_id).collect::<Vec<_>>(), vec![tx_id]);
+    assert_eq!(
+        output_status(&mut alice, &output).await,
+        (OutputStatus::EncumberedToBeSpent, Some(tx_id))
+    );
+}
+
+/// Adds `count` `Unspent` inputs of 1 T to the wallet, then prepares and signs a one-sided payment of `amount` to a
+/// random address. Returns the inputs, the prepared payload's tx_id and the signed payload.
+async fn signed_one_sided_payload(
+    ts: &mut TransactionServiceNoCommsInterface,
+    count: usize,
+    amount: MicroMinotari,
+) -> (Vec<WalletOutput>, TxId, SignedOneSidedTransactionResult) {
+    let mut inputs = Vec::new();
+    for _ in 0..count {
+        let uo = make_input(
+            &mut rand::rng(),
+            MicroMinotari(1_000_000),
+            &OutputFeatures::default(),
+            ts.key_manager_handle.key_manager(),
+        );
+        ts.output_manager_service_handle
+            .add_output(uo.clone(), None)
+            .await
+            .unwrap();
+        ts.oms_db
+            .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+            .unwrap();
+        inputs.push(uo);
+    }
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let prepared = ts
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari(1),
+            MemoField::new_empty(),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared.info.inputs.len(), count);
+    let prepared_tx_id = prepared.tx_id;
+    let signed = ts
+        .transaction_service_handle
+        .sign_one_sided_transaction(confirmed(PayloadSummary::from_one_sided(prepared)))
+        .await
+        .unwrap();
+    (inputs, prepared_tx_id, signed)
+}
+
+/// Prepares and signs a one-sided payment from a single input, then cancels the prepared payload the way gRPC
+/// `CancelTransaction` does, so the input is `Unspent` again.
+async fn signed_then_cancelled_one_sided_payload(
+    ts: &mut TransactionServiceNoCommsInterface,
+) -> (WalletOutput, SignedOneSidedTransactionResult) {
+    let (mut inputs, prepared_tx_id, signed) = signed_one_sided_payload(ts, 1, MicroMinotari(100_000)).await;
+    ts.transaction_service_handle
+        .cancel_record_less_transaction(prepared_tx_id)
+        .await
+        .unwrap();
+    let uo = inputs.remove(0);
+    assert_eq!(output_status(ts, &uo).await, (OutputStatus::Unspent, None));
+    (uo, signed)
+}
+
+/// Cancelling a tx_id that has no record and locks nothing is reported as not found.
+#[tokio::test]
+async fn cancelling_an_unknown_record_less_transaction_is_not_found() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let result = alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(TxId::from(99u64))
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(TransactionServiceError::OutputManagerError(
+                OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)
+            ))
+        ),
+        "{result:?}"
+    );
+}
+
+/// Submitting a signed payload whose prepared lock was cancelled locks its input again and moves it to the signed
+/// transaction, so the spent input is not left counted as available. Submitting it again is refused and leaves that
+/// lock alone.
+#[tokio::test]
+async fn submitting_a_cancelled_payload_locks_its_input_again() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    let new_tx_id = signed.signed_transaction.tx_id;
+
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+}
+
+/// A signed payload whose input has since been locked by another transaction is refused before anything is recorded.
+#[tokio::test]
+async fn submitting_a_payload_whose_input_is_locked_elsewhere_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    let other_tx_id = TxId::from(99u64);
+    alice
+        .output_manager_service_handle
+        .encumber_outputs(other_tx_id, vec![uo.commitment().clone()])
+        .await
+        .unwrap();
+
+    let result = alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await;
+    assert!(result.is_err());
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::ShortTermEncumberedToBeSpent, Some(other_tx_id))
+    );
+}
+
+/// A signed payload naming no recipients is refused before anything is locked or recorded.
+#[tokio::test]
+async fn submitting_a_payload_without_recipients_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, mut signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    signed.request.info.recipients.clear();
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed)
+            .await
+            .is_err()
+    );
+    assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+}
+
+/// A signed payload whose prepared or signed tx_id names a transaction the wallet already recorded is refused before
+/// anything is locked, and that transaction keeps its inputs.
+#[tokio::test]
+async fn submitting_a_payload_that_names_a_recorded_transaction_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (sent_inputs, _, sent) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let recorded = sent.signed_transaction.tx_id;
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(sent)
+        .await
+        .unwrap();
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+
+    let mut naming_signed = signed.clone();
+    naming_signed.signed_transaction.tx_id = recorded;
+    let mut naming_prepared = signed;
+    naming_prepared.request.tx_id = recorded;
+    for payload in [naming_signed, naming_prepared] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
+        );
+        assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+        assert_eq!(
+            output_status(&mut alice, &sent_inputs[0]).await,
+            (OutputStatus::EncumberedToBeSpent, Some(recorded))
+        );
+    }
+}
+
+/// A signed payload whose sent outputs repeat, or are not outputs of its transaction, is refused before anything is
+/// locked or recorded.
+#[tokio::test]
+async fn submitting_a_payload_with_unmatched_sent_outputs_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+
+    let mut repeated = signed.clone();
+    let recipient = repeated.request.info.recipients[0].clone();
+    repeated.request.info.recipients.push(recipient);
+    let sent_hash = repeated.signed_transaction.sent_hashes[0];
+    repeated.signed_transaction.sent_hashes = vec![sent_hash, sent_hash];
+    let mut foreign = signed;
+    foreign.signed_transaction.sent_hashes[0] = FixedHash::zero();
+
+    for payload in [repeated, foreign] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
+        );
+        assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+    }
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+}
+
+/// A signed payload whose inputs are not the ones locked for it is refused: the payload's own inputs stay locked and
+/// the other output it names stays `Unspent`.
+#[tokio::test]
+async fn submitting_a_payload_with_other_inputs_than_it_locked_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, prepared_tx_id, mut signed) = signed_one_sided_payload(&mut alice, 2, MicroMinotari(1_500_000)).await;
+    let other = make_input(
+        &mut rand::rng(),
+        MicroMinotari(1_000_000),
+        &OutputFeatures::default(),
+        alice.key_manager_handle.key_manager(),
+    );
+    alice
+        .output_manager_service_handle
+        .add_output(other.clone(), None)
+        .await
+        .unwrap();
+    alice
+        .oms_db
+        .mark_outputs_as_unspent(vec![(other.output_hash(), true)])
+        .unwrap();
+    let other_input = other
+        .to_transaction_input(alice.key_manager_handle.key_manager())
+        .unwrap();
+    // One payload naming an `Unspent` output in B's place, one naming A twice.
+    let mut repeated = signed.clone();
+    let (body_inputs, _) = signed.signed_transaction.transaction.body.inputs_mut_with_outputs();
+    *body_inputs
+        .iter_mut()
+        .find(|input| input.commitment().unwrap() == inputs[1].commitment())
+        .unwrap() = other_input;
+    let (body_inputs, _) = repeated.signed_transaction.transaction.body.inputs_mut_with_outputs();
+    let first = body_inputs
+        .iter()
+        .find(|input| input.commitment().unwrap() == inputs[0].commitment())
+        .unwrap()
+        .clone();
+    *body_inputs
+        .iter_mut()
+        .find(|input| input.commitment().unwrap() == inputs[1].commitment())
+        .unwrap() = first;
+
+    for payload in [signed, repeated] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
+        );
+        assert_eq!(output_status(&mut alice, &other).await, (OutputStatus::Unspent, None));
+        for input in &inputs {
+            assert_eq!(
+                output_status(&mut alice, input).await,
+                (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+            );
+        }
+    }
+}
+
+/// `payload` with `edit` applied to its JSON form, the way a tampered file would carry it.
+fn tampered(
+    payload: &SignedOneSidedTransactionResult,
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> SignedOneSidedTransactionResult {
+    let mut json = serde_json::to_value(payload).unwrap();
+    edit(&mut json);
+    serde_json::from_value(json).unwrap()
+}
+
+/// A signed payload is refused, with nothing locked or recorded, if its change output does not open to its stated
+/// value, is missing, its transaction spends nothing, or it has expired and has to be locked again.
+#[tokio::test]
+async fn submitting_a_forged_or_expired_payload_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    assert!(signed.signed_transaction.change_output.is_some());
+
+    let forged_change_value = tampered(&signed, |json| {
+        let value = json.pointer_mut("/signed_transaction/change_output/value").unwrap();
+        *value = serde_json::json!(value.as_u64().unwrap() + 1_000_000);
+    });
+    let missing_change = tampered(&signed, |json| {
+        *json.pointer_mut("/signed_transaction/change_output").unwrap() = serde_json::Value::Null;
+    });
+    let forged_change_hash = tampered(&signed, |json| {
+        *json
+            .pointer_mut("/signed_transaction/change_output/output_hash")
+            .unwrap() = serde_json::to_value(FixedHash::zero()).unwrap();
+    });
+    let no_inputs = tampered(&signed, |json| {
+        *json.pointer_mut("/signed_transaction/transaction/body/inputs").unwrap() = serde_json::json!([]);
+    });
+    let mut expired = signed;
+    expired.request.expires_at = 1;
+
+    for payload in [
+        forged_change_value,
+        forged_change_hash,
+        missing_change,
+        no_inputs,
+        expired,
+    ] {
+        assert!(
+            alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload)
+                .await
+                .is_err()
+        );
+        assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
+    }
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+}
+
+/// A payload whose inputs were locked again but cleared back to `Unspent` before the confirm (the startup clean-up of
+/// short-term locks) can still be submitted.
+#[tokio::test]
+async fn submitting_a_payload_whose_relock_was_cleared_succeeds() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    alice
+        .output_manager_service_handle
+        .encumber_outputs(signed.request.tx_id, vec![uo.commitment().clone()])
+        .await
+        .unwrap();
+    alice
+        .output_manager_service_handle
+        .clear_short_term_encumberances()
+        .await
+        .unwrap();
+    assert_eq!(output_status(&mut alice, &uo).await.0, OutputStatus::Unspent);
+    let new_tx_id = signed.signed_transaction.tx_id;
+
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &uo).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+}
+
+/// A signed payload whose signed tx_id names another prepared payload's tx_id is refused, and both payloads keep
+/// their locks.
+#[tokio::test]
+async fn submitting_a_payload_that_names_another_prepared_payload_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (x_inputs, x_tx_id, mut x_signed) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let (y_inputs, y_tx_id, _) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    x_signed.signed_transaction.tx_id = y_tx_id;
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(x_signed)
+            .await
+            .is_err()
+    );
+    for (input, tx_id) in [(&x_inputs[0], x_tx_id), (&y_inputs[0], y_tx_id)] {
+        assert_eq!(
+            output_status(&mut alice, input).await,
+            (OutputStatus::EncumberedToBeSpent, Some(tx_id))
+        );
+    }
+}
+
+/// A payload confirmed under its signed tx_id but never recorded (the wallet stopped before the record was written)
+/// can be released with a record-less cancel and then submitted again.
+#[tokio::test]
+async fn a_confirmed_but_unrecorded_payload_can_be_released_and_submitted_again() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, prepared_tx_id, signed) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let new_tx_id = signed.signed_transaction.tx_id;
+    alice
+        .output_manager_service_handle
+        .confirm_pending_transaction(
+            prepared_tx_id,
+            Some(new_tx_id),
+            signed
+                .signed_transaction
+                .change_output
+                .clone()
+                .map(|change| vec![change]),
+        )
+        .await
+        .unwrap();
+    alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(new_tx_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &inputs[0]).await,
+        (OutputStatus::Unspent, None)
+    );
+
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &inputs[0]).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+}
+
+/// A record-less cancel of a transaction that has a record is refused and changes nothing.
+#[tokio::test]
+async fn a_record_less_cancel_of_a_recorded_transaction_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, _, signed) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    let new_tx_id = signed.signed_transaction.tx_id;
+    let change = signed.signed_transaction.change_output.clone().unwrap();
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed)
+        .await
+        .unwrap();
+    let statuses = async |alice: &mut TransactionServiceNoCommsInterface| {
+        alice
+            .output_manager_service_handle
+            .get_outputs_by_commitments(vec![inputs[0].commitment().clone(), change.commitment().clone()])
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|o| (o.status, o.spent_in_tx_id, o.received_in_tx_id))
+            .collect::<Vec<_>>()
+    };
+    let before = statuses(&mut alice).await;
+    assert_eq!(before.len(), 2);
+
+    let result = alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(new_tx_id)
+        .await;
+    assert!(
+        matches!(result, Err(TransactionServiceError::FailedToCancelTransaction(_))),
+        "{result:?}"
+    );
+    assert_eq!(statuses(&mut alice).await, before);
+}
+
+/// A payload refused because one of its inputs has been spent elsewhere releases its other inputs, so they can be
+/// prepared again, and records nothing.
+#[tokio::test]
+async fn a_refused_payload_releases_its_other_inputs() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    let (inputs, prepared_tx_id, signed) = signed_one_sided_payload(&mut alice, 2, MicroMinotari(1_500_000)).await;
+    alice
+        .oms_db
+        .mark_outputs_as_spent(vec![SpentOutputInfoForBatch {
+            commitment: inputs[0].commitment().clone(),
+            confirmed: true,
+            mark_deleted_at_height: 1,
+            mark_deleted_in_block: FixedHash::default(),
+        }])
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &inputs[1]).await,
+        (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+    );
+
+    assert!(
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        output_status(&mut alice, &inputs[1]).await,
+        (OutputStatus::Unspent, None)
+    );
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert!(completed.is_empty());
+}
+
+/// Input selection for a multisig deposit pays for the multisig script the output really carries. One input covers
+/// the amount and the fee of an output with a plain script, but not the fee of the real multisig output, so the
+/// selection must take a second input; and the memo kept in the wallet records the fee charged. Change is not forced,
+/// so the second input is only taken if the selection itself finds the first one short.
+#[tokio::test]
+async fn create_multisig_utxo_sizes_the_fee_for_the_multisig_script() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let oms_config = OutputManagerServiceConfig {
+        force_change_output: false,
+        ..Default::default()
+    };
+    let mut alice = setup_transaction_service_no_comms_with_oms_config(factories, connection, None, oms_config).await;
+    let input_value = MicroMinotari(1_000_000);
+    let mut inputs = Vec::new();
+    for _ in 0..2 {
+        let uo = make_input(
+            &mut rand::rng(),
+            input_value,
+            &OutputFeatures::default(),
+            alice.key_manager_handle.key_manager(),
+        );
+        alice
+            .output_manager_service_handle
+            .add_output(uo.clone(), None)
+            .await
+            .unwrap();
+        alice
+            .oms_db
+            .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+            .unwrap();
+        inputs.push(uo);
+    }
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let public_keys = vec![bob_key_manager.get_spend_key().pub_key; 3];
+    let party_number = 2;
+
+    // The fee of spending one input into the multisig output, with no change.
+    let consensus_constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let memo = MemoField::new_address_and_data(
+        bob_address.clone(),
+        MicroMinotari::zero(),
+        true,
+        TxType::PaymentToOther,
+        vec![0; 16],
+    )
+    .unwrap();
+    let mut probe = TransactionBuilder::new(
+        consensus_constants.clone(),
+        alice.key_manager_handle.key_manager().clone(),
+        Network::LocalNet,
+    )
+    .unwrap();
+    probe.with_fee_per_gram(MicroMinotari(1));
+    probe.with_input(inputs[0].clone()).unwrap();
+    let one_input_fee = probe
+        .get_fee_estimate_with(&[multisig_pending_output(
+            &consensus_constants,
+            &bob_address,
+            MicroMinotari::zero(),
+            &OutputFeatures::default(),
+            &memo,
+            party_number,
+            public_keys.len(),
+        )
+        .unwrap()])
+        .unwrap();
+
+    let tx_id = alice
+        .transaction_service_handle
+        .create_multisig_utxo(
+            input_value - one_input_fee + MicroMinotari(1),
+            party_number,
+            public_keys,
+            bob_address,
+        )
+        .await
+        .unwrap();
+
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transaction(tx_id)
+        .await
+        .unwrap();
+    assert_eq!(completed.transaction.body.inputs().len(), 2);
+    assert_eq!(
+        completed.payment_id.get_fee(),
+        Some(completed.transaction.body.get_total_fee().unwrap())
+    );
 }
 
 /// A pending outbound transaction stored by an older version may no longer decode. It can still be cancelled, which
@@ -3987,4 +5164,133 @@ async fn an_undecodable_pending_outbound_transaction_can_be_cancelled() {
             .available_balance,
         value
     );
+}
+
+/// The base node sends a block with more outputs than its chunk size as several entries with the same height and
+/// hash. An owned output that is only in a later chunk must still be found and imported.
+#[tokio::test]
+async fn utxo_scanner_imports_an_owned_output_found_only_in_a_later_chunk_of_a_block() {
+    let factories = CryptoFactories::default();
+    let ts_interface =
+        setup_transaction_service_no_comms(factories, make_wallet_database_memory_connection(), None).await;
+    let key_manager = &ts_interface.key_manager_handle;
+
+    let value = MicroMinotari::from(1000);
+    let commitment_mask_key = key_manager.get_random_key(None, None).unwrap();
+    let script_key_id = TariKeyId::Derived {
+        key: (&commitment_mask_key.key_id).into(),
+    };
+    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
+    let encrypted_data = key_manager
+        .encrypt_data_for_recovery(
+            &commitment_mask_key.key_id,
+            None,
+            value.as_u64(),
+            MemoField::new_empty(),
+        )
+        .unwrap();
+    let owned = WalletOutput::new_current_version(
+        value,
+        commitment_mask_key.key_id,
+        OutputFeatures::default(),
+        script!(Nop).unwrap(),
+        inputs!(public_script_key),
+        script_key_id,
+        CompressedPublicKey::default(),
+        ComAndPubSignature::default(),
+        0,
+        Covenant::new(),
+        encrypted_data,
+        MicroMinotari::zero(),
+        MemoField::new_empty(),
+        key_manager,
+    )
+    .unwrap()
+    .to_transaction_output()
+    .unwrap();
+    let other_key_manager = create_new_random_key_manager().await.unwrap();
+    let not_owned = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(2000),
+        &OutputFeatures::default(),
+        other_key_manager.key_manager(),
+    )
+    .to_transaction_output()
+    .unwrap();
+
+    let header_at = |height| {
+        let mut header = NodeBlockHeader::new(0);
+        header.height = height;
+        header
+    };
+    let genesis = header_at(0);
+    let block_1 = header_at(1);
+    let base_node = ts_interface.base_node_mock.clone();
+    base_node
+        .set_blocks(HashMap::from([(0, genesis.clone()), (1, block_1.clone())]))
+        .await
+        .unwrap();
+    // Block 1 is served as two chunks: the first holds only the output that is not ours
+    base_node
+        .set_utxos_by_block(vec![UtxosByBlock {
+            height: 1,
+            header_hash: block_1.hash().to_vec(),
+            utxos: vec![not_owned, owned],
+        }])
+        .await
+        .unwrap();
+    base_node.set_utxo_chunk_size(1).await;
+    base_node
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(ChainMetadata::new(1, block_1.hash(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap()),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
+    base_node.set_mined_utxos(vec![], 1).await;
+    ts_interface
+        .wallet_db
+        .save_scanned_block(ScannedBlock {
+            header_hash: genesis.hash(),
+            height: 0,
+            timestamp: Utc::now().naive_utc(),
+        })
+        .unwrap();
+
+    let shutdown = Shutdown::new();
+    let (event_sender, mut events) = broadcast::channel(100);
+    let scanner = UtxoScannerServiceBuilder::<MockHttpClientFactory>::default()
+        .with_retry_limit(1)
+        .with_mode(UtxoScannerMode::Recovery)
+        .with_client_factory(MockHttpClientFactory::from_mock(base_node))
+        .build_with_resources(
+            ts_interface.wallet_db.clone(),
+            ts_interface.output_manager_service_handle.clone(),
+            ts_interface.transaction_service_handle.clone(),
+            TariAddress::default(),
+            shutdown.to_signal(),
+            event_sender,
+            0,
+            key_manager.clone(),
+        )
+        .await
+        .unwrap();
+    scanner.run().await.unwrap();
+
+    let recovered = tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            match events.recv().await.unwrap() {
+                UtxoScannerEvent::Completed {
+                    num_recovered,
+                    value_recovered,
+                    ..
+                } => break (num_recovered, value_recovered),
+                UtxoScannerEvent::ScanningRoundFailed { error, .. } => panic!("scanning round failed: {error}"),
+                _ => {},
+            }
+        }
+    })
+    .await
+    .expect("the scan must complete");
+    assert_eq!(recovered, (1, value));
 }

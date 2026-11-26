@@ -28,16 +28,15 @@ use async_trait::async_trait;
 use minotari_mcp_common::{McpError, McpResource, McpResult};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Resource providing block information by height
 pub struct BlockInfoResource {
     #[allow(dead_code)]
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: Arc<BaseNodeGrpcClient>,
 }
 
 impl BlockInfoResource {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> Self {
         Self { grpc_client }
     }
 }
