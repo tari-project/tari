@@ -206,8 +206,10 @@ fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
 ///
 /// Such a block is neither stored nor recorded as bad. Within the margin it is remembered in `FtlRefusedBlocks` until
 /// its timestamp is within the limit: while it is, it is dropped before any work is done on it, and a peer that sends
-/// it again gets a short ban. A timestamp beyond the margin (`InvalidTimestampFarBeyondFutureTimeLimit`) is not mapped
-/// here and keeps the long ban, which is what stops its sender from sending it again.
+/// it again gets a short ban. No block is forgotten to make room for another: while `FtlRefusedBlocks` is full, a
+/// further block within the margin is dropped unexamined. A timestamp beyond the margin
+/// (`InvalidTimestampFarBeyondFutureTimeLimit`) is not mapped here and keeps the long ban, which is what stops its
+/// sender from sending it again.
 fn refused_block_error(error: ChainStorageError, block_hash: BlockHash) -> CommsInterfaceError {
     match error {
         ChainStorageError::ValidationError {
@@ -317,7 +319,9 @@ impl UnknownAncestryRandomXChecks {
 
 /// How many blocks that were refused for the future time limit are remembered at once. A block costs its sender the
 /// minimum-difficulty proof of work, and it is forgotten once its timestamp is within the limit, which is at most one
-/// future time limit offset after it was refused, so honest traffic never comes near this.
+/// future time limit offset after it was refused, so honest traffic never comes near this. No block is forgotten early
+/// to make room: that would let a peer have a forgotten block validated again, and again after each time it is pushed
+/// out.
 const FTL_REFUSED_BLOCKS: usize = 32;
 /// How many of the peers that sent such a block are remembered for it
 const FTL_REFUSED_BLOCK_SENDERS: usize = 64;
@@ -333,6 +337,11 @@ struct FtlRefusedBlock {
 /// a slow clock explains. Such a block is neither stored nor recorded as bad, and the peer that relayed it is not
 /// banned, so without this a peer could send it again and again and have it validated each time. While a block is
 /// held here it is dropped before any work is done on it, and a peer that sends it a second time gets a short ban.
+///
+/// A block is only forgotten once its timestamp is within the limit. While `FTL_REFUSED_BLOCKS` are held, a further
+/// block whose header timestamp is within the same margin is dropped without any work either: that timestamp is all
+/// the refusal rests on, so validating the block would only refuse it again. So a block is validated at most once while
+/// it is beyond the limit, however many others are sent with it.
 #[derive(Default)]
 struct FtlRefusedBlocks {
     by_hash: HashMap<FixedHash, FtlRefusedBlock>,
@@ -340,18 +349,12 @@ struct FtlRefusedBlocks {
 
 impl FtlRefusedBlocks {
     /// Remember that block `hash` with header timestamp `timestamp` was refused, and that `peer` sent it. `ftl` is the
-    /// future time limit now. When full, the block that comes within the limit first makes room.
+    /// future time limit now. When full, the block is not remembered: `refused` drops it all the same, for as long as
+    /// there is no room.
     fn record(&mut self, hash: FixedHash, timestamp: u64, peer: Option<&NodeId>, ftl: u64) {
         self.by_hash.retain(|_, block| block.timestamp > ftl);
         if !self.by_hash.contains_key(&hash) && self.by_hash.len() >= FTL_REFUSED_BLOCKS {
-            let first = self
-                .by_hash
-                .iter()
-                .min_by_key(|(_, block)| block.timestamp)
-                .map(|(hash, _)| *hash);
-            if let Some(first) = first {
-                self.by_hash.remove(&first);
-            }
+            return;
         }
         let block = self.by_hash.entry(hash).or_insert(FtlRefusedBlock {
             timestamp,
@@ -362,11 +365,25 @@ impl FtlRefusedBlocks {
         }
     }
 
-    /// Whether block `hash` is still refused at the future time limit `ftl`, and if so, whether `peer` has sent it
-    /// before. `peer` is remembered as one of its senders.
-    fn refused(&mut self, hash: &FixedHash, peer: &NodeId, ftl: u64) -> Option<FtlResend> {
+    /// Whether block `hash` with header timestamp `timestamp` is refused at the future time limit `ftl` without being
+    /// looked at, and if it is held, whether `peer` has sent it before. `peer` is then remembered as one of its
+    /// senders. `ftl_clock_skew_limit` is the end of the margin beyond `ftl`.
+    fn refused(
+        &mut self,
+        hash: &FixedHash,
+        timestamp: u64,
+        peer: &NodeId,
+        ftl: u64,
+        ftl_clock_skew_limit: u64,
+    ) -> Option<FtlResend> {
         self.by_hash.retain(|_, block| block.timestamp > ftl);
-        let block = self.by_hash.get_mut(hash)?;
+        let Some(block) = self.by_hash.get_mut(hash) else {
+            let within_margin = timestamp > ftl && timestamp <= ftl_clock_skew_limit;
+            if within_margin && self.by_hash.len() >= FTL_REFUSED_BLOCKS {
+                return Some(FtlResend::NotHeld);
+            }
+            return None;
+        };
         if block.senders.contains(peer) {
             return Some(FtlResend::BySamePeer);
         }
@@ -383,9 +400,11 @@ impl FtlRefusedBlock {
     }
 }
 
-/// Who sent a block that is held in [`FtlRefusedBlocks`]
+/// Who sent a block that [`FtlRefusedBlocks`] refuses
 #[derive(Debug, PartialEq, Eq)]
 enum FtlResend {
+    /// The block is not held and there is no room for it, so it is not known who has sent it before
+    NotHeld,
     /// A peer that has not sent it before: an honest peer relays a block once
     ByAnotherPeer,
     /// A peer that was already refused for it
@@ -1206,21 +1225,41 @@ where B: BlockchainBackend + 'static
 
     /// Refuses a block that was already refused for the future time limit and is still beyond it, without doing any
     /// work on it. A peer that relays it for the first time is not banned, like the peer it was first refused for. A
-    /// peer that sends it again is: an honest peer relays a block once.
+    /// peer that sends it again is: an honest peer relays a block once. While as many such blocks are held as fit, a
+    /// further block within the margin is refused the same way, without a ban.
     fn check_not_refused_for_future_time_limit(
         &self,
         header: &BlockHeader,
         source_peer: &NodeId,
     ) -> Result<(), CommsInterfaceError> {
         let hash = header.hash();
-        let ftl = self.consensus_manager.consensus_constants(header.height).ftl().as_u64();
+        let constants = self.consensus_manager.consensus_constants(header.height);
+        let ftl = constants.ftl().as_u64();
         let resend = self
             .ftl_refused_blocks
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .refused(&hash, source_peer, ftl);
+            .refused(
+                &hash,
+                header.timestamp.as_u64(),
+                source_peer,
+                ftl,
+                constants.ftl_clock_skew_limit().as_u64(),
+            );
         match resend {
             None => Ok(()),
+            Some(FtlResend::NotHeld) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block with hash `{}` from peer {} is dropped unexamined: its timestamp ({}) is beyond the future \
+                     time limit on our clock, and {} such blocks are already held",
+                    hash.to_hex(),
+                    source_peer,
+                    header.timestamp.as_u64(),
+                    FTL_REFUSED_BLOCKS
+                );
+                Err(CommsInterfaceError::BlockBeyondFutureTimeLimit { hash })
+            },
             Some(FtlResend::ByAnotherPeer) => {
                 debug!(
                     target: LOG_TARGET,
@@ -3136,6 +3175,50 @@ mod test {
         assert!(!db.bad_block_exists(block_hash).unwrap().0);
     }
 
+    /// While as many refused blocks are held as fit, none of them is forgotten to make room, so a peer cannot have two
+    /// blocks push each other out and be validated again each time. A further block within the margin is dropped
+    /// before any work is done on it, without a ban, however often it is sent.
+    #[tokio::test]
+    async fn a_block_beyond_the_future_time_limit_is_dropped_unexamined_while_no_more_are_remembered() {
+        let (mut handlers, db, block) = node_and_block_with_timestamp(|constants| {
+            let ftl = constants.ftl().as_u64();
+            ftl + (constants.ftl_clock_skew_limit().as_u64() - ftl) / 2
+        });
+        let block_hash = block.hash();
+        let peer = NodeId::from_key(&vec![1u8; 32]);
+        let held = |n: usize| FixedHash::from([u8::try_from(n).unwrap().saturating_add(1); 32]);
+        {
+            let constants = handlers.consensus_manager.consensus_constants(0);
+            let ftl = constants.ftl().as_u64();
+            let mut refused = handlers.ftl_refused_blocks.lock().unwrap();
+            for n in 0..FTL_REFUSED_BLOCKS {
+                // All of them come within the limit before `block` does
+                refused.record(held(n), block.header.timestamp.as_u64() - 1, Some(&peer), ftl);
+            }
+        }
+        let mut block_events = handlers.block_event_sender.subscribe();
+
+        for _ in 0..3 {
+            let err = handlers
+                .handle_new_block_message(NewBlock::from(&block), peer.clone())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, CommsInterfaceError::BlockBeyondFutureTimeLimit { hash } if hash == block_hash),
+                "{err:?}"
+            );
+            assert!(err.get_ban_reason().is_none(), "{err:?}");
+        }
+
+        // No copy reached `add_block`, and every block that was held still is
+        assert!(block_events.try_recv().is_err());
+        assert_eq!(db.get_height().unwrap(), 0);
+        let refused = handlers.ftl_refused_blocks.lock().unwrap();
+        assert_eq!(refused.by_hash.len(), FTL_REFUSED_BLOCKS);
+        assert!((0..FTL_REFUSED_BLOCKS).all(|n| refused.by_hash.contains_key(&held(n))));
+        assert!(!refused.by_hash.contains_key(&block_hash));
+    }
+
     /// A refused block is forgotten once its timestamp is within the limit, and the cache does not grow past its
     /// bounds.
     #[test]
@@ -3144,25 +3227,62 @@ mod test {
         let hash = |n: usize| FixedHash::from([u8::try_from(n).unwrap(); 32]);
         let mut refused = FtlRefusedBlocks::default();
         refused.record(hash(0), 1_100, Some(&peer), 1_000);
-        assert_eq!(refused.refused(&hash(0), &peer, 1_099), Some(FtlResend::BySamePeer));
-        assert_eq!(refused.refused(&hash(1), &peer, 1_099), None);
+        assert_eq!(
+            refused.refused(&hash(0), 1_100, &peer, 1_099, 3_099),
+            Some(FtlResend::BySamePeer)
+        );
+        assert_eq!(refused.refused(&hash(1), 1_100, &peer, 1_099, 3_099), None);
         // Within the limit now: it is validated again
-        assert_eq!(refused.refused(&hash(0), &peer, 1_100), None);
+        assert_eq!(refused.refused(&hash(0), 1_100, &peer, 1_100, 3_100), None);
         assert!(refused.by_hash.is_empty());
 
-        // When full, the block that comes within the limit first makes room
+        // When full, no block makes room for another
+        let timestamp = |n: usize| 2_000 + u64::try_from(n).unwrap();
         for n in 0..=FTL_REFUSED_BLOCKS {
-            refused.record(hash(n), 2_000 + u64::try_from(n).unwrap(), None, 1_000);
+            refused.record(hash(n), timestamp(n), None, 1_000);
         }
         assert_eq!(refused.by_hash.len(), FTL_REFUSED_BLOCKS);
-        assert_eq!(refused.refused(&hash(0), &peer, 1_000), None);
-        assert_eq!(refused.refused(&hash(1), &peer, 1_000), Some(FtlResend::ByAnotherPeer));
+        assert_eq!(
+            refused.refused(&hash(0), timestamp(0), &peer, 1_000, 3_000),
+            Some(FtlResend::ByAnotherPeer)
+        );
+        let last = FTL_REFUSED_BLOCKS;
+        assert!(!refused.by_hash.contains_key(&hash(last)));
+        // The block there is no room for is dropped unexamined, however often it is sent, and so is one that was never
+        // seen, if its timestamp is within the margin
+        for _ in 0..2 {
+            assert_eq!(
+                refused.refused(&hash(last), timestamp(last), &peer, 1_000, 3_000),
+                Some(FtlResend::NotHeld)
+            );
+        }
+        assert_eq!(
+            refused.refused(&hash(100), 3_000, &peer, 1_000, 3_000),
+            Some(FtlResend::NotHeld)
+        );
+        assert_eq!(refused.by_hash.len(), FTL_REFUSED_BLOCKS);
+        // One within the limit, or beyond the margin, is not: it goes on to be validated
+        assert_eq!(refused.refused(&hash(100), 1_000, &peer, 1_000, 3_000), None);
+        assert_eq!(refused.refused(&hash(100), 3_001, &peer, 1_000, 3_000), None);
+        // Once a held block is within the limit there is room again
+        assert_eq!(
+            refused.refused(&hash(last), timestamp(last), &peer, timestamp(0), 3_000),
+            None
+        );
+        refused.record(hash(last), timestamp(last), Some(&peer), timestamp(0));
+        assert_eq!(
+            refused.refused(&hash(last), timestamp(last), &peer, timestamp(0), 3_000),
+            Some(FtlResend::BySamePeer)
+        );
+        // Back to the state the sender bound is tested in
+        let mut refused = FtlRefusedBlocks::default();
+        refused.record(hash(2), 2_002, None, 1_000);
 
         // Senders past the bound are not remembered, and the block is still dropped
         for n in 0..=FTL_REFUSED_BLOCK_SENDERS {
             let sender = NodeId::from_key(&vec![u8::try_from(n).unwrap().saturating_add(100); 32]);
             assert_eq!(
-                refused.refused(&hash(2), &sender, 1_000),
+                refused.refused(&hash(2), 2_002, &sender, 1_000, 3_000),
                 Some(FtlResend::ByAnotherPeer)
             );
         }
