@@ -52,9 +52,14 @@ pub(super) fn can_sync_horizon_from(local: &ChainMetadata, remote: &ChainMetadat
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecideNextSync {
     sync_peers: Vec<SyncPeer>,
+    is_synced: bool,
 }
 
 impl DecideNextSync {
+    pub fn is_synced(&self) -> bool {
+        self.is_synced
+    }
+
     pub async fn next_event<B: BlockchainBackend + 'static>(&mut self, shared: &BaseNodeStateMachine<B>) -> StateEvent {
         use StateEvent::{Continue, FatalError, ProceedToBlockSync, ProceedToHorizonSync};
         let local_metadata = match shared.db.get_chain_metadata().await {
@@ -154,9 +159,10 @@ impl DecideNextSync {
 
 impl From<HeaderSyncState> for DecideNextSync {
     fn from(sync: HeaderSyncState) -> Self {
+        let is_synced = sync.is_synced();
         let mut sync_peers = sync.into_sync_peers();
         sync_peers.sort();
-        DecideNextSync { sync_peers }
+        DecideNextSync { sync_peers, is_synced }
     }
 }
 

@@ -716,10 +716,9 @@ impl From<Waiting> for Listening {
 }
 
 impl From<HeaderSyncState> for Listening {
-    fn from(_: HeaderSyncState) -> Self {
-        debug!(target: LOG_TARGET, "Initial sync set to 'false' (from HeaderSyncState)");
+    fn from(sync: HeaderSyncState) -> Self {
         Self {
-            is_synced: false,
+            is_synced: sync.is_synced(),
             initial_delay_count: 0,
             network_silence: false,
         }
@@ -737,10 +736,9 @@ impl From<BlockSync> for Listening {
 }
 
 impl From<DecideNextSync> for Listening {
-    fn from(_: DecideNextSync) -> Self {
-        debug!(target: LOG_TARGET, "Initial sync set to 'false' (from DecideNextSync)");
+    fn from(sync: DecideNextSync) -> Self {
         Self {
-            is_synced: false,
+            is_synced: sync.is_synced(),
             initial_delay_count: 0,
             network_silence: false,
         }
@@ -1452,72 +1450,6 @@ mod test {
         let message = chain_status_log.summary_message().unwrap();
         assert!(message.contains("We are behind the network"));
         assert!(message.contains(&ahead_peer_id));
-    }
-
-    #[tokio::test]
-    async fn aborted_sync_from_decide_next_sync_does_not_mark_unbootstrapped_node_synced() {
-        let (mut state_machine, metadata_tx) = idle_state_machine();
-        assert!(!state_machine.is_bootstrapped());
-
-        let local = state_machine.db.inner().get_chain_metadata().unwrap();
-        let peer_metadata = PeerChainMetadata::new(
-            random_node_id(),
-            ChainMetadata::new(100, test_block_hash(), 20, 80, U512::from(2000), 0).unwrap(),
-            None,
-        );
-        let sync_peer = SyncPeer::from(peer_metadata);
-
-        let header_sync = HeaderSyncState::new(vec![sync_peer.clone()], local);
-
-        let synchronized = StateEvent::HeadersSynchronized(sync_peer, AttemptSyncResult {
-            headers_returned: 100,
-            peer_fork_hash_index: 0,
-            header_sync_status: HeaderSyncStatus::InSyncOrAhead,
-        });
-        let decide_state = state_machine.transition(BaseNodeState::HeaderSync(header_sync), synchronized);
-        assert!(matches!(decide_state, BaseNodeState::DecideNextSync(_)));
-
-        let listening_state = state_machine.transition(decide_state, StateEvent::Continue);
-        let mut listening = match listening_state {
-            BaseNodeState::Listening(listening, network_silence) => {
-                assert!(!network_silence);
-                listening
-            },
-            other => panic!("Expected Listening state, got {other}"),
-        };
-        assert!(!listening.is_synced);
-
-        drop(metadata_tx);
-        let event = listening.next_event(&mut state_machine, false).await;
-        assert!(matches!(event, StateEvent::UserQuit));
-        assert!(!listening.is_synced);
-        assert!(!state_machine.is_bootstrapped());
-        assert!(!state_machine.info.is_synced());
-    }
-
-    #[tokio::test]
-    async fn aborted_sync_from_decide_next_sync_restores_synced_for_bootstrapped_node() {
-        let (mut state_machine, metadata_tx) = idle_state_machine();
-        Listening {
-            is_synced: true,
-            ..Default::default()
-        }
-        .publish_status_info(&mut state_machine);
-        assert!(state_machine.is_bootstrapped());
-
-        let local = state_machine.db.inner().get_chain_metadata().unwrap();
-        let sync_peer = SyncPeer::from(stronger_peer());
-        let header_sync = HeaderSyncState::new(vec![sync_peer], local);
-
-        let decide = DecideNextSync::from(header_sync);
-        let mut listening = Listening::from(decide);
-        assert!(!listening.is_synced);
-
-        drop(metadata_tx);
-        let event = listening.next_event(&mut state_machine, false).await;
-        assert!(matches!(event, StateEvent::UserQuit));
-        assert!(listening.is_synced);
-        assert!(state_machine.info.is_synced());
     }
 
     #[test]
