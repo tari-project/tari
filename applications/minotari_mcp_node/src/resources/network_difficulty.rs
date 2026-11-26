@@ -28,15 +28,14 @@ use async_trait::async_trait;
 use minotari_mcp_common::{McpError, McpResource, McpResult};
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Resource providing network difficulty information
 pub struct NetworkDifficultyResource {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: Arc<BaseNodeGrpcClient>,
 }
 
 impl NetworkDifficultyResource {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> Self {
         Self { grpc_client }
     }
 }

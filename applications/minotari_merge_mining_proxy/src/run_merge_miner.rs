@@ -24,23 +24,21 @@ use futures::FutureExt;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use log::*;
-use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
     BaseNodeGrpcClient,
     ParseInputError,
     ShaP2PoolGrpcClient,
+    grpc_client_config,
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
     wallet_payment_address,
 };
-use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
-use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
-use tari_common::{DefaultConfigLoader, MAX_GRPC_MESSAGE_SIZE, load_configuration};
+use minotari_node_grpc_client::{GrpcClientConfig, GrpcClientError, connect_channel, grpc, p2pool_client};
+use tari_common::{DefaultConfigLoader, load_configuration};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::{net::TcpListener, time::Duration};
-use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     Cli,
@@ -236,47 +234,30 @@ async fn connect_base_node(
     if let Some(ref a) = config.base_node_grpc_address {
         base_node_addr = a.clone();
     } else {
-        base_node_addr = prompt_for_base_node_address(config.network, non_interactive)?;
+        base_node_addr = prompt_for_base_node_address(
+            config.network,
+            non_interactive,
+            config.base_node_grpc_tls_domain_name.is_some(),
+        )?;
     };
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
 
+    let cfg = base_node_grpc_client_config(config)?;
     const MAX_RETRIES: u32 = 10;
     const RETRY_DELAY: Duration = Duration::from_millis(500);
 
     for attempt in 1..=MAX_RETRIES {
-        let mut endpoint = Endpoint::new(base_node_addr.clone())?;
-
-        if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
-            let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
-                .await
-                .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
-            let ca = Certificate::from_pem(pem);
-
-            let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
-            endpoint = endpoint
-                .tls_config(tls)
-                .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
-        }
-
-        match endpoint.connect().await {
-            Ok(channel) => {
-                let node_conn = BaseNodeClient::with_interceptor(
-                    channel,
-                    ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-                )
-                .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-                .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-                return Ok(node_conn);
-            },
-            Err(e) if attempt < MAX_RETRIES => {
+        match connect_channel(&base_node_addr, &cfg).await {
+            Ok(channel) => return Ok(BaseNodeGrpcClient::from_channel(channel, &cfg)?),
+            Err(e @ GrpcClientError::Transport(_)) if attempt < MAX_RETRIES => {
                 warn!(
                     target: LOG_TARGET,
                     "Failed to connect to base node (attempt {attempt}/{MAX_RETRIES}): {e}. Retrying..."
                 );
                 tokio::time::sleep(RETRY_DELAY).await;
             },
-            Err(e) => return Err(MmProxyError::TlsConnectionError(e.to_string())),
+            Err(e) => return Err(e.into()),
         }
     }
 
@@ -291,33 +272,72 @@ async fn connect_sha_p2pool(
     if let Some(ref a) = config.p2pool_node_grpc_address {
         p2pool_node_addr = a.clone();
     } else {
-        p2pool_node_addr = prompt_for_p2pool_address(non_interactive)?;
+        p2pool_node_addr = prompt_for_p2pool_address(non_interactive, config.p2pool_grpc_tls_domain_name.is_some())?;
     };
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
-    let mut endpoint = Endpoint::new(p2pool_node_addr)?;
+    let cfg = p2pool_grpc_client_config(config)?;
+    Ok(p2pool_client(connect_channel(&p2pool_node_addr, &cfg).await?, &cfg)?)
+}
 
-    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
-        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
-            .await
-            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
-        let ca = Certificate::from_pem(pem);
+fn base_node_grpc_client_config(config: &MergeMiningProxyConfig) -> Result<GrpcClientConfig, GrpcClientError> {
+    grpc_client_config(
+        &config.base_node_grpc_authentication,
+        config.base_node_grpc_tls_domain_name.as_deref(),
+        &config.config_dir.join(&config.base_node_grpc_ca_cert_filename),
+        request_timeout(config),
+    )
+}
 
-        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
-        endpoint = endpoint
-            .tls_config(tls)
-            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+/// The p2pool node is a different party from the base node, so it never gets the base node's credentials.
+fn p2pool_grpc_client_config(config: &MergeMiningProxyConfig) -> Result<GrpcClientConfig, GrpcClientError> {
+    grpc_client_config(
+        &config.p2pool_grpc_authentication,
+        config.p2pool_grpc_tls_domain_name.as_deref(),
+        &config.config_dir.join(&config.p2pool_grpc_ca_cert_filename),
+        request_timeout(config),
+    )
+}
+
+fn request_timeout(config: &MergeMiningProxyConfig) -> Option<Duration> {
+    Some(config.base_node_grpc_request_timeout).filter(|t| !t.is_zero())
+}
+
+#[cfg(test)]
+mod test {
+    use minotari_node_grpc_client::GrpcAuthentication;
+    use tari_utilities::SafePassword;
+
+    use super::*;
+
+    #[test]
+    fn p2pool_client_config_never_uses_base_node_credentials() {
+        let mut config = MergeMiningProxyConfig::default();
+        config.base_node_grpc_authentication = GrpcAuthentication::Basic {
+            username: "miner".to_string(),
+            password: SafePassword::from("base-node-secret"),
+        };
+        config.base_node_grpc_tls_domain_name = Some("base.node".to_string());
+        let cfg = p2pool_grpc_client_config(&config).unwrap();
+        assert!(matches!(cfg.auth, GrpcAuthentication::None));
+        assert!(cfg.tls.is_none());
+
+        config.p2pool_grpc_authentication = GrpcAuthentication::Basic {
+            username: "pool".to_string(),
+            password: SafePassword::from("pool-secret"),
+        };
+        let cfg = p2pool_grpc_client_config(&config).unwrap();
+        assert!(matches!(cfg.auth, GrpcAuthentication::Basic { ref username, .. } if username == "pool"));
     }
 
-    let channel = endpoint
-        .connect()
-        .await
-        .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
-    let node_conn = ShaP2PoolClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    )
-    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-    Ok(node_conn)
+    #[test]
+    fn request_timeout_zero_disables_it() {
+        let mut config = MergeMiningProxyConfig::default();
+        assert_eq!(
+            base_node_grpc_client_config(&config).unwrap().request_timeout,
+            Some(Duration::from_secs(30))
+        );
+        config.base_node_grpc_request_timeout = Duration::ZERO;
+        assert_eq!(base_node_grpc_client_config(&config).unwrap().request_timeout, None);
+        assert_eq!(p2pool_grpc_client_config(&config).unwrap().request_timeout, None);
+    }
 }

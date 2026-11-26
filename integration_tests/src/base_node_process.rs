@@ -35,7 +35,7 @@ use std::{
 use fs2::FileExt;
 use minotari_app_utilities::identity_management::save_as_json;
 use minotari_node::{BaseNodeConfig, GrpcMethod, MetricsConfig, run_base_node};
-use minotari_node_grpc_client::BaseNodeGrpcClient;
+use minotari_node_grpc_client::RawBaseNodeGrpcClient;
 use tari_common::{
     MAX_GRPC_MESSAGE_SIZE,
     configuration::{CommonConfig, MultiaddrList},
@@ -315,11 +315,11 @@ pub async fn spawn_base_node_with_config(
 }
 
 impl BaseNodeProcess {
-    pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {
+    pub async fn get_grpc_client(&self) -> anyhow::Result<RawBaseNodeGrpcClient<Channel>> {
         let endpoint = tonic::transport::Endpoint::from_shared(format!("http://127.0.0.1:{}", self.grpc_port))?
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30));
-        Ok(BaseNodeGrpcClient::new(endpoint.connect().await?)
+        Ok(RawBaseNodeGrpcClient::new(endpoint.connect().await?)
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE))
     }
