@@ -63,6 +63,9 @@ use crate::{
         BlockchainDatabase,
         CandidateVmKey,
         ChainStorageError,
+        CommittedKernelsInfo,
+        CommittedOutputsMinedInfo,
+        CommittedQueryDeletedResult,
         DbBasicStats,
         DbTotalSizeStats,
         DbTransaction,
@@ -207,16 +210,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        fetch_outputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<OutputMinedInfo>>,
-        "fetch_outputs_mined_info"
-    );
-
-    make_async_fn!(
-        fetch_latest_mined_infos(hashes: Vec<HashOutput>) -> Vec<MinedInfo>,
-        "fetch_latest_mined_infos"
-    );
-
-    make_async_fn!(
         fetch_txos_in_block_on_chain(height: u64, hash: HashOutput, end_height: u64, end_hash: HashOutput) -> Result<BlockTxos, NotServed>,
         "fetch_txos_in_block_on_chain"
     );
@@ -291,6 +284,52 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         )
             -> (Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>, u64),
         "fetch_outputs_in_block_and_header_pair"
+    );
+
+    make_async_fn!(
+        fetch_outputs_in_block_on_chain(
+            height: u64,
+            hash: HashOutput,
+            end_height: u64,
+            end_hash: HashOutput,
+        ) -> Result<Vec<TransactionOutput>, NotServed>,
+        "fetch_outputs_in_block_on_chain"
+    );
+
+    make_async_fn!(
+        validate_sync_utxos_by_block_range(
+            start_hash: HashOutput,
+            end_hash: HashOutput,
+        ) -> Result<(Option<BlockHeader>, Option<BlockHeader>), NotServed>,
+        "validate_sync_utxos_by_block_range"
+    );
+
+    make_async_fn!(
+        fetch_committed_header(height: u64) -> Option<BlockHeader>,
+        "fetch_committed_header"
+    );
+
+    make_async_fn!(
+        fetch_committed_kernels_info(excess_sigs: Vec<CompressedSignature>) -> CommittedKernelsInfo,
+        "fetch_committed_kernels_info"
+    );
+
+    make_async_fn!(
+        fetch_committed_unspent_outputs(hashes: Vec<HashOutput>) -> Option<Vec<TransactionOutput>>,
+        "fetch_committed_unspent_outputs"
+    );
+
+    make_async_fn!(
+        fetch_committed_outputs_mined_info(hashes: Vec<HashOutput>) -> Option<CommittedOutputsMinedInfo>,
+        "fetch_committed_outputs_mined_info"
+    );
+
+    make_async_fn!(
+        fetch_committed_latest_mined_infos(
+            hashes: Vec<HashOutput>,
+            must_include_header: Option<HashOutput>,
+        ) -> Result<CommittedQueryDeletedResult, NotServed>,
+        "fetch_committed_latest_mined_infos"
     );
 
     make_async_fn!(fetch_chain_header(height: u64) -> ChainHeader, "fetch_chain_header");
