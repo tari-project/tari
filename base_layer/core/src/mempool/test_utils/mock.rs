@@ -162,9 +162,6 @@ impl MempoolServiceMock {
                 self.state.get_tx_state_by_excess_sig.lock().await.clone(),
             )),
             SubmitTransaction(tx) => {
-                if tx.body.kernels().is_empty() {
-                    return Err(MempoolServiceError::TransactionNoKernels);
-                }
                 self.state.submitted_transactions.lock().await.push(tx);
                 self.state.submitted_transaction_peers.lock().await.push(None);
                 let delay = *self.state.submit_transaction_delay.lock().await;

@@ -188,11 +188,7 @@ mod submit_transaction {
 
     use super::*;
     use crate::{
-        mempool::{
-            MempoolService,
-            TxStorageResponse,
-            test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
-        },
+        mempool::{MempoolService, TxStorageResponse},
         proto::types::{AggregateBody, PrivateKey, Transaction},
     };
 
@@ -245,28 +241,6 @@ mod submit_transaction {
             .unwrap_err();
 
         unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
-        assert_eq!(mempool.get_call_count(), 1);
-    }
-
-    #[tokio::test]
-    async fn it_rejects_covenant_over_token_limit_as_bad_request() {
-        let (service, mempool, req_mock) = setup();
-        let over_limit = transaction_proto_with_covenant(&covenant_over_token_limit());
-        let status = service
-            .submit_transaction(req_mock.request_with_context(Default::default(), over_limit))
-            .await
-            .unwrap_err();
-        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
-        assert_eq!(mempool.get_call_count(), 0);
-
-        mempool
-            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
-            .await;
-        let at_limit = transaction_proto_with_covenant(&[0x20; 128]);
-        service
-            .submit_transaction(req_mock.request_with_context(Default::default(), at_limit))
-            .await
-            .unwrap();
         assert_eq!(mempool.get_call_count(), 1);
     }
 

@@ -27,7 +27,7 @@ use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
-    mempool::{MempoolError, MempoolServiceError, rpc::MempoolService, service::MempoolHandle},
+    mempool::{MempoolServiceError, rpc::MempoolService, service::MempoolHandle},
     proto,
 };
 const LOG_TARGET: &str = "c::mempool::rpc";
@@ -54,8 +54,7 @@ fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
 
 fn to_submit_error(err: MempoolServiceError) -> RpcStatus {
     match err {
-        MempoolServiceError::TransactionNoKernels |
-        MempoolServiceError::MempoolError(MempoolError::TransactionNoKernels) => {
+        MempoolServiceError::TransactionNoKernels => {
             RpcStatus::bad_request("Malformed transaction: Transaction has no kernels")
         },
         other => to_internal_error(other),
