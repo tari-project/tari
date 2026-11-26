@@ -40,6 +40,7 @@ pub use test_helpers_functions::{
     create_utxo,
     create_wallet_output_with_data,
     create_wallet_outputs,
+    input_with_a_script_key_not_derived_from_the_spend_key,
     new_public_key,
     schema_to_transaction,
     spend_utxos,
