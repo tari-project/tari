@@ -94,6 +94,7 @@ mod test {
             PaymentRecipient,
             models::{
                 ConfirmationKind,
+                PrepareDepositMultisigTransactionResult,
                 PrepareOneSidedTransactionForSigningResult,
                 SignedOneSidedTransactionResult,
                 SignedTransaction,
@@ -101,7 +102,12 @@ mod test {
                 TransactionResult,
             },
             offline_signer::sign_locked_transaction,
-            one_sided_signer::{multisig_pending_output, withdraw_pending_output},
+            one_sided_signer::{
+                multisig_pending_output,
+                sign_multisig_transaction,
+                validate_multisig_threshold,
+                withdraw_pending_output,
+            },
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
             prepare_withdraw_multisig_transaction,
@@ -1147,7 +1153,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            confirmed(PayloadSummary::from_multisig(init)),
+            confirmed(PayloadSummary::from_multisig(init).unwrap()),
             &PayloadKeyPolicy::default(),
         )
         .unwrap();
@@ -1206,7 +1212,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            confirmed(PayloadSummary::from_multisig(init)),
+            confirmed(PayloadSummary::from_multisig(init).unwrap()),
             &PayloadKeyPolicy::default(),
         )
         .unwrap_err();
@@ -1562,7 +1568,7 @@ mod test {
             alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            confirmed(PayloadSummary::from_multisig(init)),
+            confirmed(PayloadSummary::from_multisig(init).unwrap()),
             &PayloadKeyPolicy::default(),
         )
         .unwrap()
@@ -3402,11 +3408,67 @@ mod test {
                 &spend,
                 create_consensus_manager().consensus_constants(0).clone(),
                 Network::LocalNet,
-                confirmed(PayloadSummary::from_multisig(payload)),
+                confirmed(PayloadSummary::from_multisig(payload).unwrap()),
                 policy,
             )
             .map(|_| ())
         });
+    }
+
+    #[test]
+    fn deposit_multisig_refuses_an_unmeetable_threshold() {
+        let (spend, view) = wallets(Some(1));
+        let bob = KeyManager::new_random().unwrap();
+        let prepare = |m: u8, n: usize| {
+            prepare_deposit_multisig_transaction(
+                &view,
+                TxId::new_random(),
+                view_builder(&spend, &view),
+                MicroMinotari(5000),
+                MemoField::new_empty(),
+                OutputFeatures::default(),
+                m,
+                vec![bob.get_spend_key().pub_key; n],
+                one_sided_address(&view),
+                one_sided_address(&bob),
+                None,
+            )
+        };
+        let bad: [(u8, usize); 6] = [(0, 2), (3, 2), (1, 0), (2, 14), (32, 32), (2, 33)];
+        for (m, n) in bad {
+            let err = prepare(m, n).unwrap_err().to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+        }
+        prepare(1, 1).unwrap();
+        // The largest script every network accepts.
+        prepare(13, 13).unwrap();
+        for (m, n) in bad {
+            assert!(validate_multisig_threshold(m, n).is_err(), "{m} of {n}");
+        }
+        validate_multisig_threshold(2, 13).unwrap();
+        let valid = prepare(2, 2).unwrap();
+
+        // A payload carrying a bad threshold is neither summarised for approval nor signed.
+        for (m, n) in bad {
+            let mut info = valid.info.clone();
+            info.party_number = m;
+            info.public_keys = vec![bob.get_spend_key().pub_key; n];
+            let payload = PrepareDepositMultisigTransactionResult {
+                info: info.clone(),
+                ..valid.clone()
+            };
+            let err = PayloadSummary::from_multisig(payload).unwrap_err().to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+            let err = sign_multisig_transaction(
+                &spend,
+                create_consensus_manager().consensus_constants(0).clone(),
+                Network::LocalNet,
+                info,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
+        }
     }
 
     #[test]

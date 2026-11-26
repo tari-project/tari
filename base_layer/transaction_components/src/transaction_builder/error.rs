@@ -113,6 +113,9 @@ pub enum TransactionBuilderError {
         remainder: MicroMinotari,
         change_fee: MicroMinotari,
     },
+    /// See the "One sender offset key the host cannot learn" section on [`crate::TransactionBuilder`].
+    #[error("the transaction needs at least one output whose sender offset key stays with the signer")]
+    NoPrivateSenderOffsetKey,
     /// A transaction with no recipient or custom outputs is only built when it pays its inputs back to a change
     /// output; without one it would have no outputs at all.
     #[error(

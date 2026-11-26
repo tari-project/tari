@@ -135,7 +135,7 @@ impl EncryptedData {
                 "Encrypted data would be {data_size} bytes, the maximum is {MAX_ENCRYPTED_DATA_SIZE}"
             )));
         }
-        let memo_bytes = memo.to_bytes();
+        let memo_bytes = Zeroizing::new(memo.to_bytes());
         if memo_bytes.len() != memo.get_size() {
             return Err(EncryptedDataError::InvalidMemoSize(format!(
                 "Encoded memo is {} bytes, expected {}",
@@ -229,14 +229,14 @@ impl EncryptedData {
         cipher.decrypt_in_place_detached(nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice(), tag)?;
 
         // Decode the value and mask
-        let mut value_bytes = [0u8; SIZE_VALUE];
+        let mut value_bytes = Zeroizing::new([0u8; SIZE_VALUE]);
         value_bytes.copy_from_slice(
             bytes
                 .get(0..SIZE_VALUE)
                 .ok_or(EncryptedDataError::IncorrectLength("Value too short".to_string()))?,
         );
         Ok((
-            u64::from_le_bytes(value_bytes).into(),
+            u64::from_le_bytes(*value_bytes).into(),
             PrivateKey::from_canonical_bytes(
                 bytes
                     .get(SIZE_VALUE..SIZE_VALUE + SIZE_MASK)
