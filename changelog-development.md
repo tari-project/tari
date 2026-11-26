@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.3.0-pre.6](https://github.com/tari-project/tari/compare/v6.3.0-pre.5...v6.3.0-pre.6) (2026-11-26)
+
+
+### Features
+
+* **node-grpc-client:** config constructor with safe defaults ([#8433](https://github.com/tari-project/tari/issues/8433)) ([4b1bd8d](https://github.com/tari-project/tari/commit/4b1bd8daf22cc3573f3f87a3dffb4563174d5213))
+* **node:** log effective paths at startup and warn on unset HOME fallback ([#8039](https://github.com/tari-project/tari/issues/8039)) ([#8272](https://github.com/tari-project/tari/issues/8272)) ([43bfc3f](https://github.com/tari-project/tari/commit/43bfc3fc477c1f963ab34020ce83c103411b993c))
+* **offline-signing:** dedicated payload signing key, strict mode and payload expiry ([#8399](https://github.com/tari-project/tari/issues/8399)) ([efdcd85](https://github.com/tari-project/tari/commit/efdcd8586f817bbc24338d1b4acf82d5dadec26d)), closes [#1](https://github.com/tari-project/tari/issues/1)
+* **wallet:** add per-method allow-list for console wallet gRPC ([#8016](https://github.com/tari-project/tari/issues/8016)) ([#8418](https://github.com/tari-project/tari/issues/8418)) ([d48066d](https://github.com/tari-project/tari/commit/d48066d7aa698985868e778181db106ed69b0c4f))
+
+
+### Bug Fixes
+
+* **app_utilities:** write identity files atomically and only when changed ([#8423](https://github.com/tari-project/tari/issues/8423)) ([13bf382](https://github.com/tari-project/tari/commit/13bf382561c722cdf85af234c7c5d10074724c6d))
+* **base-node:** rebuild the chain from the moved store, not the temp dir ([#8317](https://github.com/tari-project/tari/issues/8317)) ([0c03dd7](https://github.com/tari-project/tari/commit/0c03dd7074d318ead57adb42fc161eff46a73f4f))
+* **base-node:** return 400 HashConversion error for invalid get_utxo hash length ([#8407](https://github.com/tari-project/tari/issues/8407)) ([dc71594](https://github.com/tari-project/tari/commit/dc715948b7441ff853eef6392857f3956c0adc64))
+* **core:** classify pre-RPC horizon sync peer disconnect as SyncPeerUnavailable ([#8367](https://github.com/tari-project/tari/issues/8367)) ([4097c44](https://github.com/tari-project/tari/commit/4097c4417e6ca2911190112700991041332932c8))
+* **core:** detect mid-stream header reorgs and validate sync_utxos before taking session ([#8365](https://github.com/tari-project/tari/issues/8365)) ([06dc3ed](https://github.com/tari-project/tari/commit/06dc3ed3767aeeffc74dda252c03ab49e1a8e9b2))
+* **core:** link held orphans on any synced main-chain block ([#8409](https://github.com/tari-project/tari/issues/8409)) ([c16407d](https://github.com/tari-project/tari/commit/c16407daf125404da1ee0e3afa8bb7c926b370d6))
+* **dht:** enforce per-origin cooldown on inbound Discovery ([#8368](https://github.com/tari-project/tari/issues/8368)) ([412b5b9](https://github.com/tari-project/tari/commit/412b5b9532413d0d7a2aeaa56aee6d035aa6da03))
+* **dht:** enforce source budget, sync deadline, and stream offences in network discovery ([#8354](https://github.com/tari-project/tari/issues/8354)) ([838c9ff](https://github.com/tari-project/tari/commit/838c9ffbaea4e598c997276d5ebe635ecca3077c))
+* **grpc:** bound GetSideChainUtxos block count and detect mid-stream reorgs ([#8364](https://github.com/tari-project/tari/issues/8364)) ([e3526cf](https://github.com/tari-project/tari/commit/e3526cf23e85b38456c4055d1e6ca688816f7584))
+* **grpc:** keep client Basic auth credentials out of Debug output and memory ([#8412](https://github.com/tari-project/tari/issues/8412)) ([c644942](https://github.com/tari-project/tari/commit/c64494225169b198ce842b7b91b3bec34fce7962))
+* **key-manager:** wipe intermediate key material and require a signer-held sender offset key ([#8436](https://github.com/tari-project/tari/issues/8436)) ([df670ef](https://github.com/tari-project/tari/commit/df670ef69c201cbdc3add8b50aa87a174182e348))
+* **ledger:** build the device app at API_LEVEL 27 so current firmware accepts it ([#8439](https://github.com/tari-project/tari/issues/8439)) ([acc4dbe](https://github.com/tari-project/tari/commit/acc4dbed30e442e79b9f406c3f39cf966ef1795a))
+* **mcp:** replace placeholder gRPC implementations and sanitise upstream text ([#8424](https://github.com/tari-project/tari/issues/8424)) ([37e7435](https://github.com/tari-project/tari/commit/37e7435c7372e6470399f78328cf501f1d0b0bcc))
+* **mempool:** bound mempool sync to advertised items and local limits ([#8432](https://github.com/tari-project/tari/issues/8432)) ([a8b9b06](https://github.com/tari-project/tari/commit/a8b9b060193e3a70f54a743d218baa69172c8c5e))
+* **mempool:** let mempool sync carry any transaction the mempool admits ([#8411](https://github.com/tari-project/tari/issues/8411)) ([7577b31](https://github.com/tari-project/tari/commit/7577b319dabb104e94ef99bbf0627dd547e5144f))
+* **mempool:** reinsert reorg pool transactions before unconfirmed transactions ([#8267](https://github.com/tari-project/tari/issues/8267)) ([bac892a](https://github.com/tari-project/tari/commit/bac892afa1f87a306fd30b48234631f2bc726475))
+* **merge_mining_proxy:** fix get_block method mapping ([#8287](https://github.com/tari-project/tari/issues/8287)) ([e9d012a](https://github.com/tari-project/tari/commit/e9d012a7e19650f7ef43079814261938a0b66bc1)), closes [/github.com/tari-project/tari/pull/8287#discussion_r4499083421](https://github.com/tari-project//github.com/tari-project/tari/pull/8287/issues/discussion_r4499083421)
+* **merge-mining-proxy:** bound upstream monerod response bodies ([#8434](https://github.com/tari-project/tari/issues/8434)) ([28d48cb](https://github.com/tari-project/tari/commit/28d48cb92c235c2e5e1c322c9392cd79951bfbff)), closes [/github.com/tari-project/tari/pull/8434#discussion_r4695648982](https://github.com/tari-project//github.com/tari-project/tari/pull/8434/issues/discussion_r4695648982)
+* **minotari_node:** widen hash rate moving average sum to u128 ([#8402](https://github.com/tari-project/tari/issues/8402)) ([02a9bc4](https://github.com/tari-project/tari/commit/02a9bc4a1f533f5d22131366238cf7cfddc8de3f))
+* **node_components:** order timing_stats by height and report attempted len in MaxSizeVec ([#8304](https://github.com/tari-project/tari/issues/8304)) ([8cfb3c1](https://github.com/tari-project/tari/commit/8cfb3c1dfb17e675b66c031ed214f12c7ed8f8e9))
+* **node:** distinguish DoubleSpend from AlreadyMined in HTTP/gRPC submit_transaction ([#8405](https://github.com/tari-project/tari/issues/8405)) ([e94d714](https://github.com/tari-project/tari/commit/e94d7142584bc36ec466a4648aeaa47fd7a6f88a))
+* **offline-signing:** show output covenants in the payload summary and record what was signed ([#8425](https://github.com/tari-project/tari/issues/8425)) ([b91ac3f](https://github.com/tari-project/tari/commit/b91ac3f22a9cb532000a364b9d980316b0af0ea5))
+* **p2p:** exit immediately on shutdown in MonitorPeersService::run ([#8286](https://github.com/tari-project/tari/issues/8286)) ([8949d39](https://github.com/tari-project/tari/commit/8949d39557d98217c706aecf91f8419334b3e742))
+* **wallet_grpc_client:** add builder with transport defaults and refuse Basic over remote plaintext ([#8426](https://github.com/tari-project/tari/issues/8426)) ([0a57fae](https://github.com/tari-project/tari/commit/0a57faec628982f1dacfd67fbf0c88afd50ff124))
+* **wallet:** enforce UTXO scanner retry_limit, end height-0 walkback, honor builder interval ([#8335](https://github.com/tari-project/tari/issues/8335)) ([4ca1c87](https://github.com/tari-project/tari/commit/4ca1c871687bad68360aae6d8a710488ae8566ad)), closes [/github.com/tari-project/tari/pull/8335#discussion_r4666023554](https://github.com/tari-project//github.com/tari-project/tari/pull/8335/issues/discussion_r4666023554)
+* **wallet:** harden transaction broadcast query retry, sync check, and resubmission window ([#8375](https://github.com/tari-project/tari/issues/8375)) ([ff58cd1](https://github.com/tari-project/tari/commit/ff58cd1d30d5aadf7de14c641c3f1195f79bcc68))
+* **wallet:** harden TXO validation response integrity and anchor header selection ([#8373](https://github.com/tari-project/tari/issues/8373)) ([68b2e8a](https://github.com/tari-project/tari/commit/68b2e8af6d748b89f4658ea11a1be080637e58ec))
+* **wallet:** lock multisig inputs when spending them and size multisig deposits for the real script ([#8430](https://github.com/tari-project/tari/issues/8430)) ([f4ae287](https://github.com/tari-project/tari/commit/f4ae2876177d709b4a74b682dbcd2cd82865354f))
+
 ## [6.3.0-pre.5](https://github.com/tari-project/tari/compare/v6.3.0-pre.4...v6.3.0-pre.5) (2026-11-19)
 
 

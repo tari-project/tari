@@ -155,6 +155,11 @@ struct TransactionSendStatus;
 struct UnblindedOutput;
 
 /**
+ * A list of all the Console Wallet GRPC methods that can be enabled/disabled.
+ */
+struct WalletGrpcMethod;
+
+/**
  * -------------------------------- Vector ------------------------------------------------ ///
  */
 struct TariVector {
@@ -251,6 +256,8 @@ struct TariPaymentRecord {
   unsigned long long mined_timestamp;
   unsigned int direction;
 };
+
+
 
 
 
