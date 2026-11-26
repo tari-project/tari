@@ -26,7 +26,7 @@ use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
+    protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
 };
 use tari_crypto::errors::RangeProofError;
 use tari_mmr::error::MerkleMountainRangeError;
@@ -50,6 +50,15 @@ pub enum HorizonSyncError {
     UnknownSpentOutput(String),
     #[error("Synced outputs do not match the output root of the sync target: {0}")]
     FinalOutputRootMismatch(String),
+    #[error(
+        "Target header at height {height} has output_smt_size {header_size}, but the synced output tree has \
+         {leaf_count} leaves"
+    )]
+    FinalOutputCountMismatch {
+        header_size: u64,
+        leaf_count: u64,
+        height: u64,
+    },
     #[error("Peer kept sync waiting for most of its budget, then failed it: {0}")]
     SlowPeerFailure(String),
     #[error("Output stream ended before the tranche terminator: {0}")]
@@ -175,6 +184,8 @@ impl HorizonSyncError {
             HorizonSyncError::OutputAlreadyStored(_) |
             // An honest pruned peer cannot serve the target state if it has pruned past the target
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            // The leaves are fixed by the matched root, so only the header-sync peer's header can be wrong
+            HorizonSyncError::FinalOutputCountMismatch { .. } |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 
@@ -217,6 +228,7 @@ impl HorizonSyncError {
     pub fn is_unblamed_peer_failure(&self) -> bool {
         match self {
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalOutputCountMismatch { .. } |
             HorizonSyncError::OutputAlreadyStored(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
             HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
@@ -232,6 +244,24 @@ impl HorizonSyncError {
         matches!(self, HorizonSyncError::LocalOutputStateInconsistent(_))
     }
 
+    /// Whether a failed output sync attempt keeps the outputs committed up to its checkpoint. Those outputs are only
+    /// verified once the whole set is synced, so they are kept only when the attempt timed out or lost its peer.
+    pub fn keeps_synced_outputs(&self) -> bool {
+        match self {
+            HorizonSyncError::IncompleteOutputStream(_) |
+            HorizonSyncError::IncompleteKernelStream(_) |
+            HorizonSyncError::SlowPeerFailure(_) |
+            HorizonSyncError::PeerWaitBudgetExceeded { .. } |
+            HorizonSyncError::MaxLatencyExceeded { .. } |
+            HorizonSyncError::RpcError(_) |
+            HorizonSyncError::SyncPeerUnavailable(_) |
+            HorizonSyncError::ConnectivityError(_) => true,
+            HorizonSyncError::RpcStatus(status) => status.as_status_code() == RpcStatusCode::Timeout,
+            // Any other error, including one added later, discards the outputs and restarts from height 1
+            _ => false,
+        }
+    }
+
     /// Whether an honest peer can cause this error when output sync resumed from a checkpoint, because the outputs
     /// an earlier attempt committed may not match the peer's view of the chain. A duplicate key comes from an output
     /// that state already holds, in the output tables or in the output tree.
@@ -240,6 +270,7 @@ impl HorizonSyncError {
             HorizonSyncError::UnknownSpentOutput(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalOutputCountMismatch { .. } |
             HorizonSyncError::OutputAlreadyStored(_) |
             // A resumed attempt only earns the budget of the tranches it streams
             HorizonSyncError::PeerWaitBudgetExceeded { .. } |
@@ -276,9 +307,28 @@ mod connect_error_test {
             }),
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput),
             HorizonSyncError::FinalOutputRootMismatch(String::new()),
+            HorizonSyncError::FinalOutputCountMismatch {
+                header_size: 0,
+                leaf_count: 0,
+                height: 0,
+            },
             HorizonSyncError::OutputAlreadyStored(String::new()),
         ] {
             assert!(!err.is_local_failure(), "{err}");
+        }
+    }
+
+    /// Of the RPC statuses, only a timeout keeps the outputs synced up to the checkpoint
+    #[test]
+    fn only_a_timed_out_status_keeps_synced_outputs() {
+        assert!(HorizonSyncError::RpcStatus(RpcStatus::timed_out("slow")).keeps_synced_outputs());
+        for status in [
+            RpcStatus::conflict("conflict"),
+            RpcStatus::bad_request("bad"),
+            RpcStatus::not_found("missing"),
+            RpcStatus::general("general"),
+        ] {
+            assert!(!HorizonSyncError::RpcStatus(status).keeps_synced_outputs());
         }
     }
 
@@ -328,6 +378,11 @@ mod connect_error_test {
             HorizonSyncError::from(RpcError::ServerClosedRequest)
                 .get_ban_reason()
                 .is_some()
+        );
+        assert!(
+            HorizonSyncError::SyncPeerUnavailable(RpcError::ClientClosed)
+                .get_ban_reason()
+                .is_none()
         );
     }
 }

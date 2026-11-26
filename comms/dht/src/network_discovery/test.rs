@@ -232,6 +232,7 @@ mod rebootstrap {
         time::Instant,
     };
 
+    use futures::StreamExt;
     use tari_comms::{
         PeerConnection,
         connection_manager::{ConnectionDirection, PeerConnectionRequest},
@@ -250,13 +251,14 @@ mod rebootstrap {
     use super::*;
     use crate::{
         BootstrapMethod,
+        DhtClient,
         network_discovery::{
             DhtNetworkDiscoveryRoundInfo,
             MAX_LEARNED_PEERS,
             NetworkDiscoveryError,
             RebootstrapInfo,
             SeedPeerProvider,
-            discovering::{Discovering, MAX_HOSTILE_RELAYED_CLAIMS},
+            discovering::{Discovering, MAX_HOSTILE_RELAYED_CLAIMS, is_bad_data_offence},
             on_connect::OnConnect,
             ready::DiscoveryReady,
             rebootstrap::{
@@ -824,6 +826,38 @@ mod rebootstrap {
         let now = Instant::now();
         assert!(on_connect.is_recently_synced(&node_id, now));
         assert!(!on_connect.is_recently_synced(&node_id, now + Duration::from_secs(5 * 60)));
+    }
+
+    /// A peer relaying our own record does not get it stored, nor charged to its budget
+    #[tokio::test]
+    async fn an_on_connect_sync_skips_our_own_record() {
+        let (mut context, mock, mut events) = context(None);
+        let own_identity = make_node_identity();
+        context.node_identity = own_identity.clone();
+        context.peer_manager = crate::test_utils::build_peer_manager_with_node_identity(&own_identity);
+        // A budget of one: charging our own record would refuse the third-party record after it
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 1;
+        context.config = Arc::new(config);
+        let third_party = make_node_identity();
+        let relayed = vec![
+            UnvalidatedPeerInfo::from_peer_limited_claims(own_identity.to_peer(), 5, 5).into(),
+            UnvalidatedPeerInfo::from_peer_limited_claims(third_party.to_peer(), 5, 5).into(),
+        ];
+        let (_server, conn) = peers_server(relayed, false).await;
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        let peer_manager = &context.peer_manager;
+        assert!(!peer_manager.exists(own_identity.public_key()).await.unwrap());
+        assert!(peer_manager.exists(third_party.public_key()).await.unwrap());
+        assert_eq!(peer_manager.count().await, 1);
+        match &*events.try_recv().unwrap() {
+            DhtEvent::NetworkDiscoveryPeersAdded(info) => assert_eq!(info.num_new_peers, 1),
+            event => panic!("unexpected event {event:?}"),
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
     }
 
     #[tokio::test]
@@ -1647,5 +1681,491 @@ mod rebootstrap {
         on_connect.mark_synced(other.clone(), now + ttl);
         assert!(on_connect.is_recently_synced(&other, now + ttl));
         assert_eq!(on_connect.prev_synced.len(), 1);
+    }
+
+    /// Discovering shares the per-source budget with OnConnect, updates known peers seen before the budget runs out,
+    /// stops reading the stream early once the budget is exhausted, and counts useful budget-cut syncs as succeeded.
+    #[tokio::test]
+    async fn discovering_caps_new_peers_at_the_source_budget_and_updates_known_peers() {
+        let (mut context, mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 3;
+        context.config = Arc::new(config);
+
+        // Pre-populate two known peers: one before the budget runs out (updated) and one after (never read).
+        let (known_before, known_after) = (make_node_identity(), make_node_identity());
+        context
+            .peer_manager
+            .add_or_update_peer(known_before.to_peer())
+            .await
+            .unwrap();
+        context
+            .peer_manager
+            .add_or_update_peer(known_after.to_peer())
+            .await
+            .unwrap();
+
+        let sync_identity = make_node_identity();
+        let sync_peer = sync_identity.to_peer();
+
+        // 1. OnConnect stores 1 new peer from `sync_peer` (1 of 3 budget slots used)
+        let mut srv_oc = MockRpcServer::new(
+            DhtService::new(FixedPeersService {
+                peers: fresh_peer_infos(1),
+                hold_open: false,
+            }),
+            sync_identity.clone(),
+        );
+        srv_oc.serve();
+        let oc_conn = srv_oc
+            .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        OnConnect::new(context.clone()).sync_from(oc_conn).await;
+        assert_eq!(context.peer_manager.count().await, 3);
+
+        // 2. Discovering receives [known_before, fresh_1, fresh_2, fresh_3 (over budget), known_after, fresh_4..8].
+        let mut fresh = fresh_peer_infos(8);
+        let mut served = vec![UnvalidatedPeerInfo::from_peer_limited_claims(known_before.to_peer(), 5, 5).into()];
+        served.extend(fresh.drain(..3));
+        served.push(UnvalidatedPeerInfo::from_peer_limited_claims(known_after.to_peer(), 5, 5).into());
+        served.extend(fresh);
+        let num_records = u32::try_from(served.len()).unwrap();
+
+        let mut srv_disc = MockRpcServer::new(
+            DhtService::new(FixedPeersService {
+                peers: served,
+                hold_open: false,
+            }),
+            sync_identity.clone(),
+        );
+        srv_disc.serve();
+        let disc_conn = srv_disc
+            .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        mock.add_active_connection(disc_conn).await;
+        context
+            .peer_manager
+            .add_or_update_peer(sync_peer.clone())
+            .await
+            .unwrap();
+
+        let params = DiscoveryParams {
+            peers: vec![sync_peer.node_id.clone()],
+            num_peers_to_request: num_records,
+        };
+        let StateEvent::DiscoveryComplete(stats) = Discovering::new(params, context.clone()).next_event().await else {
+            panic!("expected DiscoveryComplete");
+        };
+        assert_eq!(
+            stats.num_succeeded, 1,
+            "a budget-cut sync that stored new peers must count as succeeded"
+        );
+        assert_eq!(stats.num_new_peers, 2);
+        assert!(stats.is_success());
+        assert_eq!(
+            stats.num_duplicate_peers, 1,
+            "Discovering must stop early on budget exhaustion instead of reading trailing records"
+        );
+        assert_eq!(context.peer_manager.count().await, 6);
+
+        // 3. A second round against the now-exhausted source yields 0 new peers and is not marked succeeded, so
+        // Ready will not mistake it for an empty successful sync and transition to OnConnectMode.
+        let mut srv_exhausted = MockRpcServer::new(
+            DhtService::new(FixedPeersService {
+                peers: fresh_peer_infos(3),
+                hold_open: false,
+            }),
+            sync_identity,
+        );
+        srv_exhausted.serve();
+        mock.remove_active_connection(&sync_peer.node_id).await;
+        mock.add_active_connection(
+            srv_exhausted
+                .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
+                .await,
+        )
+        .await;
+        let params2 = DiscoveryParams {
+            peers: vec![sync_peer.node_id],
+            num_peers_to_request: 3,
+        };
+        let StateEvent::DiscoveryComplete(stats2) = Discovering::new(params2, context.clone()).next_event().await
+        else {
+            panic!("expected DiscoveryComplete");
+        };
+        assert_eq!(stats2.num_succeeded, 0);
+        assert_eq!(stats2.num_new_peers, 0);
+        assert!(!stats2.is_success());
+        assert_eq!(context.peer_manager.count().await, 6);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+    }
+
+    /// A sync peer dripping non-converting records just inside the per-item streaming timeout is cut off at the sync
+    /// deadline in Discovering too, without being banned.
+    #[tokio::test]
+    async fn a_drip_feeding_discovering_sync_ends_at_the_sync_deadline() {
+        const SYNC_TIMEOUT: Duration = Duration::from_millis(600);
+        let (mut context, mock, _events) = context(None);
+        with_sync_timeouts(&mut context, Duration::from_millis(200), SYNC_TIMEOUT);
+
+        let sync_identity = make_node_identity();
+        let sync_peer = sync_identity.to_peer();
+        let mut server = MockRpcServer::new(
+            DhtService::new(DripService {
+                interval: Duration::from_millis(120),
+            }),
+            sync_identity,
+        );
+        server.serve();
+        let conn = server
+            .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        mock.add_active_connection(conn).await;
+        context
+            .peer_manager
+            .add_or_update_peer(sync_peer.clone())
+            .await
+            .unwrap();
+
+        let mut discovering = Discovering::new(
+            DiscoveryParams {
+                peers: vec![sync_peer.node_id.clone()],
+                num_peers_to_request: 500,
+            },
+            context,
+        );
+        let started = Instant::now();
+        let event = discovering.next_event().await;
+        let elapsed = started.elapsed();
+        let StateEvent::DiscoveryComplete(stats) = event else {
+            panic!("unexpected event {event}");
+        };
+        assert_eq!(stats.num_succeeded, 0);
+        assert!(
+            elapsed >= SYNC_TIMEOUT && elapsed < Duration::from_secs(3),
+            "took {elapsed:.1?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+
+        // When Discovering created the connection itself (`was_connected = false`), deadline expiry also hangs it up
+        let temp_conn = server
+            .create_connection(sync_peer, ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        assert!(temp_conn.is_connected());
+        let res = discovering.request_from_peers(temp_conn.clone(), false).await;
+        assert!(matches!(res, Err(NetworkDiscoveryError::Timeout { .. })));
+        assert!(
+            !temp_conn.is_connected(),
+            "temporary discovery connection must be hung up on sync timeout"
+        );
+    }
+
+    struct StreamItemsService {
+        items: Vec<Result<GetPeersResponse, RpcStatus>>,
+    }
+
+    #[tari_comms::async_trait]
+    impl DhtRpcService for StreamItemsService {
+        async fn get_peers(&self, _: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
+            let (tx, rx) = tokio::sync::mpsc::channel(self.items.len().max(1));
+            for item in &self.items {
+                tx.send(item.clone()).await.unwrap();
+            }
+            Ok(Streaming::new(rx))
+        }
+    }
+
+    async fn stream_items_server(
+        items: Vec<Result<GetPeersResponse, RpcStatus>>,
+    ) -> (MockRpcServer<DhtService<StreamItemsService>>, PeerConnection) {
+        let identity = make_node_identity();
+        let peer = identity.to_peer();
+        let mut server = MockRpcServer::new(DhtService::new(StreamItemsService { items }), identity);
+        server.serve();
+        let conn = server
+            .create_connection(peer, ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        (server, conn)
+    }
+
+    /// OnConnect bans peers that send empty or duplicate peer messages, and backs off (without banning) when a peer
+    /// aborts the stream with an RPC status error.
+    #[tokio::test]
+    async fn on_connect_bans_empty_or_duplicate_stream_items_and_backs_off_on_status_errors() {
+        const BACKOFF: Duration = Duration::from_secs(5 * 60);
+        let (context, mock, _events) = context(None);
+        let mut on_connect = OnConnect::new(context.clone());
+
+        // 1. Empty peer message -> banned
+        let (_s1, empty_conn) = stream_items_server(vec![Ok(GetPeersResponse { peer: None })]).await;
+        let empty_id = empty_conn.peer_node_id().clone();
+        on_connect.sync_from(empty_conn).await;
+        let mut banned = Vec::new();
+        for _ in 0..50 {
+            banned = mock.take_banned_peers().await;
+            if !banned.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(banned.len(), 1);
+        assert_eq!(banned[0].0, empty_id);
+
+        // 2. Duplicate peer in the same stream -> stored once, then banned
+        let dup_peer = fresh_peer_infos(1).remove(0);
+        let (_s2, dup_conn) = stream_items_server(vec![
+            Ok(GetPeersResponse {
+                peer: Some(dup_peer.clone()),
+            }),
+            Ok(GetPeersResponse { peer: Some(dup_peer) }),
+        ])
+        .await;
+        let dup_id = dup_conn.peer_node_id().clone();
+        on_connect.sync_from(dup_conn).await;
+        assert_eq!(context.peer_manager.count().await, 1);
+        let mut banned = Vec::new();
+        for _ in 0..50 {
+            banned = mock.take_banned_peers().await;
+            if !banned.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(banned.len(), 1);
+        assert_eq!(banned[0].0, dup_id);
+
+        // 3. Stream error status -> not banned, backed off for FAILED_SYNC_BACKOFF instead of full 1h TTL
+        let (_s3, status_conn) = stream_items_server(vec![Err(RpcStatus::general("stream aborted"))]).await;
+        let status_id = status_conn.peer_node_id().clone();
+        on_connect.sync_from(status_conn).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+        assert!(!on_connect.is_recently_synced(&status_id, Instant::now() + BACKOFF));
+    }
+
+    /// Connected peers in Discovering and Rebootstrap are banned when they send malformed or over-budget RPC frames.
+    #[tokio::test]
+    async fn connected_peers_sending_malformed_rpc_frames_are_banned() {
+        let (context, mock, _events) = context(None);
+        let mut discovering = Discovering::new(
+            DiscoveryParams {
+                peers: vec![],
+                num_peers_to_request: 10,
+            },
+            context.clone(),
+        );
+        let peer1 = NodeId::from_public_key(make_node_identity().public_key());
+        let over_budget =
+            NetworkDiscoveryError::from_stream_error(RpcError::DecodeBudgetExceeded { items: 100, max: 10 });
+        let _ignore = discovering
+            .ban_on_offence(peer1.clone(), Err::<(), _>(over_budget), true)
+            .await;
+
+        let peer2 = NodeId::from_public_key(make_node_identity().public_key());
+        let bad_decode =
+            NetworkDiscoveryError::from_stream_error(RpcError::DecodeError(prost::DecodeError::new("corrupt frame")));
+        ban_on_offence(&context, peer2.clone(), &bad_decode).await;
+
+        // Oversized streamed responses are surfaced by `RpcClientWorker` as `RpcStatusCode::ProtocolError`; verify an
+        // actual streamed violation is classified as a high-severity bad-data offence and bans a connected peer too.
+        let (_oversize_server, mut oversize_conn) = peers_server(fresh_peer_infos(1), false).await;
+        let peer3 = oversize_conn.peer_node_id().clone();
+        let mut tiny_client = oversize_conn
+            .connect_rpc_using_builder(
+                tari_comms::protocol::rpc::RpcClientBuilder::<DhtClient>::new().with_max_response_size(1),
+            )
+            .await
+            .unwrap();
+        let mut stream = tiny_client.get_peers(GetPeersRequest::default()).await.unwrap();
+        let stream_err = stream.next().await.unwrap().unwrap_err();
+        let mapped = NetworkDiscoveryError::from_stream_error(stream_err);
+        assert!(is_bad_data_offence(&mapped));
+        let _ignore = discovering
+            .ban_on_offence(peer3.clone(), Err::<(), _>(mapped), true)
+            .await;
+
+        let mut banned = Vec::new();
+        for _ in 0..50 {
+            banned.extend(mock.take_banned_peers().await.into_iter().map(|(id, ..)| id));
+            if banned.len() >= 3 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(banned, vec![peer1, peer2, peer3]);
+    }
+}
+
+mod discovering {
+    use std::sync::{Arc, Mutex};
+
+    use tari_comms::{
+        PeerConnection,
+        framing,
+        peer_manager::NodeId,
+        protocol::rpc::{Handshake, HandshakeRejectReason, RPC_MAX_FRAME_SIZE, RpcError, RpcHandshakeError},
+        test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_peer_connection_mock_pair},
+    };
+    use tokio::{io::AsyncWriteExt, sync::RwLock};
+
+    use super::*;
+    use crate::{
+        BootstrapMethod,
+        DhtConfig,
+        network_discovery::{
+            NetworkDiscoveryError,
+            admission::SourceBudget,
+            discovering::Discovering,
+            state_machine::{DiscoveryParams, NetworkDiscoveryContext},
+        },
+    };
+
+    fn discovering_context(rpc_connect_timeout: Duration) -> (NetworkDiscoveryContext, ConnectivityManagerMockState) {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.bootstrap_rpc_connect_timeout = rpc_connect_timeout;
+        let peer_manager = build_peer_manager();
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        let mock_state = connectivity_mock.get_shared_state();
+        connectivity_mock.spawn();
+        let (event_tx, _) = broadcast::channel(10);
+        let context = NetworkDiscoveryContext {
+            config: Arc::new(config),
+            peer_manager,
+            connectivity,
+            node_identity: make_node_identity(),
+            num_rounds: Default::default(),
+            all_attempted_peers: Default::default(),
+            event_tx,
+            last_round: Default::default(),
+            bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
+            bootstrap_started_at: Default::default(),
+            seed_peer_provider: None,
+            inbound_learned: Default::default(),
+            pool_peers: Default::default(),
+            source_budget: Arc::new(Mutex::new(SourceBudget::default())),
+        };
+        (context, mock_state)
+    }
+
+    async fn dialled_peer_with_handshake_action<F, Fut>(
+        action: F,
+    ) -> (NodeId, PeerConnection, tokio::task::JoinHandle<()>)
+    where
+        F: FnOnce(tari_comms::Substream) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let local_peer = make_node_identity().to_peer();
+        let remote_peer = make_node_identity().to_peer();
+        let remote_id = remote_peer.node_id.clone();
+        let (_, remote_mock, dialled_conn, _) = create_peer_connection_mock_pair(remote_peer, local_peer).await;
+        let task = tokio::spawn(async move {
+            if let Some(substream) = remote_mock.next_incoming_substream().await {
+                action(substream).await;
+            }
+        });
+        (remote_id, dialled_conn, task)
+    }
+
+    async fn reject_handshake(
+        discovering: &mut Discovering,
+        reason: HandshakeRejectReason,
+    ) -> (NodeId, NetworkDiscoveryError) {
+        let (peer_id, conn, task) = dialled_peer_with_handshake_action(move |substream| async move {
+            let mut framed = framing::canonical(substream, 4096);
+            Handshake::new(&mut framed).reject_with_reason(reason).await.unwrap();
+        })
+        .await;
+        let err = discovering.request_from_peers(conn.clone(), false).await.unwrap_err();
+        assert!(!conn.is_connected());
+        task.await.unwrap();
+        (peer_id, err)
+    }
+
+    /// A freshly dialled peer (`was_connected == false`) rejecting `connect_rpc` with `NoServerSessionsAvailable`,
+    /// `UnsupportedVersion`, or timing out during the handshake is hung up without being banned, while a peer sending
+    /// an oversized handshake frame (`FrameTooLarge`) is banned and hung up.
+    #[tokio::test]
+    async fn dialled_peer_rejecting_connect_rpc_with_no_sessions_is_not_banned() {
+        let (context, mock) = discovering_context(Duration::from_millis(200));
+        let mut discovering = Discovering::new(
+            DiscoveryParams {
+                peers: vec![],
+                num_peers_to_request: 10,
+            },
+            context,
+        );
+
+        let (busy_peer, err) = reject_handshake(
+            &mut discovering,
+            HandshakeRejectReason::NoServerSessionsAvailable("busy"),
+        )
+        .await;
+        assert!(matches!(
+            err,
+            NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::NoServerSessionsAvailable(_)
+            )))
+        ));
+
+        let (version_peer, err) = reject_handshake(&mut discovering, HandshakeRejectReason::UnsupportedVersion).await;
+        assert!(matches!(
+            err,
+            NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::UnsupportedVersion
+            )))
+        ));
+
+        let (slow_peer, slow_conn, slow_task) = dialled_peer_with_handshake_action(|substream| async move {
+            let _keep_open = substream;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        })
+        .await;
+        let err = discovering
+            .request_from_peers(slow_conn.clone(), false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, NetworkDiscoveryError::Timeout { ref operation, .. } if operation == "connect_rpc"));
+        assert!(!slow_conn.is_connected());
+        slow_task.abort();
+
+        let handshake_timeout_peer = NodeId::from_public_key(make_node_identity().public_key());
+        let handshake_timed_out: NetworkDiscoveryError = RpcError::HandshakeError(RpcHandshakeError::TimedOut).into();
+        discovering
+            .ban_on_connect_rpc_offence(handshake_timeout_peer.clone(), &handshake_timed_out)
+            .await;
+
+        let (bad_peer, bad_conn, bad_task) = dialled_peer_with_handshake_action(|mut substream| async move {
+            let declared = u32::try_from(RPC_MAX_FRAME_SIZE).unwrap();
+            let _ignore = substream.write_all(&declared.to_be_bytes()).await;
+            let _ignore = substream.flush().await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        })
+        .await;
+        let err = discovering
+            .request_from_peers(bad_conn.clone(), false)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { .. }))
+        ));
+        assert!(!bad_conn.is_connected());
+        bad_task.abort();
+
+        let mut banned = Vec::new();
+        for _ in 0..50 {
+            banned.extend(mock.take_banned_peers().await.into_iter().map(|(id, ..)| id));
+            if !banned.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(banned, vec![bad_peer]);
+        assert!(!banned.contains(&busy_peer));
+        assert!(!banned.contains(&version_peer));
+        assert!(!banned.contains(&slow_peer));
+        assert!(!banned.contains(&handshake_timeout_peer));
     }
 }

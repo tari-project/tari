@@ -111,6 +111,12 @@ root:
     - stdout
 
 loggers:
+  # Route common configuration and utils messages to the base_layer appender
+  common:
+    level: info
+    appenders:
+      - base_layer
+
   # Route log events common to every application to all appenders
   tari::application:
     level: debug

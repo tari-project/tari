@@ -93,6 +93,8 @@ impl PartialEq for NetworkDiscoveryError {
                 (Self::TooManyPeersReceived, Self::TooManyPeersReceived) |
                 (Self::TooManyInvalidPeersReceived, Self::TooManyInvalidPeersReceived) |
                 (Self::DuplicatePeerReceived, Self::DuplicatePeerReceived) |
+                (Self::JoinError(_), Self::JoinError(_)) |
+                (Self::Timeout { .. }, Self::Timeout { .. }) |
                 (Self::PeerConnectionClosed { .. }, Self::PeerConnectionClosed { .. })
         )
     }

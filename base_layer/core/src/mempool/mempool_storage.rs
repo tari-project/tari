@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -37,14 +37,15 @@ use tari_transaction_components::{
     BanReason,
     helpers::borsh::SerializedSize,
     rpc::models::FeePerGramStat,
-    transaction_components::{Transaction, TransactionError},
+    transaction_components::{OutputType, Transaction, TransactionError},
     validation::{
         AggregatedBodyValidationError,
         aggregate_body::{run_height_reading_scripts, validate_covenants},
+        helpers::check_no_coinbase_kernels,
     },
     weight::TransactionWeight,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 #[cfg(feature = "metrics")]
 use crate::mempool::metrics;
@@ -59,6 +60,7 @@ use crate::{
         reorg_pool::ReorgPool,
         unconfirmed_pool::{
             HeightValidation,
+            InsertOutcome,
             MAX_BLOCK_TEMPLATE_BODY_BYTES,
             MAX_SPENDS_PER_OUTPUT,
             RetrieveResults,
@@ -207,8 +209,8 @@ impl MempoolStorage {
             let timer = Instant::now();
             let (validator, generation) = {
                 let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
-                if let Some(response) = lock.pre_check(&tx) {
-                    return Ok((response, None));
+                if let Some(rejection) = lock.pre_check(&tx) {
+                    return Ok(rejection);
                 }
                 (lock.validator.clone(), lock.chain_generation)
             };
@@ -302,33 +304,51 @@ impl MempoolStorage {
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
-    /// The cheap checks done before a new transaction is validated: its inputs, fee, weight, body size, kernel
-    /// excesses and the spend cap. Returns the response if the transaction is not to be validated.
+    /// The cheap checks done before a new transaction is validated: no coinbase, its inputs, fee, weight, body size,
+    /// kernel excesses and the spend cap. Returns the response, and a ban reason for a coinbase, if the transaction is
+    /// not to be validated.
     ///
     /// This does no kernel deduplication. Callers drop an exact kernel-set match or a union of pool transactions before
     /// validation with [MempoolStorage::has_transaction], and `insert_into_unconfirmed_pool` does not store one; any
     /// other reuse of pooled kernels is validated.
-    pub fn pre_check(&self, tx: &Transaction) -> Option<TxStorageResponse> {
+    pub fn pre_check(&self, tx: &Transaction) -> Option<(TxStorageResponse, Option<BanReason>)> {
+        // Coinbase kernels carry no weight, so the weight check below only bounds validation work without them. They
+        // are rejected (and banned) as internal consistency validation would.
+        let no_coinbase = if tx.body.outputs().iter().any(|o| o.is_coinbase()) {
+            Err(AggregatedBodyValidationError::OutputTypeNotPermitted {
+                output_type: OutputType::Coinbase,
+            })
+        } else {
+            check_no_coinbase_kernels(&tx.body)
+        };
+        if let Err(e) = no_coinbase {
+            let error = ValidationError::from(e);
+            let ban_reason = internal_failure_ban_reason(&error);
+            return Some((validation_error_to_response(error), ban_reason));
+        }
         if let Some(response) = Self::check_inputs(tx).or_else(|| self.check_fee(tx)) {
-            return Some(response);
+            return Some((response, None));
         }
         let constants = self.rules.consensus_constants(self.last_seen_height);
         match tx.calculate_weight(constants.transaction_weight_params()) {
             Ok(weight) if weight <= constants.max_block_transaction_weight() => {},
             Ok(_) => {
-                return Some(TxStorageResponse::NotStored(Some(
-                    ValidationError::MaxTransactionWeightExceeded.to_string(),
-                )));
+                return Some((
+                    TxStorageResponse::NotStored(Some(ValidationError::MaxTransactionWeightExceeded.to_string())),
+                    None,
+                ));
             },
             Err(e) => {
-                return Some(TxStorageResponse::NotStored(Some(format!(
-                    "Unable to calculate the transaction weight: {e}"
-                ))));
+                return Some((
+                    TxStorageResponse::NotStored(Some(format!("Unable to calculate the transaction weight: {e}"))),
+                    None,
+                ));
             },
         }
         Self::check_body_size(tx)
             .or_else(|| Self::check_kernel_excesses(tx))
             .or_else(|| self.check_spend_cap(tx))
+            .map(|response| (response, None))
     }
 
     /// Refuses a transaction spending an output that [MAX_SPENDS_PER_OUTPUT] pool transactions already spend, if it
@@ -505,15 +525,30 @@ impl MempoolStorage {
         // Evicting first also keeps a full pool from evicting its lowest priority transaction for `tx`. Descendants are
         // kept: their inputs may also be produced by the transaction `tx` is a subset of.
         self.unconfirmed_pool.remove_transactions(victims)?;
-        self.unconfirmed_pool
-            .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?;
-        debug!(
-            target: LOG_TARGET,
-            "Transaction {} inserted in {:.2?}",
-            tx_id,
-            timer.elapsed()
-        );
-        Ok(TxStorageResponse::UnconfirmedPool)
+        match self
+            .unconfirmed_pool
+            .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?
+        {
+            InsertOutcome::Inserted => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction {} inserted in {:.2?}",
+                    tx_id,
+                    timer.elapsed()
+                );
+                Ok(TxStorageResponse::UnconfirmedPool)
+            },
+            InsertOutcome::AlreadyStored => Ok(TxStorageResponse::UnconfirmedPool),
+            InsertOutcome::PoolFull => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({tx_id}) not stored: the unconfirmed pool is full and cannot store it"
+                );
+                #[cfg(feature = "metrics")]
+                metrics::policy_refused_transactions("pool_full").inc();
+                Ok(TxStorageResponse::NotStoredFeeTooLow)
+            },
+        }
     }
 
     fn get_transaction_weighting(&self) -> TransactionWeight {
@@ -538,17 +573,29 @@ impl MempoolStorage {
         Ok(())
     }
 
-    // Insert a set of new transactions into the UTxPool.
-    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
+    // Insert a set of new transactions into the UTxPool, parents in the batch before their children.
+    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<i64, UnconfirmedPoolError> {
         // Fetching the tip reads the database, which is not worth doing under the write lock for nothing
         if txs.is_empty() {
-            return Ok(());
+            return Ok(0);
         }
         let tip = self.chain_tip();
-        for tx in txs {
-            self.insert(tx, tip.as_ref())?;
+        let total = txs.len();
+        let (mut stored, mut orphans, mut spent) = (0usize, 0usize, 0usize);
+        for tx in topo_order(txs) {
+            match self.insert(tx, tip.as_ref())? {
+                TxStorageResponse::UnconfirmedPool => stored = stored.saturating_add(1),
+                TxStorageResponse::NotStoredOrphan => orphans = orphans.saturating_add(1),
+                TxStorageResponse::NotStoredAlreadySpent => spent = spent.saturating_add(1),
+                _ => {},
+            }
         }
-        Ok(())
+        debug!(
+            target: LOG_TARGET,
+            "Re-inserted {total} transaction(s): {stored} stored, {orphans} orphaned, {spent} already spent, {} other",
+            total.saturating_sub(stored).saturating_sub(orphans).saturating_sub(spent)
+        );
+        Ok(i64::try_from(spent).unwrap_or(i64::MAX))
     }
 
     /// Update the Mempool based on the received published block.
@@ -725,37 +772,20 @@ impl MempoolStorage {
         self.chain_generation = self.chain_generation.wrapping_add(1);
         debug!(target: LOG_TARGET, "Mempool processing reorg");
 
-        let mut num_invalid_txs: i64 = 0;
-        let tip = self.chain_tip();
-
-        // Clear out all transactions from the unconfirmed pool and re-submit them to the unconfirmed mempool for
-        // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
-        // after a reorg.
+        // Drain the unconfirmed pool and remove re-orged transactions from the reorg pool, then re-submit them as one
+        // batch (reorg pool first, then drained unconfirmed pool) so that parents in either pool are restored before
+        // their children.
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
         let num_removed_txs = removed_txs.len();
-        // Try to add in all the transactions again.
-        for tx in removed_txs {
-            let resp = self
-                .insert(tx, tip.as_ref())
-                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-            if resp == TxStorageResponse::NotStoredAlreadySpent {
-                num_invalid_txs = num_invalid_txs.saturating_add(1);
-            }
-        }
-
-        // Remove re-orged transactions from reorg pool and re-submit them to the unconfirmed mempool
-        let reorg_txs = self
+        let mut txs = self
             .reorg_pool
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
-        let num_reorg_txs = reorg_txs.len();
-        for tx in reorg_txs {
-            let resp = self
-                .insert(tx, tip.as_ref())
-                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-            if resp == TxStorageResponse::NotStoredAlreadySpent {
-                num_invalid_txs = num_invalid_txs.saturating_add(1);
-            }
-        }
+        let num_reorg_txs = txs.len();
+        txs.extend(removed_txs);
+
+        let num_invalid_txs = self
+            .insert_txs(txs)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
 
         if num_invalid_txs > 0 {
             warn!(
@@ -782,14 +812,11 @@ impl MempoolStorage {
     pub fn process_sync(&mut self) -> Result<(), MempoolError> {
         self.chain_generation = self.chain_generation.wrapping_add(1);
         debug!(target: LOG_TARGET, "Mempool processing sync finished");
-        // lets remove and revalidate all transactions from the mempool. All we know is that the state has changed, but
-        // we dont have the data to know what.
-        let txs = self.unconfirmed_pool.drain_all_mempool_transactions();
-        // lets add them all back into the mempool
-        self.insert_txs(txs)
-            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        // let retrieve all re-org pool transactions as well as make sure they are mined as well
-        let txs = self.reorg_pool.clear_and_retrieve_all();
+        // lets remove and revalidate all transactions from the mempool and the reorg pool. All we know is that the
+        // state has changed, but we dont have the data to know what. One batch, so that a child is re-inserted after
+        // its parent from either pool.
+        let mut txs = self.reorg_pool.clear_and_retrieve_all();
+        txs.extend(self.unconfirmed_pool.drain_all_mempool_transactions());
         self.insert_txs(txs)
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         Ok(())
@@ -813,19 +840,26 @@ impl MempoolStorage {
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
+    /// Returns pool transactions whose kernels are all in `excess_sigs` and pairwise disjoint (see
+    /// [select_disjoint_kernel_cover]), so they can be put in one block together, and the signatures they do not cover
+    /// in request order.
     pub fn retrieve_by_excess_sigs(
         &self,
         excess_sigs: &[PrivateKey],
     ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
-        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs)?;
-
-        match self.reorg_pool.retrieve_by_excess_sigs(&remaining) {
-            Ok((found_published_transactions, remaining)) => Ok((
-                found_txns.into_iter().chain(found_published_transactions).collect(),
-                remaining,
-            )),
-            Err(e) => Err(e),
+        let (unconfirmed, _) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs)?;
+        let (reorg, _) = self.reorg_pool.retrieve_by_excess_sigs(excess_sigs)?;
+        let num_candidates = unconfirmed.len().saturating_add(reorg.len());
+        let (cover, uncovered) = select_disjoint_kernel_cover(unconfirmed, reorg, excess_sigs);
+        let num_dropped = num_candidates.saturating_sub(cover.len());
+        if num_dropped > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Dropped {num_dropped} of {num_candidates} pool transaction(s) matching the requested excess signatures \
+                 as unrequested or overlapping",
+            );
         }
+        Ok((cover, uncovered))
     }
 
     /// Returns the subset of provided output hashes that exist in the mempool's unconfirmed pool.
@@ -892,6 +926,60 @@ impl MempoolStorage {
         let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
         Ok(stats)
     }
+}
+
+/// Orders a batch so that a transaction spending an output produced in the batch comes after a producer of it, and
+/// keeps the given order otherwise (Kahn's algorithm with a FIFO queue). The pool may hold several producers of an
+/// output (e.g. a transaction and an aggregate of it), and a spender only needs one of them, as for
+/// `UnconfirmedPool::would_orphan`.
+// shortcut: a spender is placed after the first producer placed, which may still be rejected on insert while a later
+// one would be stored; retry orphans if that drops valid transactions.
+fn topo_order(txs: Vec<Arc<Transaction>>) -> Vec<Arc<Transaction>> {
+    let mut producers = HashMap::<HashOutput, Vec<usize>>::new();
+    for (i, tx) in txs.iter().enumerate() {
+        for output in tx.body.outputs() {
+            producers.entry(output.hash()).or_default().push(i);
+        }
+    }
+    // The outputs each transaction waits for, and the transactions waiting for each output
+    let mut waiting_for = vec![0usize; txs.len()];
+    let mut waiters = HashMap::<HashOutput, Vec<usize>>::new();
+    for (i, tx) in txs.iter().enumerate() {
+        for input in tx.body.inputs() {
+            let hash = input.output_hash();
+            if producers.get(&hash).is_some_and(|p| !p.contains(&i)) &&
+                let Some(count) = waiting_for.get_mut(i)
+            {
+                *count = count.saturating_add(1);
+                waiters.entry(hash).or_default().push(i);
+            }
+        }
+    }
+    let mut ready = (0..txs.len())
+        .filter(|i| waiting_for.get(*i) == Some(&0))
+        .collect::<VecDeque<_>>();
+    let mut txs = txs.into_iter().map(Some).collect::<Vec<_>>();
+    let mut ordered = Vec::with_capacity(txs.len());
+    while let Some(i) = ready.pop_front() {
+        let Some(tx) = txs.get_mut(i).and_then(Option::take) else {
+            continue;
+        };
+        // The first producer placed releases an output's waiters
+        for output in tx.body.outputs() {
+            for waiter in waiters.remove(&output.hash()).into_iter().flatten() {
+                if let Some(count) = waiting_for.get_mut(waiter) {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        ready.push_back(waiter);
+                    }
+                }
+            }
+        }
+        ordered.push(tx);
+    }
+    // Anything left waiting (a cycle) is still re-inserted, in the given order
+    ordered.extend(txs.into_iter().flatten());
+    ordered
 }
 
 /// Fee per gram x1000, computed as for the stored pool priority (`FeePriority`)
@@ -1261,6 +1349,69 @@ fn validation_error_to_response(error: ValidationError) -> TxStorageResponse {
     }
 }
 
+/// Selects from the `unconfirmed` and `reorg` pool candidates the transactions whose kernels are all in `requested`
+/// and pairwise disjoint, and returns them with the requested signatures they do not cover, in request order.
+/// Candidates with fewer kernels are taken first, so an aggregate padded with outputs of its own is used only for
+/// kernels nothing smaller covers; ties go to the unconfirmed pool, then to the lexicographically smallest sorted
+/// kernel signatures. Greedy, not an exact cover: a signature it misses only costs a peer fetch or the full block.
+/// Anyone who gets an aggregate of a pooled transaction and one of their own mined can trigger that full-block
+/// fallback on purpose, for the fee of mining it.
+pub fn select_disjoint_kernel_cover(
+    unconfirmed: Vec<Arc<Transaction>>,
+    reorg: Vec<Arc<Transaction>>,
+    requested: &[PrivateKey],
+) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+    let requested_set = requested.iter().collect::<HashSet<_>>();
+    let mut candidates = unconfirmed
+        .into_iter()
+        .map(|tx| (tx, false))
+        .chain(reorg.into_iter().map(|tx| (tx, true)))
+        .filter_map(|(tx, from_reorg_pool)| {
+            let kernels = tx.body.kernels();
+            if kernels.is_empty() ||
+                !kernels
+                    .iter()
+                    .all(|kernel| requested_set.contains(kernel.excess_sig.get_signature()))
+            {
+                return None;
+            }
+            let mut sigs = kernels
+                .iter()
+                .map(|kernel| kernel.excess_sig.get_signature().clone())
+                .collect::<Vec<_>>();
+            sigs.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+            Some((tx, from_reorg_pool, sigs))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|(_, a_reorg, a_sigs), (_, b_reorg, b_sigs)| {
+        a_sigs
+            .len()
+            .cmp(&b_sigs.len())
+            .then(a_reorg.cmp(b_reorg))
+            .then_with(|| {
+                a_sigs
+                    .iter()
+                    .map(ByteArray::as_bytes)
+                    .cmp(b_sigs.iter().map(ByteArray::as_bytes))
+            })
+    });
+
+    let mut covered = HashSet::new();
+    let mut cover = Vec::new();
+    for (tx, _, sigs) in candidates {
+        if !sigs.iter().any(|sig| covered.contains(sig)) {
+            covered.extend(sigs);
+            cover.push(tx);
+        }
+    }
+    let uncovered = requested
+        .iter()
+        .filter(|sig| !covered.contains(*sig))
+        .cloned()
+        .collect();
+    (cover, uncovered)
+}
+
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
@@ -1278,11 +1429,14 @@ mod test {
         MicroMinotari,
         covenant,
         key_manager::KeyManager,
-        test_helpers::create_kernel_only_transaction,
+        test_helpers::{create_kernel_only_transaction, create_test_kernel},
         transaction_components::{
             KernelFeatures,
+            OutputFeatures,
+            RangeProofType,
             SpentOutput,
             TransactionKernel,
+            TransactionOutput,
             WalletOutput,
             covenants::{Covenant, CovenantError},
         },
@@ -1441,6 +1595,40 @@ mod test {
     }
 
     #[test]
+    fn topo_order_puts_parents_first_and_keeps_the_given_order_otherwise() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (a, a_outputs) = create_tx_with_outputs(&key_manager);
+        let (b, b_outputs) = create_tx_with_outputs(&key_manager);
+        let b = spending(&b, &a_outputs[0], &key_manager);
+        let c = spending(&create_tx(&key_manager), &b_outputs[0], &key_manager);
+        let x = create_tx(&key_manager);
+        let ordered = topo_order(vec![c.clone(), x.clone(), b.clone(), a.clone()]);
+        assert_eq!(ordered, vec![x, a, b, c]);
+    }
+
+    /// `agg` aggregates `t1` with a spend of an output of `c`, and `c` spends an output that both `t1` and `agg`
+    /// produce, so `c` must follow `t1` (and `agg` follow `c`) whichever producer comes last
+    #[test]
+    fn topo_order_places_a_spender_after_any_one_producer_of_its_input() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (t1, t1_outputs) = create_tx_with_outputs(&key_manager);
+        let (c, c_outputs) = create_tx_with_outputs(&key_manager);
+        let c = spending(&c, &t1_outputs[0], &key_manager);
+        let agg = Arc::new(Transaction::new(
+            vec![
+                t1.body.inputs()[0].clone(),
+                c_outputs[0].to_transaction_input(&key_manager).unwrap(),
+            ],
+            t1.body.outputs().clone(),
+            t1.body.kernels().clone(),
+            t1.offset.clone(),
+            t1.script_offset.clone(),
+        ));
+        let ordered = topo_order(vec![t1.clone(), agg.clone(), c.clone()]);
+        assert_eq!(ordered, vec![t1, c, agg]);
+    }
+
+    #[test]
     fn insert_unlocked_validates_once_without_the_lock_if_chain_unchanged() {
         let key_manager = KeyManager::new_random().unwrap();
         let tip = FixedHash::from([1u8; 32]);
@@ -1539,7 +1727,7 @@ mod test {
             other.offset.clone(),
             other.script_offset.clone(),
         ));
-        assert_eq!(storage.read().unwrap().pre_check(&reusing), None);
+        assert!(storage.read().unwrap().pre_check(&reusing).is_none());
         for locked in [false, true] {
             *validator.internal_results.lock().unwrap() = vec![Err(ValidationError::InvalidAccountingBalance)].into();
             let internal_calls = validator.internal_calls();
@@ -2000,6 +2188,44 @@ mod test {
         );
         assert_eq!(validator.chain_linked_calls(), 1);
         assert_eq!(validator.internal_calls(), 1);
+    }
+
+    #[test]
+    fn pre_check_rejects_a_coinbase_with_a_ban_before_validation() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let tx = create_tx(&key_manager);
+
+        let mut kernels = tx.body.kernels().clone();
+        kernels.push(create_test_kernel(0.into(), 0, KernelFeatures::COINBASE_KERNEL));
+        let coinbase_kernel = Transaction::new(
+            tx.body.inputs().clone(),
+            tx.body.outputs().clone(),
+            kernels,
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        );
+        let mut outputs = tx.body.outputs().clone();
+        outputs.push(TransactionOutput {
+            features: OutputFeatures::create_coinbase(0, None, RangeProofType::RevealedValue),
+            ..Default::default()
+        });
+        let coinbase_output = Transaction::new(
+            tx.body.inputs().clone(),
+            outputs,
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        );
+
+        for tx in [coinbase_kernel, coinbase_output] {
+            let (response, ban) = MempoolStorage::insert_unlocked_with_ban_reason(&storage, Arc::new(tx)).unwrap();
+            assert!(matches!(response, TxStorageResponse::NotStored(_)));
+            assert_eq!(ban.unwrap().ban_duration, BanPeriod::Long);
+        }
+        assert_eq!(validator.chain_linked_calls(), 0);
+        assert_eq!(validator.internal_calls(), 0);
     }
 
     #[test]
@@ -2672,7 +2898,7 @@ mod test {
         }
         let again = copies[0].clone();
 
-        assert_eq!(storage.read().unwrap().pre_check(&again), None);
+        assert!(storage.read().unwrap().pre_check(&again).is_none());
         assert_eq!(
             MempoolStorage::insert_unlocked(&storage, again.clone()).unwrap(),
             TxStorageResponse::UnconfirmedPool
@@ -2814,5 +3040,562 @@ mod test {
 
         assert_eq!(pool_len(&storage), 0);
         assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
+
+    fn sig(kernel: &TransactionKernel) -> PrivateKey {
+        kernel.excess_sig.get_signature().clone()
+    }
+
+    /// `A`, `B`, kernels `x1`, `x2`, `x3` that are in no transaction of their own, the aggregates `T1 = A + x1`,
+    /// `T2 = A + x2`, and `padded`: `A + B` with an extra output and no extra kernel
+    struct Aggregates {
+        a: Arc<Transaction>,
+        b: Arc<Transaction>,
+        t1: Arc<Transaction>,
+        t2: Arc<Transaction>,
+        padded: Arc<Transaction>,
+        x: Vec<TransactionKernel>,
+    }
+
+    impl Aggregates {
+        fn new(key_manager: &KeyManager) -> Self {
+            let a = create_tx(key_manager);
+            let b = create_tx(key_manager);
+            let x = fresh_kernels(3, key_manager);
+            let padded = Arc::new(Transaction::new(
+                [a.body.inputs().clone(), b.body.inputs().clone()].concat(),
+                [
+                    a.body.outputs().clone(),
+                    b.body.outputs().clone(),
+                    create_tx(key_manager).body.outputs().clone(),
+                ]
+                .concat(),
+                [a.body.kernels().clone(), b.body.kernels().clone()].concat(),
+                a.offset.clone(),
+                a.script_offset.clone(),
+            ));
+            let aggregate =
+                |kernel: &TransactionKernel| with_kernels(&a, vec![a.body.kernels()[0].clone(), kernel.clone()]);
+            Self {
+                t1: aggregate(&x[0]),
+                t2: aggregate(&x[1]),
+                a,
+                b,
+                padded,
+                x,
+            }
+        }
+
+        fn a_sig(&self) -> PrivateKey {
+            sig(&self.a.body.kernels()[0])
+        }
+
+        fn b_sig(&self) -> PrivateKey {
+            sig(&self.b.body.kernels()[0])
+        }
+
+        fn x_sig(&self, i: usize) -> PrivateKey {
+            sig(&self.x[i])
+        }
+    }
+
+    #[test]
+    fn the_kernel_cover_takes_only_requested_and_disjoint_transactions() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let pool = || vec![txs.a.clone(), txs.t1.clone(), txs.t2.clone()];
+
+        let (cover, uncovered) = select_disjoint_kernel_cover(pool(), vec![], &[txs.a_sig()]);
+        assert_eq!(cover, vec![txs.a.clone()]);
+        assert!(uncovered.is_empty());
+
+        // Fewest kernels first: an aggregate is not used for kernels a smaller transaction covers
+        let (cover, uncovered) = select_disjoint_kernel_cover(pool(), vec![], &[txs.a_sig(), txs.x_sig(0)]);
+        assert_eq!(cover, vec![txs.a.clone()]);
+        assert_eq!(uncovered, vec![txs.x_sig(0)]);
+
+        let (cover, uncovered) =
+            select_disjoint_kernel_cover(vec![txs.t1.clone()], vec![], &[txs.a_sig(), txs.x_sig(0)]);
+        assert_eq!(cover, vec![txs.t1.clone()]);
+        assert!(uncovered.is_empty());
+
+        // An aggregate holding an unrequested kernel never covers a requested one
+        let (cover, uncovered) = select_disjoint_kernel_cover(vec![txs.t1.clone()], vec![], &[txs.a_sig()]);
+        assert!(cover.is_empty());
+        assert_eq!(uncovered, vec![txs.a_sig()]);
+
+        let no_kernels = with_kernels(&txs.a, vec![]);
+        let (cover, uncovered) = select_disjoint_kernel_cover(vec![no_kernels], vec![], &[txs.a_sig()]);
+        assert!(cover.is_empty());
+        assert_eq!(uncovered, vec![txs.a_sig()]);
+    }
+
+    #[test]
+    fn the_kernel_cover_breaks_ties_deterministically() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let requested = [txs.a_sig(), txs.x_sig(0), txs.x_sig(1)];
+
+        // Equal kernel counts: the unconfirmed pool wins over the reorg pool
+        for (unconfirmed, reorg) in [(&txs.t1, &txs.t2), (&txs.t2, &txs.t1)] {
+            let (cover, uncovered) =
+                select_disjoint_kernel_cover(vec![unconfirmed.clone()], vec![reorg.clone()], &requested);
+            assert_eq!(cover, vec![unconfirmed.clone()]);
+            assert_eq!(uncovered.len(), 1);
+        }
+
+        // Same pool: the smallest sorted kernel signatures win, whatever the input order
+        let sorted_sigs = |tx: &Transaction| {
+            let mut sigs = tx
+                .body
+                .kernels()
+                .iter()
+                .map(|k| sig(k).as_bytes().to_vec())
+                .collect::<Vec<_>>();
+            sigs.sort();
+            sigs
+        };
+        let smallest = if sorted_sigs(&txs.t1) < sorted_sigs(&txs.t2) {
+            &txs.t1
+        } else {
+            &txs.t2
+        };
+        for pool in [vec![txs.t1.clone(), txs.t2.clone()], vec![
+            txs.t2.clone(),
+            txs.t1.clone(),
+        ]] {
+            let (cover, _) = select_disjoint_kernel_cover(pool, vec![], &requested);
+            assert_eq!(cover, vec![smallest.clone()]);
+        }
+    }
+
+    #[test]
+    fn the_kernel_cover_returns_uncovered_signatures_in_request_order() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let requested = [txs.x_sig(2), txs.a_sig(), txs.x_sig(1), txs.x_sig(0)];
+        let (cover, uncovered) = select_disjoint_kernel_cover(vec![txs.a.clone()], vec![], &requested);
+        assert_eq!(cover, vec![txs.a.clone()]);
+        assert_eq!(uncovered, vec![txs.x_sig(2), txs.x_sig(1), txs.x_sig(0)]);
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_returns_a_disjoint_cover_of_requested_transactions() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        for tx in [&txs.a, &txs.t1, &txs.t2] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
+        let storage = storage.read().unwrap();
+
+        let (found, not_found) = storage.retrieve_by_excess_sigs(&[txs.a_sig()]).unwrap();
+        assert_eq!(found, vec![txs.a.clone()]);
+        assert!(not_found.is_empty());
+
+        let (found, not_found) = storage
+            .retrieve_by_excess_sigs(&[txs.a_sig(), txs.x_sig(0), txs.x_sig(2)])
+            .unwrap();
+        assert_eq!(found, vec![txs.a.clone()]);
+        assert_eq!(not_found, vec![txs.x_sig(0), txs.x_sig(2)]);
+    }
+
+    #[test]
+    fn the_kernel_cover_prefers_the_transactions_of_a_padded_aggregate() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let requested = [txs.a_sig(), txs.b_sig()];
+        for pool in [vec![txs.padded.clone(), txs.a.clone(), txs.b.clone()], vec![
+            txs.a.clone(),
+            txs.b.clone(),
+            txs.padded.clone(),
+        ]] {
+            let (cover, uncovered) = select_disjoint_kernel_cover(pool, vec![], &requested);
+            assert_eq!(cover.len(), 2);
+            assert!(cover.contains(&txs.a) && cover.contains(&txs.b));
+            assert!(uncovered.is_empty());
+        }
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_does_not_return_a_padded_aggregate_of_pooled_transactions() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        // The padded aggregate arrives first: once A and B are pooled, their union counts as already stored
+        for tx in [&txs.padded, &txs.a, &txs.b] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
+        assert_eq!(pool_len(&storage), 3);
+
+        let (found, not_found) = storage
+            .read()
+            .unwrap()
+            .retrieve_by_excess_sigs(&[txs.a_sig(), txs.b_sig()])
+            .unwrap();
+        assert_eq!(found.len(), 2);
+        assert!(found.contains(&txs.a) && found.contains(&txs.b));
+        assert!(not_found.is_empty());
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_covers_from_the_reorg_pool_what_unconfirmed_aggregates_cannot() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let mut storage = storage.write().unwrap();
+        let response = storage.insert(txs.t1.clone(), None).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        storage.reorg_pool.insert_all(1, vec![txs.a.clone()]);
+
+        let (found, not_found) = storage.retrieve_by_excess_sigs(&[txs.a_sig()]).unwrap();
+        assert_eq!(found, vec![txs.a.clone()]);
+        assert!(not_found.is_empty());
+    }
+
+    fn setup_three_block_chain_and_mempool() -> (
+        crate::test_helpers::blockchain::TestBlockchain,
+        crate::mempool::Mempool,
+        WalletOutput,
+        WalletOutput,
+        Arc<tari_node_components::blocks::ChainBlock>,
+    ) {
+        use tari_transaction_components::crypto_factories::CryptoFactories;
+
+        use crate::{
+            mempool::Mempool,
+            test_helpers::blockchain::TestBlockchain,
+            validation::transaction::TransactionFullValidator,
+        };
+
+        let rules = create_consensus_rules();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let (_block_1, coinbase_1) = blockchain.add_next_tip(crate::block_spec!("1->GB")).unwrap();
+        let (_block_2, coinbase_2) = blockchain.add_next_tip(crate::block_spec!("2->1")).unwrap();
+        let (block_3, _coinbase_3) = blockchain.add_next_tip(crate::block_spec!("3->2")).unwrap();
+
+        let validator = TransactionFullValidator::new(
+            CryptoFactories::default(),
+            false,
+            blockchain.db().clone(),
+            rules.clone(),
+        );
+        let mempool = Mempool::new(MempoolConfig::default(), rules, Box::new(validator));
+        (blockchain, mempool, coinbase_1, coinbase_2, block_3)
+    }
+
+    #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+    fn aggregate_two_transactions(tx1: &Transaction, tx2: &Transaction) -> Arc<Transaction> {
+        let mut agg_inputs = tx1.body.inputs().clone();
+        agg_inputs.extend(tx2.body.inputs().iter().cloned());
+        let mut agg_outputs = tx1.body.outputs().clone();
+        agg_outputs.extend(tx2.body.outputs().iter().cloned());
+        let mut agg_kernels = tx1.body.kernels().clone();
+        agg_kernels.extend(tx2.body.kernels().iter().cloned());
+        let mut tx_agg = Transaction::new(
+            agg_inputs,
+            agg_outputs,
+            agg_kernels,
+            &tx1.offset + &tx2.offset,
+            &tx1.script_offset + &tx2.script_offset,
+        );
+        tx_agg.body.sort();
+        Arc::new(tx_agg)
+    }
+
+    fn reorg_onto_two_block_fork(
+        blockchain: &mut crate::test_helpers::blockchain::TestBlockchain,
+        fork_point: Arc<tari_node_components::blocks::ChainBlock>,
+    ) -> Vec<Arc<Block>> {
+        use crate::{chain_storage::BlockAddResult, test_helpers::blockchain::create_chained_blocks};
+
+        let (_fork_names, fork_blocks) = create_chained_blocks(
+            blockchain.db(),
+            crate::block_specs!(["fb1->GB"], ["fb2->fb1"]),
+            fork_point,
+        );
+        let block_b1 = fork_blocks.get("fb1").unwrap().clone().to_arc_block();
+        let block_b2 = fork_blocks.get("fb2").unwrap().clone().to_arc_block();
+        blockchain.db().add_block(block_b1.clone()).unwrap();
+        let reorg_result = blockchain.db().add_block(block_b2.clone()).unwrap().result;
+        assert!(
+            matches!(reorg_result, BlockAddResult::ChainReorg { .. }),
+            "Expected ChainReorg when adding heavier fork, got: {reorg_result:?}"
+        );
+        vec![block_b1, block_b2]
+    }
+
+    #[tokio::test]
+    async fn process_reorg_keeps_valid_child_of_reorged_block_transaction() {
+        use tari_transaction_components::{test_helpers::spend_utxos, txn_schema};
+
+        let (mut blockchain, mempool, coinbase_1, _coinbase_2, block_3) = setup_three_block_chain_and_mempool();
+
+        let (tx_parent, parent_outputs) = spend_utxos(
+            txn_schema!(from: vec![coinbase_1], to: vec![MicroMinotari(2_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let (tx_child, _child_outputs) = spend_utxos(
+            txn_schema!(from: vec![parent_outputs[0].clone()], to: vec![MicroMinotari(1_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let tx_parent = Arc::new(tx_parent);
+        let tx_child = Arc::new(tx_child);
+
+        assert_eq!(
+            mempool.insert(tx_parent.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        let (block_4a, _) = blockchain
+            .add_next_tip(crate::block_spec!("4a->3", transactions: vec![(*tx_parent).clone()]))
+            .unwrap();
+        mempool.process_published_block(block_4a.to_arc_block()).await.unwrap();
+        assert_eq!(
+            mempool.has_transaction(tx_parent.clone()).await.unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+
+        assert_eq!(
+            mempool.insert(tx_child.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        let new_blocks = reorg_onto_two_block_fork(&mut blockchain, block_3);
+        mempool
+            .process_reorg(vec![block_4a.to_arc_block()], new_blocks)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            mempool.has_transaction(tx_parent).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_transaction(tx_child).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    #[tokio::test]
+    async fn reorg_pool_partial_kernel_match_cleans_up_all_kernel_signatures() {
+        use tari_transaction_components::{test_helpers::spend_utxos, txn_schema};
+
+        let (mut blockchain, mempool, coinbase_1, coinbase_2, _block_3) = setup_three_block_chain_and_mempool();
+
+        let mut setup_schema = txn_schema!(
+            from: vec![coinbase_2],
+            to: vec![MicroMinotari(1_000_000)],
+            fee: MicroMinotari(100)
+        );
+        setup_schema.script =
+            script!(CheckHeight(5) LeZero IfThen Nop Else Drop PushPubKey(Box::default()) EndIf).unwrap();
+        let (tx_setup, setup_outputs) = spend_utxos(setup_schema, &blockchain.km);
+        let (block_4, _coinbase_4) = blockchain
+            .add_next_tip(crate::block_spec!("4->3", transactions: vec![tx_setup]))
+            .unwrap();
+
+        let (tx1, _) = spend_utxos(
+            txn_schema!(from: vec![coinbase_1], to: vec![MicroMinotari(1_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let (tx2, _) = spend_utxos(
+            txn_schema!(from: vec![setup_outputs[0].clone()], to: vec![MicroMinotari(500_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let k2_sig = tx2.body.kernels()[0].excess_sig.get_signature().clone();
+        let tx_agg = aggregate_two_transactions(&tx1, &tx2);
+
+        assert_eq!(
+            mempool.insert(tx_agg.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        let (block_5a, _) = blockchain
+            .add_next_tip(crate::block_spec!("5a->4", transactions: vec![tx1]))
+            .unwrap();
+        mempool.process_published_block(block_5a.to_arc_block()).await.unwrap();
+        assert_eq!(
+            mempool.has_transaction(tx_agg.clone()).await.unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+
+        let new_blocks = reorg_onto_two_block_fork(&mut blockchain, block_4);
+        mempool
+            .process_reorg(vec![block_5a.to_arc_block()], new_blocks)
+            .await
+            .unwrap();
+
+        let (found, remaining) = mempool.retrieve_by_excess_sigs(vec![k2_sig.clone()]).await.unwrap();
+        assert!(found.is_empty());
+        assert_eq!(remaining, vec![k2_sig]);
+    }
+
+    #[tokio::test]
+    async fn process_reorg_keeps_reorged_aggregate_depending_on_unconfirmed_parent() {
+        use tari_transaction_components::{test_helpers::spend_utxos, txn_schema};
+
+        let (mut blockchain, mempool, coinbase_1, coinbase_2, block_3) = setup_three_block_chain_and_mempool();
+
+        // A stays unconfirmed; B spends A's output; C spends coinbase_2; aggregate B+C is in the mempool.
+        let (tx_a, a_outputs) = spend_utxos(
+            txn_schema!(from: vec![coinbase_1], to: vec![MicroMinotari(2_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let (tx_b, _) = spend_utxos(
+            txn_schema!(from: vec![a_outputs[0].clone()], to: vec![MicroMinotari(1_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let (tx_c, _) = spend_utxos(
+            txn_schema!(from: vec![coinbase_2], to: vec![MicroMinotari(1_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let tx_a = Arc::new(tx_a);
+        let tx_bc = aggregate_two_transactions(&tx_b, &tx_c);
+
+        assert_eq!(
+            mempool.insert(tx_a.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.insert(tx_bc.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        // Block 4a mines only independent C, moving aggregate B+C to reorg_pool while A remains unconfirmed.
+        let (block_4a, _) = blockchain
+            .add_next_tip(crate::block_spec!("4a->3", transactions: vec![tx_c]))
+            .unwrap();
+        mempool.process_published_block(block_4a.to_arc_block()).await.unwrap();
+        assert_eq!(
+            mempool.has_transaction(tx_a.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_transaction(tx_bc.clone()).await.unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+
+        let new_blocks = reorg_onto_two_block_fork(&mut blockchain, block_3);
+        mempool
+            .process_reorg(vec![block_4a.to_arc_block()], new_blocks)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            mempool.has_transaction(tx_a).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_transaction(tx_bc).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    #[tokio::test]
+    async fn process_reorg_keeps_unconfirmed_parent_and_child_in_reverse_drain_order() {
+        use tari_transaction_components::{crypto_factories::CryptoFactories, test_helpers::spend_utxos, txn_schema};
+
+        use crate::validation::transaction::TransactionFullValidator;
+
+        let (mut blockchain, _mempool, coinbase_1, _coinbase_2, block_3) = setup_three_block_chain_and_mempool();
+        let rules = create_consensus_rules();
+        let validator = TransactionFullValidator::new(
+            CryptoFactories::default(),
+            false,
+            blockchain.db().clone(),
+            rules.clone(),
+        );
+        let mut storage = MempoolStorage::new(MempoolConfig::default(), rules, Box::new(validator));
+
+        let (tx_parent, parent_outputs) = spend_utxos(
+            txn_schema!(from: vec![coinbase_1], to: vec![MicroMinotari(2_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let (tx_child, _child_outputs) = spend_utxos(
+            txn_schema!(from: vec![parent_outputs[0].clone()], to: vec![MicroMinotari(1_000_000)], fee: MicroMinotari(100)),
+            &blockchain.km,
+        );
+        let tx_parent = Arc::new(tx_parent);
+        let tx_child = Arc::new(tx_child);
+
+        // Advance `key_counter` until the `HashMap` bucket order yields `tx_child` before `tx_parent` on drain.
+        let mut found_reverse_order = false;
+        for _ in 0..64 {
+            assert_eq!(
+                storage.insert(tx_parent.clone(), None).unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(
+                storage.insert(tx_child.clone(), None).unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            if storage.snapshot().first() == Some(&tx_child) {
+                found_reverse_order = true;
+                break;
+            }
+            storage.unconfirmed_pool.drain_all_mempool_transactions();
+        }
+        assert!(
+            found_reverse_order,
+            "Failed to observe reverse HashMap drain order (tx_child before tx_parent) within 64 attempts"
+        );
+
+        let (block_4a, _) = blockchain.add_next_tip(crate::block_spec!("4a->3")).unwrap();
+        let new_blocks = reorg_onto_two_block_fork(&mut blockchain, block_3);
+        storage.process_reorg(&[block_4a.to_arc_block()], &new_blocks).unwrap();
+
+        assert_eq!(
+            storage.has_transaction(&tx_parent).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            storage.has_transaction(&tx_child).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    #[test]
+    fn insert_txs_retries_orphan_spending_mined_batch_output_and_pool_parent_output() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (pool_parent, pool_parent_outputs) = create_tx_with_outputs(&key_manager);
+        // Already mined: its output is a chain UTXO, but the transaction is also in the batch
+        let (mined_parent, mined_outputs) = create_tx_with_outputs(&key_manager);
+        let base = create_tx(&key_manager);
+        let pool_input = pool_parent_outputs[0].to_transaction_input(&key_manager).unwrap();
+        let chain_input = mined_outputs[0].to_transaction_input(&key_manager).unwrap();
+        let pool_parent_output = pool_input.output_hash();
+        let mut child_body = Transaction::new(
+            vec![pool_input, chain_input],
+            base.body.outputs().clone(),
+            base.body.kernels().clone(),
+            base.offset.clone(),
+            base.script_offset.clone(),
+        );
+        child_body.body.sort();
+        let child = Arc::new(child_body);
+        let validator = ScriptedValidator::new(
+            vec![
+                Ok(()),
+                Err(ValidationError::ContainsSTxO),
+                Err(ValidationError::UnknownInputs(vec![pool_parent_output])),
+            ],
+            vec![FixedHash::zero()],
+        );
+        let storage = create_storage(&validator);
+        let invalid = storage
+            .write()
+            .unwrap()
+            .insert_txs(vec![child.clone(), pool_parent.clone(), mined_parent.clone()])
+            .unwrap();
+        assert_eq!(invalid, 1);
+        assert_eq!(
+            storage.read().unwrap().has_transaction(&child).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
     }
 }

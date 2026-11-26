@@ -234,11 +234,11 @@ impl Mempool {
         permit: Option<ValidationPermit>,
     ) -> Result<(TxStorageResponse, Option<BanReason>), MempoolError> {
         let tx_clone = tx.clone();
-        if let Some(response) = self
+        if let Some(rejection) = self
             .with_read_access(move |storage| Ok(storage.pre_check(&tx_clone)))
             .await?
         {
-            return Ok((response, None));
+            return Ok(rejection);
         }
         let permit = match permit {
             Some(permit) => permit,
@@ -1036,5 +1036,175 @@ mod test {
         assert_eq!(first.unwrap(), vec![tx.clone()]);
         assert_eq!(second.unwrap(), vec![tx]);
         assert_eq!(mempool.height_checks_run.load(Ordering::SeqCst), 1);
+    }
+
+    mod reinsertion_order {
+        #![allow(clippy::indexing_slicing)]
+        use tari_transaction_components::{
+            crypto_factories::CryptoFactories,
+            test_helpers::spend_utxos,
+            transaction_components::WalletOutput,
+            txn_schema,
+        };
+
+        use super::*;
+        use crate::{test_helpers::blockchain::TestBlockchain, validation::transaction::TransactionFullValidator};
+
+        /// A chain of three blocks, so that the first coinbase (returned) is mature, and a mempool validating against
+        /// it
+        fn create_chain_and_mempool() -> (TestBlockchain, Mempool, WalletOutput) {
+            let rules = create_consensus_rules();
+            let mut blockchain = TestBlockchain::create(rules.clone());
+            let (_, coinbase) = blockchain.add_next_tip(block_spec!("B1")).unwrap();
+            blockchain.add_next_tip(block_spec!("B2")).unwrap();
+            blockchain.add_next_tip(block_spec!("B3")).unwrap();
+            let validator = TransactionFullValidator::new(
+                CryptoFactories::default(),
+                false,
+                blockchain.db().clone(),
+                rules.clone(),
+            );
+            let mempool = Mempool::new(MempoolConfig::default(), rules, Box::new(validator));
+            (blockchain, mempool, coinbase)
+        }
+
+        fn spend(
+            from: Vec<WalletOutput>,
+            to: Vec<MicroMinotari>,
+            fee: u64,
+            blockchain: &TestBlockchain,
+        ) -> (Arc<Transaction>, Vec<WalletOutput>) {
+            let (tx, outputs) = spend_utxos(txn_schema!(from: from, to: to, fee: MicroMinotari(fee)), &blockchain.km);
+            (Arc::new(tx), outputs)
+        }
+
+        async fn status(mempool: &Mempool, tx: &Transaction) -> TxStorageResponse {
+            mempool
+                .has_tx_with_excess_sig(tx.first_kernel_excess_sig().unwrap().clone())
+                .await
+                .unwrap()
+        }
+
+        /// `tx_1` creates `O_1a` and `O_1b`, `tx_2` spends `O_1a` into `O_2a`, and the higher fee `tx_3` spends `O_1b`
+        /// and `O_2a`, with `O_1b` as its first input. Returns `tx_1`, `tx_2` and `tx_3`.
+        fn create_cpfp_package(
+            coinbase: WalletOutput,
+            blockchain: &TestBlockchain,
+        ) -> (Arc<Transaction>, Arc<Transaction>, Arc<Transaction>) {
+            let (tx_1, outputs_1) = spend(
+                vec![coinbase],
+                vec![MicroMinotari(20_000_000), MicroMinotari(20_000_000)],
+                25,
+                blockchain,
+            );
+            let input_0 = outputs_1[0].to_transaction_input(&blockchain.km).unwrap();
+            let input_1 = outputs_1[1].to_transaction_input(&blockchain.km).unwrap();
+            let (o_1b, o_1a) = if input_0 < input_1 {
+                (outputs_1[0].clone(), outputs_1[1].clone())
+            } else {
+                (outputs_1[1].clone(), outputs_1[0].clone())
+            };
+            let o_1b_hash = o_1b.output_hash();
+            // Inputs are sorted, so retry until `O_1b` sorts before `O_2a`
+            let (tx_2, tx_3) = (0..1000)
+                .find_map(|_| {
+                    let (tx_2, outputs_2) = spend(
+                        vec![o_1a.clone()],
+                        vec![MicroMinotari(8_000_000), MicroMinotari(8_000_000)],
+                        25,
+                        blockchain,
+                    );
+                    let (tx_3, _) = spend(
+                        vec![o_1b.clone(), outputs_2[0].clone()],
+                        vec![MicroMinotari(15_000_000)],
+                        500,
+                        blockchain,
+                    );
+                    (tx_3.body.inputs()[0].output_hash() == o_1b_hash).then_some((tx_2, tx_3))
+                })
+                .expect("must find input ordering within 1000 attempts");
+            (tx_1, tx_2, tx_3)
+        }
+
+        /// Once `tx_1` is mined, a template request re-inserts `tx_3` and `tx_2` in priority order (`tx_3` first), and
+        /// `tx_3` must still find its pool parent `tx_2`
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn retrieve_reinsert_keeps_cpfp_child_of_in_pool_parent() {
+            let (mut blockchain, mempool, coinbase) = create_chain_and_mempool();
+            let (tx_1, tx_2, tx_3) = create_cpfp_package(coinbase, &blockchain);
+            for tx in [&tx_1, &tx_2, &tx_3] {
+                assert_eq!(
+                    mempool.insert(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+
+            let (block4, _) = blockchain
+                .add_next_tip(block_spec!("B4", transactions: vec![(*tx_1).clone()]))
+                .unwrap();
+            mempool.process_published_block(block4.to_arc_block()).await.unwrap();
+
+            let height = block4.height() + 1;
+            let max_weight = create_consensus_rules()
+                .consensus_constants(height)
+                .max_block_transaction_weight();
+            mempool.retrieve(max_weight, height, *block4.hash()).await.unwrap();
+
+            assert_eq!(status(&mempool, &tx_2).await, TxStorageResponse::UnconfirmedPool);
+            assert_eq!(status(&mempool, &tx_3).await, TxStorageResponse::UnconfirmedPool);
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn process_sync_keeps_unconfirmed_descendants() {
+            let (blockchain, mempool, coinbase) = create_chain_and_mempool();
+            // A drain in chain order of a 10 transaction chain is a 1 in 10! chance
+            let mut chain_txs = Vec::with_capacity(10);
+            let mut prev_output = coinbase;
+            for i in 0..10u64 {
+                let (tx, mut outputs) = spend(
+                    vec![prev_output],
+                    vec![MicroMinotari((20 - i) * 1_000_000)],
+                    25,
+                    &blockchain,
+                );
+                prev_output = outputs.swap_remove(0);
+                assert_eq!(
+                    mempool.insert(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+                chain_txs.push(tx);
+            }
+
+            mempool.process_sync().await.unwrap();
+
+            for tx in &chain_txs {
+                assert_eq!(status(&mempool, tx).await, TxStorageResponse::UnconfirmedPool);
+            }
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 10);
+        }
+
+        /// `parent` is published in a block that the chain does not have (as after a sync onto another chain), so it
+        /// moves to the reorg pool while its `child` stays in the unconfirmed pool. A sync must re-insert both.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn process_sync_keeps_unconfirmed_child_of_reorg_pool_parent() {
+            let (mut blockchain, mempool, coinbase) = create_chain_and_mempool();
+            let (parent, outputs) = spend(vec![coinbase], vec![MicroMinotari(20_000_000)], 25, &blockchain);
+            let (child, _) = spend(outputs, vec![MicroMinotari(10_000_000)], 25, &blockchain);
+            for tx in [&parent, &child] {
+                assert_eq!(
+                    mempool.insert(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+            let (block4, _) = blockchain.create_next_tip(block_spec!("B4", transactions: vec![(*parent).clone()]));
+            mempool.process_published_block(block4.to_arc_block()).await.unwrap();
+            assert_eq!(status(&mempool, &parent).await, TxStorageResponse::ReorgPool);
+            assert_eq!(status(&mempool, &child).await, TxStorageResponse::UnconfirmedPool);
+
+            mempool.process_sync().await.unwrap();
+
+            assert_eq!(status(&mempool, &parent).await, TxStorageResponse::UnconfirmedPool);
+            assert_eq!(status(&mempool, &child).await, TxStorageResponse::UnconfirmedPool);
+        }
     }
 }

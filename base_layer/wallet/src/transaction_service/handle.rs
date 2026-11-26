@@ -25,6 +25,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     sync::Arc,
+    time::Duration,
 };
 
 use chrono::{DateTime, Utc};
@@ -174,6 +175,8 @@ pub enum TransactionServiceRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
+        /// How long the offline signer accepts the payload for; `None` for the default.
+        payload_lifetime: Option<Duration>,
     },
     SignOneSidedTransaction {
         request: ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>,
@@ -228,6 +231,9 @@ pub enum TransactionServiceRequest {
         MemoField,
     ),
     CancelPendingTransaction(TxId),
+    /// Release the inputs locked under a prepared payload's tx_id, which has no transaction record until it is
+    /// submitted.
+    CancelRecordLessTransaction(TxId),
     CancelCompletedTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroMinotari,
@@ -273,9 +279,11 @@ pub enum TransactionServiceRequest {
     GetTransactionByHistoricalPayref(FixedHash),
     PrepareDepositMultisigTransaction {
         request: CreateMultisigUtxo,
+        payload_lifetime: Option<Duration>,
     },
     PrepareWithdrawMultisigTransaction {
         request: WithdrawMultisigUtxo,
+        payload_lifetime: Option<Duration>,
     },
     CreateMultisigUtxo {
         request: CreateMultisigUtxo,
@@ -492,6 +500,7 @@ impl fmt::Display for TransactionServiceRequest {
                 write!(f, "SendShaAtomicSwapTransaction (to {k}, {v}, {id})")
             },
             Self::CancelPendingTransaction(t) => write!(f, "CancelPendingTransaction ({t})"),
+            Self::CancelRecordLessTransaction(t) => write!(f, "CancelRecordLessTransaction ({t})"),
             Self::CancelCompletedTransaction(t) => write!(f, "CancelCompletedTransaction ({t})"),
             Self::ImportUtxoWithStatus {
                 amount,
@@ -564,10 +573,10 @@ impl fmt::Display for TransactionServiceRequest {
                     utxo_commitment, recipient_address, signatures
                 )
             },
-            Self::PrepareDepositMultisigTransaction { request } => {
+            Self::PrepareDepositMultisigTransaction { request, .. } => {
                 write!(f, "PrepareDepositMultisigTransaction (request: {:?})", request)
             },
-            Self::PrepareWithdrawMultisigTransaction { request } => {
+            Self::PrepareWithdrawMultisigTransaction { request, .. } => {
                 write!(f, "PrepareWithdrawMultisigTransaction (request: {:?})", request)
             },
             Self::GetBurnProof { output_hash } => {
@@ -925,6 +934,7 @@ impl TransactionServiceHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
+        payload_lifetime: Option<Duration>,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
         match self
             .handle
@@ -935,6 +945,7 @@ impl TransactionServiceHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 payment_id,
+                payload_lifetime,
             })
             .await
             .inspect_err(
@@ -1299,6 +1310,23 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::TransactionCancelled => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::CancelTransaction".to_string(),
+            )),
+        }
+    }
+
+    /// Releases the inputs locked under `tx_id`, which must have no transaction record. Fails with the output
+    /// manager's `ValueNotFound` if nothing is locked under it.
+    pub async fn cancel_record_less_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CancelRecordLessTransaction(tx_id))
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::CancelRecordLessTransaction({e})"),
+            )?? {
+            TransactionServiceResponse::TransactionCancelled => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::CancelRecordLessTransaction".to_string(),
             )),
         }
     }
@@ -1673,6 +1701,7 @@ impl TransactionServiceHandle {
         party_number: u8,
         public_keys: Vec<CompressedPublicKey>,
         recipient_address: TariAddress,
+        payload_lifetime: Option<Duration>,
     ) -> Result<PrepareDepositMultisigTransactionResult, TransactionServiceError> {
         let request = CreateMultisigUtxo {
             amount,
@@ -1682,7 +1711,10 @@ impl TransactionServiceHandle {
         };
         match self
             .handle
-            .call(TransactionServiceRequest::PrepareDepositMultisigTransaction { request })
+            .call(TransactionServiceRequest::PrepareDepositMultisigTransaction {
+                request,
+                payload_lifetime,
+            })
             .await
             .inspect_err(
                 |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::PrepareDepositMultisigTransaction({e})"),
@@ -1699,6 +1731,7 @@ impl TransactionServiceHandle {
         utxo_commitment: CompressedCommitment,
         signatures: Vec<CompressedCheckSigSchnorrSignature>,
         recipient_address: TariAddress,
+        payload_lifetime: Option<Duration>,
     ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionServiceError> {
         let request = WithdrawMultisigUtxo {
             utxo_commitment,
@@ -1707,7 +1740,10 @@ impl TransactionServiceHandle {
         };
         match self
             .handle
-            .call(TransactionServiceRequest::PrepareWithdrawMultisigTransaction { request })
+            .call(TransactionServiceRequest::PrepareWithdrawMultisigTransaction {
+                request,
+                payload_lifetime,
+            })
             .await
             .inspect_err(
                 |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::PrepareWithdrawMultisigTransaction({e})"),

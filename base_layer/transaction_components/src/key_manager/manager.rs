@@ -24,7 +24,7 @@ use std::{
     collections::HashMap,
     ops::Shl,
     str::FromStr,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
 use blake2::Blake2b;
@@ -123,6 +123,7 @@ use crate::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 const HASHER_LABEL_BURN_SENDER_OFFSET: &str = "burn-sender-offset";
+const HASHER_LABEL_PAYLOAD_AUTH: &str = "payload_auth";
 
 /// How many ephemeral nonces a software wallet will hold at once.
 ///
@@ -184,7 +185,8 @@ pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
         TariKeyId::Derived { .. } |
         TariKeyId::CodeTemplateAuthor |
         TariKeyId::Zero |
-        TariKeyId::LedgerEphemeralNonce { .. } => false,
+        TariKeyId::LedgerEphemeralNonce { .. } |
+        TariKeyId::PayloadAuth { .. } => false,
     };
     if allowed {
         Ok(())
@@ -244,6 +246,9 @@ pub struct KeyManager {
     /// Shared across clones on purpose: a nonce reserved through one handle to the key manager has to be signable
     /// through another, because the wrappers hand out clones freely.
     software_ephemeral_nonces: Arc<Mutex<SoftwareEphemeralNonceStore>>,
+    /// The imported payload-authentication key and its index. Shared across clones so that importing it through one
+    /// handle reaches every holder. `PrivateKey` is zeroized on drop.
+    payload_auth_key: Arc<Mutex<Option<(u64, PrivateKey)>>>,
 }
 
 /// Refuses a nonce key id that would give up the private key it signs with, and the zero signing key.
@@ -276,7 +281,9 @@ fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Res
         TariKeyId::SpendKey | TariKeyId::ViewKey | TariKeyId::CodeTemplateAuthor => {
             "a wallet master key is a long lived signing key, not a nonce"
         },
-        TariKeyId::Derived { .. } => "a derived key is a deterministic signing key, not a nonce",
+        TariKeyId::Derived { .. } | TariKeyId::PayloadAuth { .. } => {
+            "a derived key is a deterministic signing key, not a nonce"
+        },
         TariKeyId::DHCommitmentMask { .. } | TariKeyId::DHEncryptedData { .. } => {
             "a Diffie-Hellman key is shared with the holder of its public key"
         },
@@ -306,6 +313,7 @@ impl KeyManager {
             crypto_factories,
             wallet_type,
             software_ephemeral_nonces: Arc::default(),
+            payload_auth_key: Arc::default(),
         })
     }
 
@@ -320,6 +328,7 @@ impl KeyManager {
             crypto_factories: CryptoFactories::default(),
             wallet_type,
             software_ephemeral_nonces: Arc::default(),
+            payload_auth_key: Arc::default(),
         })
     }
 
@@ -328,7 +337,51 @@ impl KeyManager {
             crypto_factories: CryptoFactories::default(),
             wallet_type: WalletType::new_random()?,
             software_ephemeral_nonces: Arc::default(),
+            payload_auth_key: Arc::default(),
         })
+    }
+
+    /// Sets or clears the imported payload-authentication key `(index, key)` (see [`TariKeyId::PayloadAuth`]).
+    pub fn set_payload_auth_key(&self, key: Option<(u64, PrivateKey)>) {
+        *self.payload_auth_key.lock().unwrap_or_else(PoisonError::into_inner) = key;
+    }
+
+    /// `H("payload_auth", spend_key || index)`, or `None` when this wallet cannot derive it (view-only or Ledger).
+    fn derive_payload_auth_key(&self, index: u64) -> Result<Option<PrivateKey>, KeyManagerError> {
+        if self.wallet_type.is_ledger() {
+            return Ok(None);
+        }
+        let Ok(spend_key) = self.get_private_spend_key() else {
+            return Ok(None);
+        };
+        let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+            HASHER_LABEL_PAYLOAD_AUTH,
+        )
+        .chain(spend_key.as_bytes())
+        .chain(index.to_le_bytes())
+        .finalize_zeroizing();
+        Ok(Some(PrivateKey::from_uniform_bytes(hash.as_slice())?))
+    }
+
+    /// The derived payload key when this wallet can derive it. Only a wallet that cannot (view-only or Ledger) uses an
+    /// imported key, and only at the imported index: a wallet that can derive never trusts an import, so a wrong one
+    /// cannot make it accept payloads signed by another key.
+    fn payload_auth_private_key(&self, index: u64) -> Result<PrivateKey, KeyManagerError> {
+        if let Some(key) = self.derive_payload_auth_key(index)? {
+            return Ok(key);
+        }
+        if let Some((_, key)) = self
+            .payload_auth_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .filter(|(imported, _)| *imported == index)
+        {
+            return Ok(key.clone());
+        }
+        Err(KeyManagerError::InvalidWalletType(format!(
+            "This wallet cannot derive payload authentication key #{index} without the spend key; import it instead"
+        )))
     }
 
     fn created_encrypted_key(
@@ -920,8 +973,8 @@ impl TransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     HASHER_LABEL_STEALTH_KEY,
                 );
-                let hasher = hasher.chain(branch_key.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                let hasher = hasher.chain(branch_key.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice()).map_err(|_| {
                     KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
                 })?;
                 let public_key = CompressedPublicKey::from_secret_key(&private_key);
@@ -933,8 +986,8 @@ impl TransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     CODE_TEMPLATE_AUTHOR_LABEL,
                 );
-                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice()).map_err(|_| {
                     KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
                 })?;
                 let public_key = CompressedPublicKey::from_secret_key(&private_key);
@@ -990,7 +1043,27 @@ impl TransactionKeyManagerInterface for KeyManager {
             },
             TariKeyId::SpendKey => Ok(self.wallet_type.get_public_spend_key()),
             TariKeyId::ViewKey => Ok(self.wallet_type.get_public_view_key()),
+            TariKeyId::PayloadAuth { index } => Ok(CompressedPublicKey::from_secret_key(
+                &self.payload_auth_private_key(*index)?,
+            )),
         }
+    }
+
+    fn derive_payload_auth_public_key(&self, index: u64) -> Result<CompressedPublicKey, KeyManagerError> {
+        let key = self.derive_payload_auth_key(index)?.ok_or_else(|| {
+            KeyManagerError::InvalidWalletType(
+                "This wallet cannot verify payload keys: strict mode needs a software spend key".to_string(),
+            )
+        })?;
+        Ok(CompressedPublicKey::from_secret_key(&key))
+    }
+
+    fn get_payload_auth_key(&self) -> Option<u64> {
+        self.payload_auth_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(|(index, _)| *index)
     }
 
     fn create_encrypted_key(
@@ -1309,8 +1382,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         let key_hash = hasher
             .chain(commitment_private_key.as_bytes())
             .chain(nonce_private_key.as_bytes())
-            .finalize();
-        PrivateKey::from_uniform_bytes(key_hash.as_ref()).map_err(|_| {
+            .finalize_zeroizing();
+        PrivateKey::from_uniform_bytes(key_hash.as_slice()).map_err(|_| {
             KeyManagerError::TransactionError(TransactionError::KeyManagerError(
                 "Invalid private key for kernel signature nonce".to_string(),
             ))
@@ -1678,7 +1751,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(CompressedCheckSigSchnorrSignature::new_from_schnorr(signature))
     }
 
-    fn sign_script_message_with_spend_key(
+    fn sign_script_message_with_spend_key_trusted(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
@@ -1914,8 +1987,8 @@ impl TransactionKeyManagerInterface for KeyManager {
             HASHER_LABEL_BURN_SENDER_OFFSET,
         )
         .chain(mask.as_bytes())
-        .finalize();
-        let secret = PrivateKey::from_uniform_bytes(hash.as_ref())?;
+        .finalize_zeroizing();
+        let secret = PrivateKey::from_uniform_bytes(hash.as_slice())?;
         let pub_key = CompressedPublicKey::from_secret_key(&secret);
         let key_id = self.create_encrypted_key(secret, None)?;
         Ok(TariKeyAndId { pub_key, key_id })
@@ -1948,8 +2021,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         let hasher =
             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
-        let hasher = hasher.chain(private_key.as_bytes()).finalize();
-        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())?;
+        let hasher = hasher.chain(private_key.as_bytes()).finalize_zeroizing();
+        let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice())?;
         let public_key = CompressedPublicKey::from_secret_key(&private_key);
         let public_key = spend_key + &public_key.to_public_key()?;
         Ok(CompressedPublicKey::new_from_pk(public_key))
@@ -1971,8 +2044,8 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     HASHER_LABEL_STEALTH_KEY,
                 );
-                let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())
+                let hasher = hasher.chain(commitment_mask.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice())
                     .map_err(|_| KeyManagerError::UnexpectedError("Invalid private key for Spend".to_string()))?;
                 let private_key = private_key + spend_key;
                 Ok(private_key)
@@ -1982,8 +2055,8 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     CODE_TEMPLATE_AUTHOR_LABEL,
                 );
-                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize_zeroizing();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_slice()).map_err(|_| {
                     KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
                 })?;
                 let spend_key = self.get_private_spend_key()?;
@@ -2022,6 +2095,7 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 let private_key = self.decrypt_encrypted_key(encrypted, key)?;
                 Ok(private_key)
             },
+            TariKeyId::PayloadAuth { index } => self.payload_auth_private_key(*index),
         }
     }
 }
@@ -3652,5 +3726,59 @@ mod tests {
                     .is_none()
             );
         }
+    }
+
+    /// Known answers for the key derivations that hash a private key, so wiping their intermediate digests cannot
+    /// change a derived key.
+    #[test]
+    fn private_key_hash_derivations_match_known_answers() {
+        use tari_crypto::keys::SecretKey;
+        use tari_utilities::hex::Hex;
+
+        use crate::key_manager::wallet_types::{SpendWallet, WalletType};
+
+        let key = |byte: u8| PrivateKey::from_uniform_bytes(&[byte; 64]).unwrap();
+        let key_manager = KeyManager::new(WalletType::SpendWallet(SpendWallet::new(key(1), key(2), None))).unwrap();
+        let mask = key_manager.create_encrypted_key(key(3), None).unwrap();
+        let nonce = key_manager.create_encrypted_key(key(4), None).unwrap();
+        let derived = TariKeyId::Derived { key: (&mask).into() };
+
+        let kernel_offset = key_manager.get_txo_private_kernel_offset(&mask, &nonce).unwrap();
+        let burn_sender_offset = key_manager.derive_burn_sender_offset_key(&mask).unwrap().pub_key;
+        let script_spending_key = key_manager
+            .stealth_address_script_spending_key(&mask, &key_manager.get_spend_key().pub_key)
+            .unwrap();
+        let derived_private = key_manager.get_private_key(&derived).unwrap();
+        let derived_public = key_manager.get_public_key_at_key_id(&derived).unwrap();
+        let author_private = key_manager.get_private_key(&TariKeyId::CodeTemplateAuthor).unwrap();
+        let author_public = key_manager
+            .get_public_key_at_key_id(&TariKeyId::CodeTemplateAuthor)
+            .unwrap();
+
+        assert_eq!(
+            kernel_offset.to_hex(),
+            "44f21aa189146c29b6a906f9aa456aa03ede0fb8d6ebc316daeae4f576410d0e"
+        );
+        assert_eq!(
+            burn_sender_offset.to_hex(),
+            "1ed582a27f0597df644d8d4c67a576d6e7592bb4ab083f9e7cdd19aeb8e41804"
+        );
+        assert_eq!(
+            script_spending_key.to_hex(),
+            "ae26395b9f4219637a6d0858a4fb18aac5ec7ba82f8e83ce412723ffdbd16f39"
+        );
+        assert_eq!(
+            derived_private.to_hex(),
+            "4a0ff2c41ec660958747994641223ada4c7ce88d926b8f78ae5d343199717803"
+        );
+        assert_eq!(derived_public, CompressedPublicKey::from_secret_key(&derived_private));
+        assert_eq!(
+            author_private.to_hex(),
+            "2ee5d9279a38dc8ce7fdac110624ba72bf643d6bfb5d2aa05cb9eb5ce5879c07"
+        );
+        assert_eq!(
+            author_public.to_hex(),
+            "148ce2d4d8c0aa0cb89136e50cc8549d5d113fc0b7f977bfa47266bee640b903"
+        );
     }
 }

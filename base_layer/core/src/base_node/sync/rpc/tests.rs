@@ -25,8 +25,11 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use futures::StreamExt;
 use prost::Message;
 use tari_common::configuration::Network;
-use tari_comms::protocol::rpc::{RpcStatusCode, mock::RpcRequestMock};
-use tari_node_components::blocks::ChainBlock;
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::{RpcStatus, RpcStatusCode, mock::RpcRequestMock},
+};
+use tari_node_components::blocks::{BlockHeader, ChainBlock};
 use tari_service_framework::reply_channel;
 use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
 use tari_transaction_components::{
@@ -36,9 +39,13 @@ use tari_transaction_components::{
     txn_schema,
 };
 use tari_utilities::ByteArray;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
-use super::{BaseNodeSyncRpcService, service::is_on_requested_chain};
+use super::{
+    BaseNodeSyncRpcService,
+    SyncUtxosTask,
+    service::{END_BODY_NOT_STORED, HEADER_REORG_DETECTED, REORG_DETECTED, check_chain_on_err},
+};
 use crate::{
     base_node::{
         BaseNodeSyncService,
@@ -46,10 +53,16 @@ use crate::{
         comms_interface::BlockEvent,
         sync::BlockchainSyncConfig,
     },
-    chain_storage::BlockchainDatabase,
+    chain_storage::{BlockchainDatabase, is_on_requested_chain},
     consensus::BaseNodeConsensusManager,
     proto,
-    proto::base_node::{SyncBlocksRequest, SyncKernelsRequest, SyncUtxosRequest, sync_utxos_response::Txo},
+    proto::base_node::{
+        SyncBlocksRequest,
+        SyncHeadersRequest,
+        SyncKernelsRequest,
+        SyncUtxosRequest,
+        sync_utxos_response::Txo,
+    },
     test_helpers::{
         BlockSpec,
         BlockSpecs,
@@ -57,6 +70,7 @@ use crate::{
             TempDatabase,
             TestBlockchain,
             create_chained_blocks,
+            create_chained_blocks_with_range_proof_type,
             create_main_chain,
             create_main_chain_with_range_proof_type,
             create_new_blockchain,
@@ -138,6 +152,40 @@ fn create_chain_longer_than_a_header_chunk(
         create_main_chain_with_range_proof_type(db, BlockSpecs::from(specs), Some(RangeProofType::RevealedValue));
     assert_eq!(chain.get(names.last().unwrap()).unwrap().height(), num_blocks as u64);
     (names, chain)
+}
+
+/// Waits until `rx` holds `len` items, then a little longer so that the sender is blocked on the full channel
+async fn wait_until_full<T>(rx: &mpsc::Receiver<T>, len: usize) {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while rx.len() < len {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+/// Replaces B103 to B105 with a longer fork from B102, returning the fork's blocks
+fn reorg_above_b102(
+    db: &BlockchainDatabase<TempDatabase>,
+    chain: &HashMap<String, Arc<ChainBlock>>,
+) -> Vec<Arc<ChainBlock>> {
+    let (fork_names, fork) = create_chained_blocks_with_range_proof_type(
+        db,
+        block_specs!(["F103->GB"], ["F104->F103"], ["F105->F104"], ["F106->F105"]),
+        chain.get("B102").unwrap().clone(),
+        Some(RangeProofType::RevealedValue),
+    );
+    let fork = fork_names
+        .iter()
+        .map(|name| fork.get(name).unwrap().clone())
+        .collect::<Vec<_>>();
+    for block in &fork {
+        db.add_block(block.to_arc_block()).unwrap();
+    }
+    assert_eq!(db.fetch_block(103, true).unwrap().hash(), fork.first().unwrap().hash());
+    fork
 }
 
 mod sync_blocks {
@@ -461,6 +509,35 @@ mod sync_blocks {
         assert!(!is_on_requested_chain(b.hash(), None, Some(c.header()), c.hash()));
         assert!(!is_on_requested_chain(b.hash(), Some(b.header()), None, c.hash()));
     }
+
+    /// A failed read is reported as a Conflict only if the chain has changed, otherwise its own error is kept
+    #[tokio::test]
+    async fn a_failed_read_is_a_conflict_only_if_the_chain_changed() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
+        let (_, fork) = create_chained_blocks(
+            &db,
+            block_specs!(["B2->GB"], ["C2->B2"]),
+            chain.get("A").unwrap().clone(),
+        );
+        let async_db = db.clone().into();
+        let b = chain.get("B").unwrap();
+        let c = chain.get("C").unwrap();
+        let read_err = || Err::<(), _>(RpcStatus::not_found("header not found"));
+
+        let err = check_chain_on_err(&async_db, read_err(), 2, b.hash(), 3, c.hash())
+            .await
+            .unwrap_err();
+        unpack_enum!(RpcStatusCode::NotFound = err.as_status_code());
+        let err = check_chain_on_err(&async_db, read_err(), 2, fork.get("B2").unwrap().hash(), 3, c.hash())
+            .await
+            .unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), REORG_DETECTED);
+        check_chain_on_err(&async_db, Ok(()), 2, fork.get("B2").unwrap().hash(), 3, c.hash())
+            .await
+            .unwrap();
+    }
 }
 
 mod sync_utxos {
@@ -604,6 +681,108 @@ mod sync_utxos {
             .collect::<Vec<_>>();
         assert_eq!(streamed, expected);
     }
+
+    /// A reorg below the end block mid-stream ends the stream with a Conflict: nothing from the new chain is sent, and
+    /// no terminator either
+    #[tokio::test]
+    async fn it_sends_conflict_and_no_terminator_when_the_chain_reorgs() {
+        let (_, db, rpc_request_mock) = setup();
+        let (names, chain) = create_chain_longer_than_a_header_chunk(&db);
+        let msg = SyncUtxosRequest {
+            start_header_hash: chain.get(names.first().unwrap()).unwrap().hash().to_vec(),
+            end_header_hash: chain.get(names.last().unwrap()).unwrap().hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let (tx, mut rx) = mpsc::channel(2);
+        SyncUtxosTask::new(db.clone().into(), Arc::new(NodeId::new()))
+            .run(req, tx)
+            .await
+            .unwrap();
+
+        // Take TXOs up to B100, so that the stream waits inside the second header chunk (B102 to B105)
+        let b100 = chain.get("B100").unwrap().hash().to_vec();
+        while rx.recv().await.unwrap().unwrap().mined_header != b100 {}
+        wait_until_full(&rx, 2).await;
+        let fork = reorg_above_b102(&db, &chain);
+        let mut responses = Vec::new();
+        while let Some(resp) = rx.recv().await {
+            responses.push(resp);
+        }
+
+        let err = responses.pop().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), REORG_DETECTED);
+        let fork_hashes = fork.iter().map(|block| block.hash().to_vec()).collect::<Vec<_>>();
+        for resp in responses {
+            let resp = resp.unwrap();
+            assert!(resp.txo.is_some(), "terminator sent");
+            assert!(!fork_hashes.contains(&resp.mined_header), "TXO from the new chain sent");
+        }
+    }
+
+    #[tokio::test]
+    async fn it_does_not_leak_session_on_invalid_requests() {
+        let (service, db, rpc_request_mock) = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let a = chain.get("A").unwrap();
+        let b = chain.get("B").unwrap();
+
+        // Malformed hash, missing start, missing end, and inverted height range must all fail before session creation
+        let invalid_requests = [
+            SyncUtxosRequest {
+                start_header_hash: vec![1, 2, 3],
+                end_header_hash: b.hash().to_vec(),
+            },
+            SyncUtxosRequest {
+                start_header_hash: vec![0; 32],
+                end_header_hash: b.hash().to_vec(),
+            },
+            SyncUtxosRequest {
+                start_header_hash: a.hash().to_vec(),
+                end_header_hash: vec![0; 32],
+            },
+            SyncUtxosRequest {
+                start_header_hash: b.hash().to_vec(),
+                end_header_hash: a.hash().to_vec(),
+            },
+        ];
+        for msg in invalid_requests {
+            let req = rpc_request_mock.request_with_context(Default::default(), msg);
+            assert!(service.sync_utxos(req).await.is_err());
+        }
+
+        assert_eq!(service.active_session_count().await, 0);
+
+        // Even while a valid sync_utxos session is open for this peer, an invalid request fails in validate()
+        // (BadRequest / NotFound) before hitting try_add_exclusive_session (Forbidden).
+        let valid_msg = SyncUtxosRequest {
+            start_header_hash: a.hash().to_vec(),
+            end_header_hash: b.hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), valid_msg);
+        let mut streaming = service.sync_utxos(req).await.unwrap().into_inner();
+
+        let bad_req = rpc_request_mock.request_with_context(Default::default(), SyncUtxosRequest {
+            start_header_hash: vec![1, 2, 3],
+            end_header_hash: b.hash().to_vec(),
+        });
+        let err = service.sync_utxos(bad_req).await.unwrap_err();
+        unpack_enum!(RpcStatusCode::BadRequest = err.as_status_code());
+
+        let responses = convert_mpsc_to_stream(&mut streaming)
+            .map(|resp| resp.unwrap())
+            .collect::<Vec<_>>()
+            .await;
+        assert!(responses.last().unwrap().txo.is_none());
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while service.active_session_count().await != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("Active sync session should return to 0 after stream completion");
+    }
 }
 
 mod sync_kernels {
@@ -646,5 +825,240 @@ mod sync_kernels {
 
         assert_eq!(kernels.len(), expected.len());
         assert_eq!(kernels, expected);
+    }
+
+    /// A reorg below the end block mid-stream ends the stream with a Conflict, also for a rewound block whose header
+    /// was already fetched (it has no kernels any more), and nothing from the new chain is sent
+    #[tokio::test]
+    async fn it_sends_conflict_when_the_chain_reorgs() {
+        let (service, db, rpc_request_mock) = setup();
+        let (names, chain) = create_chain_longer_than_a_header_chunk(&db);
+        let genesis = db.fetch_header(0).unwrap().unwrap();
+        let msg = SyncKernelsRequest {
+            start: genesis.kernel_mmr_size,
+            end_header_hash: chain.get(names.last().unwrap()).unwrap().hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_kernels(req).await.unwrap().into_inner();
+
+        // The stream's channel holds 100 kernels (one per block). Taking one more lets it fetch the second header chunk
+        // (B102 to B105) and wait while sending B102.
+        wait_until_full(&streaming, 100).await;
+        let mut responses = vec![streaming.recv().await.unwrap()];
+        wait_until_full(&streaming, 100).await;
+        let fork = reorg_above_b102(&db, &chain);
+        responses.extend(convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await);
+
+        let err = responses.pop().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), REORG_DETECTED);
+        let fork_kernels = fork
+            .iter()
+            .flat_map(|block| block.block().body.kernels().clone())
+            .map(proto::types::TransactionKernel::from)
+            .collect::<Vec<_>>();
+        for kernel in responses {
+            assert!(
+                !fork_kernels.contains(&kernel.unwrap()),
+                "kernel from the new chain sent"
+            );
+        }
+    }
+
+    /// An end block stored as a header only (above the block tip, e.g. during this node's own header sync) is not a
+    /// reorg: both streams end with a Conflict that says its body is not stored
+    #[tokio::test]
+    async fn header_only_end_block_ends_both_streams_with_body_not_stored() {
+        let (service, db, rpc_request_mock) = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let (_, headers_only) = create_chained_blocks(&db, block_specs!(["C->GB"]), chain.get("B").unwrap().clone());
+        let c = headers_only.get("C").unwrap();
+        db.insert_valid_headers(vec![c.to_chain_header()]).unwrap();
+
+        let genesis = db.fetch_header(0).unwrap().unwrap();
+        let msg = SyncKernelsRequest {
+            start: genesis.kernel_mmr_size,
+            end_header_hash: c.hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_kernels(req).await.unwrap().into_inner();
+        let kernels = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        assert_eq!(kernels.len(), 1, "{kernels:?}");
+        let err = kernels.into_iter().next().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), END_BODY_NOT_STORED);
+
+        let msg = SyncUtxosRequest {
+            start_header_hash: chain.get("A").unwrap().hash().to_vec(),
+            end_header_hash: c.hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_utxos(req).await.unwrap().into_inner();
+        let txos = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        assert_eq!(txos.len(), 1, "{txos:?}");
+        let err = txos.into_iter().next().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), END_BODY_NOT_STORED);
+    }
+
+    #[tokio::test]
+    async fn it_returns_not_found_when_start_mmr_position_exceeds_tip() {
+        let (service, db, rpc_request_mock) = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let b = chain.get("B").unwrap();
+
+        for invalid_start in [b.header().kernel_mmr_size, u64::MAX] {
+            let msg = SyncKernelsRequest {
+                start: invalid_start,
+                end_header_hash: b.hash().to_vec(),
+            };
+            let req = rpc_request_mock.request_with_context(Default::default(), msg);
+            let err = service.sync_kernels(req).await.unwrap_err();
+            unpack_enum!(RpcStatusCode::NotFound = err.as_status_code());
+        }
+    }
+}
+
+mod sync_headers {
+    use std::convert::TryFrom;
+
+    use super::*;
+
+    fn create_chain_longer_than_two_header_chunks(
+        db: &BlockchainDatabase<TempDatabase>,
+    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
+        let num_blocks = 205;
+        let mut specs = Vec::with_capacity(num_blocks);
+        for i in 1..=num_blocks {
+            let name = if i == 1 {
+                "B1->GB".to_string()
+            } else {
+                format!("B{}->B{}", i, i.saturating_sub(1))
+            };
+            specs.push(
+                BlockSpec::builder()
+                    .with_name(Box::leak(name.into_boxed_str()))
+                    .finish(),
+            );
+        }
+        let (names, chain) =
+            create_main_chain_with_range_proof_type(db, BlockSpecs::from(specs), Some(RangeProofType::RevealedValue));
+        assert_eq!(chain.get(names.last().unwrap()).unwrap().height(), num_blocks as u64);
+        (names, chain)
+    }
+
+    #[tokio::test]
+    async fn it_streams_headers_in_order_across_chunks() {
+        let (service, db, rpc_request_mock) = setup();
+        let (names, chain) = create_chain_longer_than_a_header_chunk(&db);
+        let genesis = db.fetch_header(0).unwrap().unwrap();
+
+        let msg = SyncHeadersRequest {
+            start_hash: genesis.hash().to_vec(),
+            count: 0,
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_headers(req).await.unwrap().into_inner();
+        let headers = convert_mpsc_to_stream(&mut streaming)
+            .map(|h| h.unwrap())
+            .collect::<Vec<_>>()
+            .await;
+
+        assert_eq!(headers.len(), names.len());
+        for (proto_header, name) in headers.into_iter().zip(&names) {
+            let header = BlockHeader::try_from(proto_header).unwrap();
+            assert_eq!(header.hash(), *chain.get(name).unwrap().hash());
+        }
+    }
+
+    #[tokio::test]
+    async fn it_completes_cleanly_when_explicit_count_exceeds_tip_without_reorg() {
+        let (service, db, rpc_request_mock) = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
+        let genesis = db.fetch_header(0).unwrap().unwrap();
+
+        let msg = SyncHeadersRequest {
+            start_hash: genesis.hash().to_vec(),
+            count: 250,
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_headers(req).await.unwrap().into_inner();
+        let headers = convert_mpsc_to_stream(&mut streaming)
+            .map(|h| h.unwrap())
+            .collect::<Vec<_>>()
+            .await;
+
+        assert_eq!(headers.len(), 3);
+        for (proto_header, name) in headers.into_iter().zip(["A", "B", "C"]) {
+            let header = BlockHeader::try_from(proto_header).unwrap();
+            assert_eq!(header.hash(), *chain.get(name).unwrap().hash());
+        }
+    }
+
+    #[tokio::test]
+    async fn it_sends_conflict_when_chain_reorgs_below_last_sent_header_mid_stream() {
+        let (service, db, rpc_request_mock) = setup();
+        let (_, chain) = create_chain_longer_than_two_header_chunks(&db);
+        let genesis = db.fetch_header(0).unwrap().unwrap();
+
+        let msg = SyncHeadersRequest {
+            start_hash: genesis.hash().to_vec(),
+            count: 0,
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_headers(req).await.unwrap().into_inner();
+
+        // Once the channel is full (100 items), the worker holds chunk 2 (B101..B200) and is blocked sending B101.
+        // Forking from B199 (below B200) means chunk 3 (B201..B205) will no longer link to B200.
+        wait_until_full(&streaming, 100).await;
+        let (fork_names, fork) = create_chained_blocks_with_range_proof_type(
+            &db,
+            block_specs!(
+                ["G200->GB"],
+                ["G201->G200"],
+                ["G202->G201"],
+                ["G203->G202"],
+                ["G204->G203"],
+                ["G205->G204"],
+                ["G206->G205"],
+                ["G207->G206"]
+            ),
+            chain.get("B199").unwrap().clone(),
+            Some(RangeProofType::RevealedValue),
+        );
+        for name in &fork_names {
+            db.add_block(fork.get(name).unwrap().to_arc_block()).unwrap();
+        }
+        assert_eq!(
+            db.fetch_block(200, true).unwrap().hash(),
+            fork.get("G200").unwrap().hash()
+        );
+
+        let mut responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        let err = responses.pop().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), HEADER_REORG_DETECTED);
+    }
+
+    #[tokio::test]
+    async fn it_sends_conflict_when_headers_are_rewound_mid_stream() {
+        let (service, db, rpc_request_mock) = setup();
+        let (_names, _chain) = create_chain_longer_than_two_header_chunks(&db);
+        let genesis = db.fetch_header(0).unwrap().unwrap();
+
+        let msg = SyncHeadersRequest {
+            start_hash: genesis.hash().to_vec(),
+            count: 0,
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_headers(req).await.unwrap().into_inner();
+
+        wait_until_full(&streaming, 100).await;
+        db.rewind_to_height(200).unwrap();
+
+        let mut responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        let err = responses.pop().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), "Header #201 is no longer on the chain");
     }
 }

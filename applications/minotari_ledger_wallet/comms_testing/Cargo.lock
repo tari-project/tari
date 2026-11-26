@@ -816,9 +816,9 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -1358,7 +1358,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "bs58",
  "serde",
@@ -1366,7 +1366,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "borsh",
  "ledger-transport",
@@ -1386,7 +1386,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms_testing"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "blake2 0.10.6",
  "dialoguer",
@@ -2130,7 +2130,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "anyhow",
  "config",
@@ -2150,7 +2150,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -2209,11 +2209,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 
 [[package]]
 name = "tari_hashing"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -2225,9 +2225,9 @@ dependencies = [
 
 [[package]]
 name = "tari_jellyfish"
-version = "7.0.0"
+version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe7acf105d2cc232162b381072cd17dbfe753705aac44d2b6a24da86fa6356cb"
+checksum = "c76546a09a260003b146dcad761ec0c5052fb947ed4b616b96e88aa753b2c9bd"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -2239,7 +2239,7 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "borsh",
  "integer-encoding",
@@ -2262,7 +2262,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "6.3.0-pre.4"
+version = "6.3.0-pre.5"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -2279,9 +2279,9 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "8.0.0"
+version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27dd5fbbf0991e051a0016c773a907ec2e492487317108966a6049617d741deb"
+checksum = "f8fc81efebfab1e692f80b2f61e4cd93949a158d0cb1f254b65a2684d820aac5"
 dependencies = [
  "base64 0.22.1",
  "borsh",
@@ -2582,9 +2582,9 @@ checksum = "eb066959b24b5196ae73cb057f45598450d2c5f71460e98c49b738086eff9c06"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",

@@ -127,6 +127,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     fn get_view_key(&self) -> TariKeyAndId;
 
+    /// The index of the payload-authentication key imported into this wallet, if any. The offline-signing
+    /// `prepare_*` functions sign with `TariKeyId::PayloadAuth { index }` in place of the view key.
+    fn get_payload_auth_key(&self) -> Option<u64>;
+
+    /// The public key of payload key `index` derived from this wallet's spend key, never an imported one, for
+    /// verifying a payload's claim. Errors on a wallet that cannot derive it (view-only or Ledger).
+    fn derive_payload_auth_public_key(&self, index: u64) -> Result<CompressedPublicKey, KeyManagerError>;
+
     /// Whether this is a ledger wallet, whose device holds the spend key
     fn is_ledger(&self) -> bool;
 
@@ -317,7 +325,11 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
-    fn sign_script_message_with_spend_key(
+    /// Signs a multisig script message with the spend key, tweaked by `sender_offset_pub_key` when given and bare
+    /// otherwise. The caller is trusted: the signature authorises any spend, to any destination, of any output whose
+    /// script carries `message` and this key, and the signer cannot see the spending transaction. See
+    /// [`crate::multisig`].
+    fn sign_script_message_with_spend_key_trusted(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,

@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{CompressedCommitment, CompressedPublicKey},
+    types::{CompressedCommitment, CompressedPublicKey, HashOutput},
 };
 use tari_script::CompressedCheckSigSchnorrSignature;
 
@@ -61,4 +61,5 @@ pub struct GetMultisigUtxoDataOutput {
     pub sender_offset_pub_key: CompressedPublicKey,
     pub public_keys: Vec<CompressedPublicKey>,
     pub commitment: CompressedCommitment,
+    pub output_hash: HashOutput,
 }

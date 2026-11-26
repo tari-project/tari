@@ -78,6 +78,12 @@ pub enum OutputManagerRequest {
         tx_id_update: Option<TxId>,
         change_outputs: Option<Vec<WalletOutput>>,
     },
+    /// Short-term encumber exactly these outputs against `tx_id`. Fails, encumbering nothing, if any commitment is
+    /// unknown or its output is not `Unspent`.
+    EncumberOutputs {
+        tx_id: TxId,
+        commitments: Vec<CompressedCommitment>,
+    },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
         expected_commitment: CompressedCommitment,
@@ -129,6 +135,9 @@ pub enum OutputManagerRequest {
         minimum_value_promise: MicroMinotari,
     },
     CancelPendingTransaction(TxId),
+    /// As `CancelPendingTransaction`, also removing the change outputs received under the tx_id: its transaction was
+    /// never recorded or broadcast, so they will never exist.
+    ReleaseUnrecordedTransaction(TxId),
     CancelCompletedTransaction(TxId),
     GetSpentOutputs,
     GetOutputsByQuery(OutputBackendQuery),
@@ -249,10 +258,12 @@ impl fmt::Display for OutputManagerRequest {
             } => {
                 write!(f, "ConfirmPendingTransaction ({tx_id} replace with {:?})", tx_id_update)
             },
+            EncumberOutputs { tx_id, commitments } => write!(f, "EncumberOutputs ({tx_id}, {})", commitments.len()),
             GetTransactionBuilder { .. } => write!(f, "GetTransactionBuilder "),
             GetTransactionBuilderRangeLimitedCoinJoin { .. } => write!(f, "GetTransactionBuilderRangeLimitedCoinJoin "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelPendingTransaction(v) => write!(f, "CancelPendingTransaction ({v})"),
+            ReleaseUnrecordedTransaction(v) => write!(f, "ReleaseUnrecordedTransaction ({v})"),
             CancelCompletedTransaction(v) => write!(f, "CancelCompletedTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
@@ -356,6 +367,7 @@ pub enum OutputManagerResponse<KM> {
     SpendBackupPreMineUtxo((TxId, Transaction, MicroMinotari, MicroMinotari)),
     OutputConfirmed,
     PendingTransactionConfirmed,
+    OutputsEncumbered,
     PayToSelfTransaction((MicroMinotari, Transaction, TxId)),
     TransactionBuilderToSend(Box<TransactionBuilder<KM>>),
     TransactionBuildersToSend(Vec<(TxId, Box<TransactionBuilder<KM>>)>),
@@ -793,6 +805,26 @@ where KM: LegacyTransactionKeyManagerInterface
         }
     }
 
+    /// Short-term encumber exactly the outputs with these commitments against `tx_id`; see
+    /// `OutputManagerRequest::EncumberOutputs`.
+    pub async fn encumber_outputs(
+        &mut self,
+        tx_id: TxId,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::EncumberOutputs { tx_id, commitments })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::EncumberOutputs({e})"))??
+        {
+            OutputManagerResponse::OutputsEncumbered => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::EncumberOutputs".to_string(),
+            )),
+        }
+    }
+
     pub async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         match self
             .handle
@@ -803,6 +835,21 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::TransactionCancelled => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::CancelPendingTransaction".to_string(),
+            )),
+        }
+    }
+
+    /// See `OutputManagerRequest::ReleaseUnrecordedTransaction`.
+    pub async fn release_unrecorded_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ReleaseUnrecordedTransaction(tx_id))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::ReleaseUnrecordedTransaction({e})"))??
+        {
+            OutputManagerResponse::TransactionCancelled => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::ReleaseUnrecordedTransaction".to_string(),
             )),
         }
     }

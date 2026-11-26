@@ -45,16 +45,40 @@ pub fn get_multi_sig_script_components(script: &TariScript) -> Option<(Vec<Compr
     None
 }
 
-// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
-#[allow(clippy::arithmetic_side_effects)]
 pub fn derive_multisig_ephemeral_pubkey<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     public_key: &CompressedPublicKey,
     sender_offset_key: &TariKeyId,
 ) -> Result<CompressedPublicKey, TransactionError> {
     let dh_shared_secret = key_manager.get_diffie_hellman_shared_secret(sender_offset_key, public_key)?;
+    add_stealth_tweak(public_key, &dh_shared_secret)
+}
 
-    let stealth_hash = diffie_hellman_stealth_domain_hasher(&dh_shared_secret);
+/// The public key
+/// [`sign_script_message_with_spend_key_trusted`](TransactionKeyManagerInterface::sign_script_message_with_spend_key_trusted)
+/// signs with: this wallet's spend key tweaked by `sender_offset_pub_key`, the key the output's creator put in the
+/// script with [`derive_multisig_ephemeral_pubkey`], or the bare spend key when no offset is given.
+pub fn co_signer_script_public_key<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    sender_offset_pub_key: Option<&CompressedPublicKey>,
+) -> Result<CompressedPublicKey, TransactionError> {
+    let spend_key = key_manager.get_spend_key();
+    match sender_offset_pub_key {
+        Some(offset) => {
+            let dh_shared_secret = key_manager.get_diffie_hellman_shared_secret(&spend_key.key_id, offset)?;
+            add_stealth_tweak(&spend_key.pub_key, &dh_shared_secret)
+        },
+        None => Ok(spend_key.pub_key),
+    }
+}
+
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
+fn add_stealth_tweak(
+    public_key: &CompressedPublicKey,
+    dh_shared_secret: &CompressedPublicKey,
+) -> Result<CompressedPublicKey, TransactionError> {
+    let stealth_hash = diffie_hellman_stealth_domain_hasher(dh_shared_secret);
     let private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
 
     let shared_secret = UncompressedPublicKey::from_secret_key(&private_key);
@@ -77,4 +101,38 @@ pub fn derive_multisig_ephemeral_pubkeys<KM: TransactionKeyManagerInterface>(
         )?);
     }
     Ok(ephemeral_pubkeys)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::key_manager::KeyManager;
+
+    #[test]
+    fn co_signer_key_is_the_creator_ephemeral_key_and_verifies_the_signature() {
+        let creator = KeyManager::new_random().unwrap();
+        let co_signer = KeyManager::new_random().unwrap();
+        let sender_offset = creator.get_random_key(None, None).unwrap();
+        let message = [7u8; 32];
+
+        let in_script =
+            derive_multisig_ephemeral_pubkey(&creator, &co_signer.get_spend_key().pub_key, &sender_offset.key_id)
+                .unwrap();
+        let signing_key = co_signer_script_public_key(&co_signer, Some(&sender_offset.pub_key)).unwrap();
+        assert_eq!(signing_key, in_script);
+        let signature = co_signer
+            .sign_script_message_with_spend_key_trusted(&message, Some(&sender_offset.pub_key))
+            .unwrap();
+        assert!(
+            signature
+                .to_schnorr_signature()
+                .unwrap()
+                .verify(&signing_key.to_public_key().unwrap(), message)
+        );
+
+        assert_eq!(
+            co_signer_script_public_key(&co_signer, None).unwrap(),
+            co_signer.get_spend_key().pub_key
+        );
+    }
 }

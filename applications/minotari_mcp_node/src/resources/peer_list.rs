@@ -28,15 +28,14 @@ use async_trait::async_trait;
 use minotari_mcp_common::{McpError, McpResource, McpResult};
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Resource providing list of known peers
 pub struct PeerListResource {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: Arc<BaseNodeGrpcClient>,
 }
 
 impl PeerListResource {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> Self {
         Self { grpc_client }
     }
 }
@@ -63,10 +62,12 @@ impl McpResource for PeerListResource {
         let mut client = self.grpc_client.as_ref().clone();
 
         // Test connectivity
-        let version_response = client
-            .get_version(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to connect to node: {e}")))?;
+        let version_response = client.get_version(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to connect to node: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let _version = version_response.into_inner();
 

@@ -420,6 +420,9 @@ service Wallet {
   // The PrepareWithdrawMultisigTransaction RPC constructs a transaction that spends a previously created multisig UTXO.
   // The caller must supply a valid UTXO commitment and a complete set of Schnorr signatures from all multisig participants.
   // The unsigned transaction is returned as JSON and can be submitted once fully signed.
+  // The multisig UTXO stays locked under the returned `tx_id`, across restarts, until the signed transaction is
+  // submitted or `CancelTransaction(tx_id)` releases it. Releasing it does not revoke a copy that was already signed:
+  // only spending the UTXO does.
   //
   // ### Request Parameters:
   //
@@ -1235,6 +1238,8 @@ service Wallet {
   // The `CancelTransaction` call allows a transaction to be cancelled by its unique transaction ID (TxId).
   // If the cancellation is successful, the response will indicate success. Otherwise, the response will
   // contain a failure message with the reason for the failure.
+  // It also releases the inputs locked by a transaction prepared for offline signing that has not been submitted.
+  // That does not revoke a copy that was already signed: only spending its inputs does.
   //
   // ### Request Parameters:
   //
@@ -1957,12 +1962,16 @@ message PrepareDepositMultisigTransactionRequest {
   uint64 party_number = 2;
   repeated bytes public_keys = 3;
   bytes recipient_address = 4;
+  // Hours the offline signer accepts the prepared payload for. 0 uses the default of 24 hours.
+  uint64 payload_expiry_hours = 5;
 }
 
 message PrepareWithdrawMultisigTransactionRequest {
   string utxo_commitment = 1;
   repeated bytes signatures = 2;
   bytes recipient_address = 3;
+  // Hours the offline signer accepts the prepared payload for. 0 uses the default of 24 hours.
+  uint64 payload_expiry_hours = 4;
 }
 
 message PrepareDepositMultisigTransactionResponse {
@@ -1981,6 +1990,8 @@ message PrepareWithdrawMultisigTransactionResponse {
 // A request to preapre a one sided transaction for offline signing
 message PrepareOneSidedTransactionForSigningRequest {
   PaymentRecipient recipient = 1;
+  // Hours the offline signer accepts the prepared payload for. 0 uses the default of 24 hours.
+  uint64 payload_expiry_hours = 2;
 }
 
 message PrepareOneSidedTransactionForSigningResponse {

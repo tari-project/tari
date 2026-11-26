@@ -484,7 +484,7 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     config.dedup_allowed_message_occurrences = 1;
 
     // Node C receives messages from A and B
-    let mut node_C = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, config.clone(), None).await;
+    let mut node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, config.clone(), None).await;
 
     // Node B forwards a message from A but modifies it
     let mut node_B = make_node(
@@ -509,27 +509,17 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
         node_C.node_identity().node_id().short_str(),
     );
 
-    // Connect the peers that should be connected
-    node_A
-        .comms
-        .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
-
-    node_A
-        .comms
-        .connectivity()
-        .dial_peer(node_C.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
-
-    node_B
-        .comms
-        .connectivity()
-        .dial_peer(node_C.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
+    // Every link this test sends over is to a seeded peer, which the sender's DHT connectivity already dials at
+    // start-up. Dialling them here as well raced those dials: the redundant connection is tie-broken against the
+    // live one, and anything outbound messaging was holding on the loser is dropped (`MAX_SEND_RETRIES` is 1), so
+    // the first message from A never reached B. Wait for the links to come up and the churn to stop instead.
+    ensure_connected(&node_A, &[
+        node_B.node_identity().node_id(),
+        node_C.node_identity().node_id(),
+    ])
+    .await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
 
     let mut node_C_messaging = node_C.messaging_events.subscribe();
 

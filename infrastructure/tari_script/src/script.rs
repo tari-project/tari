@@ -57,7 +57,8 @@ macro_rules! script {
     }}
 }
 
-const MAX_MULTISIG_LIMIT: u8 = 32;
+/// The most keys a `CheckMultiSig*` opcode accepts when it runs.
+pub const MAX_MULTISIG_LIMIT: u8 = 32;
 /// The maximum length of a serialised script accepted by [TariScript::from_bytes].
 ///
 /// This is a stand-alone consensus rule applied on every decode path: [`TariScript::from_bytes`] rejects a longer

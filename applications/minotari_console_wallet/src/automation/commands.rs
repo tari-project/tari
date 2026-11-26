@@ -78,18 +78,19 @@ use tari_common_types::{
 use tari_core::blocks::pre_mine::{get_embedded_pre_mine_json, get_pre_mine_items};
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
-use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
+use tari_script::{CompressedCheckSigSchnorrSignature, Opcode, push_pubkey_script};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
-    helpers::terminal_safe::escape_bytes_for_terminal,
+    helpers::terminal_safe::{TerminalSafe, escape_bytes_for_terminal},
     key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError, wallet_types::WalletType},
-    multisig::script::is_multisig_utxo,
+    multisig::script::{co_signer_script_public_key, is_multisig_utxo},
     offline_signing::{
         ConfirmationMode,
         ConfirmedPayload,
         OfflinePayload,
         PayloadSummary,
         models::{
+            ExportedPayloadKey,
             PrepareDepositMultisigTransactionResult,
             PrepareOneSidedTransactionForSigningResult,
             PrepareWithdrawMultisigTransactionResult,
@@ -97,8 +98,9 @@ use tari_transaction_components::{
             TransactionResult,
         },
         present_payload_summary,
+        verify_offline_payload,
     },
-    rpc::models::TxLocation,
+    rpc::models::{GetUtxosDeletedInfoResponse, TxLocation},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
         EncryptedData,
@@ -116,7 +118,7 @@ use tari_transaction_components::{
     },
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
-use tari_utilities::{ByteArray, SafePassword, encoding::MBase58, hex::Hex};
+use tari_utilities::{ByteArray, Hidden, SafePassword, encoding::MBase58, hex::Hex};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -151,12 +153,15 @@ use crate::{
             write_to_json_file,
         },
     },
-    cli::{CliCommands, CliRecipientInfo, MakeItRainTransactionType},
+    cli::{CliCommands, CliRecipientInfo, ImportPayloadKeyArgs, MakeItRainTransactionType},
     init::init_wallet,
     recovery::{get_seed_from_seed_words, wallet_recovery},
+    utils::genesis_header_hash,
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
+/// Signing decisions go where the offline signer's do, an appender kept apart from the fast-rotating wallet logs.
+const SIGNING_LOG_TARGET: &str = "c::tx::offline_signing";
 /// How long `import-paper-wallet` waits for its temporary wallet's tasks to exit before deleting the wallet directory.
 const TEMP_WALLET_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 // Pre-mine file names
@@ -715,6 +720,242 @@ fn read_payload_file(path: &Path) -> Result<String, CommandError> {
     Ok(data)
 }
 
+fn payload_lifetime(hours: Option<u64>) -> Option<Duration> {
+    hours.map(|hours| Duration::from_secs(hours.saturating_mul(3600)))
+}
+
+/// The payload key `import-payload-key` names, checked to be a canonical, non-zero scalar (and, from a file, to match
+/// the file's index and public key), with its public key.
+fn read_payload_key(args: &ImportPayloadKeyArgs) -> Result<(PrivateKey, CompressedPublicKey), CommandError> {
+    let invalid = |reason: &str| CommandError::InvalidArgument(format!("Invalid payload key: {reason}"));
+    // Hidden: wiped when dropped
+    let (private_key_hex, expected_public_key) = match (&args.key, &args.file) {
+        (Some(key), _) => (Hidden::hide(key.clone()), None),
+        (None, Some(path)) => {
+            let contents = Hidden::hide(read_payload_file(path)?);
+            let file: ExportedPayloadKey =
+                serde_json::from_str(contents.reveal()).map_err(|_| invalid("the file is not a payload key file"))?;
+            if file.index != args.index {
+                return Err(invalid(&format!(
+                    "the file holds payload key #{}, not #{}",
+                    file.index, args.index
+                )));
+            }
+            (Hidden::hide(file.private_key.clone()), Some(file.public_key.clone()))
+        },
+        (None, None) => return Err(invalid("give --key or --file")),
+    };
+    let private_key =
+        PrivateKey::from_hex(private_key_hex.reveal().trim()).map_err(|_| invalid("not a canonical private key"))?;
+    if private_key == PrivateKey::default() {
+        return Err(invalid("the key is zero"));
+    }
+    let public_key = CompressedPublicKey::from_secret_key(&private_key);
+    if expected_public_key.is_some_and(|expected| expected.trim() != public_key.to_hex()) {
+        return Err(invalid("the private key does not match the file's public key"));
+    }
+    Ok((private_key, public_key))
+}
+
+/// Fetches the output with `output_hash` from the wallet's base node, refusing if it is unknown or spent, or if no
+/// answer comes within 30 seconds (for example while the wallet is offline).
+async fn fetch_unspent_output(
+    wallet: &WalletSqlite,
+    output_hash: &FixedHash,
+) -> Result<TransactionOutput, CommandError> {
+    let lookup = async {
+        let client = wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+        let output = client
+            .fetch_utxo(output_hash.to_vec())
+            .await
+            .map_err(|e| {
+                CommandError::General(format!(
+                    "Refusing to sign: the base node did not return the output (unknown hash, or the node is \
+                     unreachable): {}",
+                    TerminalSafe(&e.to_string())
+                ))
+            })?
+            .ok_or_else(|| CommandError::General("Refusing to sign: the base node does not know the output".into()))?;
+        let deleted = client
+            .query_deleted_utxos(vec![output_hash.to_vec()], genesis_header_hash().to_vec())
+            .await
+            .map_err(|e| {
+                CommandError::General(format!(
+                    "Refusing to sign: could not check the output is unspent: {}",
+                    TerminalSafe(&e.to_string())
+                ))
+            })?;
+        require_unspent(&deleted, output_hash)?;
+        Ok(output)
+    };
+    timeout(Duration::from_secs(30), lookup)
+        .await
+        .map_err(|_| CommandError::General("Refusing to sign: the base node did not answer within 30 seconds".into()))?
+}
+
+/// Accepts the base node's spent-status answer only if its entry is for `output_hash`, found on the chain and unspent.
+fn require_unspent(response: &GetUtxosDeletedInfoResponse, output_hash: &FixedHash) -> Result<(), CommandError> {
+    match response.utxos.first() {
+        Some(info)
+            if info.utxo_hash == output_hash.as_slice() &&
+                info.found_in_header.is_some() &&
+                info.spent_in_header.is_none() =>
+        {
+            Ok(())
+        },
+        _ => Err(CommandError::General(
+            "Refusing to sign: the output is spent or not on the chain".into(),
+        )),
+    }
+}
+
+/// Parses `--message` of the sign commands: 32 bytes of hex, optionally prefixed with `0x`.
+fn parse_message_32(message: &str) -> Result<[u8; 32], CommandError> {
+    let msg_bytes = Vec::<u8>::from_hex(message.trim().trim_start_matches("0x"))
+        .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
+    msg_bytes
+        .try_into()
+        .map_err(|_| CommandError::General("message must be exactly 32 bytes of hex".into()))
+}
+
+/// Writes `signature` as JSON hex to `output_file`, creating its directory, or prints it when no file is given.
+fn output_signature<S: tari_utilities::message_format::MessageFormat>(
+    signature: &S,
+    output_file: Option<PathBuf>,
+) -> Result<(), CommandError> {
+    let signature_binary = signature
+        .to_binary()
+        .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
+    let Some(file) = output_file else {
+        println!("Signature: {}", signature_binary.to_hex());
+        return Ok(());
+    };
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
+    }
+    let signature_json =
+        serde_json::to_string(&signature_binary.to_hex()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    fs::write(&file, signature_json).map_err(|err| CommandError::FileWriteError { file_path: file, err })
+}
+
+/// Checks that `output`, fetched from the base node, is the output a co-signer agreed to sign for: it has the
+/// requested hash (which commits to its script and commitment), matches `utxo_commitment` if given, and has a multisig
+/// script that carries `message` and lists `signing_key`.
+fn check_co_signed_output(
+    output: &TransactionOutput,
+    output_hash: &FixedHash,
+    utxo_commitment: Option<&CompressedCommitment>,
+    message: &[u8; 32],
+    signing_key: &CompressedPublicKey,
+) -> Result<(), CommandError> {
+    let refuse = |why: &str| Err(CommandError::General(format!("Refusing to sign: {why}")));
+    if output.hash() != *output_hash {
+        return refuse("the base node returned an output with a different hash");
+    }
+    if utxo_commitment.is_some_and(|c| *c != output.commitment) {
+        return refuse("the output's commitment is not the --utxo-commitment given");
+    }
+    let mut multisig_ops = output.script.as_slice().iter().filter_map(|op| match op {
+        Opcode::CheckMultiSigVerify(_, _, keys, msg) => Some((keys, msg)),
+        _ => None,
+    });
+    let Some((keys, script_message)) = multisig_ops.next() else {
+        return refuse("the output's script is not a multisig script");
+    };
+    if multisig_ops.next().is_some() {
+        return refuse("the output's script has more than one multisig check");
+    }
+    if **script_message != *message {
+        return refuse("the output's script carries a different message");
+    }
+    if !keys.contains(signing_key) {
+        return refuse(
+            "the key this wallet would sign with is not one of the output's multisig keys (check the sender offset \
+             key)",
+        );
+    }
+    Ok(())
+}
+
+/// Writes what a multisig co-signer is about to sign and returns an error unless they approved it. As for offline
+/// payloads, the operator is asked y/N on `input` when interactive and the signing is approved without asking
+/// otherwise; the decision is logged with the public values shown. `checked_output_hash` is set once
+/// [`check_co_signed_output`] passed, and `utxo_commitment` is then the checked output's commitment.
+fn confirm_script_message_signing(
+    mode: ConfirmationMode,
+    out: &mut dyn Write,
+    input: &mut dyn BufRead,
+    checked_output_hash: Option<&FixedHash>,
+    utxo_commitment: Option<&CompressedCommitment>,
+    message: &[u8; 32],
+    sender_offset_key: Option<&CompressedPublicKey>,
+    signing_key: &CompressedPublicKey,
+) -> Result<(), CommandError> {
+    let commitment_hex = utxo_commitment.map(|c| c.to_hex());
+    let offset_hex = sender_offset_key.map(|k| k.to_hex());
+    let checked = if checked_output_hash.is_some() {
+        "checked"
+    } else {
+        "not checked"
+    };
+    writeln!(out, "Signing a multisig script message:")?;
+    match checked_output_hash {
+        Some(hash) => {
+            writeln!(out, "  Output hash:       {}", TerminalSafe(&hash.to_hex()))?;
+            writeln!(
+                out,
+                "  Checked with the base node: an unspent output with this hash carries this message and your key. \
+                 The signature works for any output whose script has the same message and key."
+            )?;
+        },
+        None => writeln!(out, "  No output hash given: the output was not checked")?,
+    }
+    if let Some(commitment) = &commitment_hex {
+        writeln!(out, "  UTXO commitment ({checked}): {}", TerminalSafe(commitment))?;
+    }
+    writeln!(out, "  Script message:    {}", TerminalSafe(&message.to_hex()))?;
+    match &offset_hex {
+        Some(key) => writeln!(out, "  Sender offset key: {}", TerminalSafe(key))?,
+        None => writeln!(out, "  No sender offset key given: signing with the bare spend key")?,
+    }
+    writeln!(
+        out,
+        "This signature lets whoever builds the spending transaction send the funds anywhere."
+    )?;
+    let (approved, decision) = match mode {
+        ConfirmationMode::NonInteractive => {
+            writeln!(out, "Signing without a prompt (non-interactive mode or no terminal).")?;
+            (true, "approved for signing without a prompt")
+        },
+        ConfirmationMode::Interactive => {
+            write!(out, "Sign this script message? [y/N]: ")?;
+            out.flush()?;
+            let mut answer = String::new();
+            input.read_line(&mut answer)?;
+            let answer = answer.trim().to_ascii_lowercase();
+            let approved = answer == "y" || answer == "yes";
+            (approved, if approved { "approved for signing" } else { "declined" })
+        },
+    };
+    info!(
+        target: SIGNING_LOG_TARGET,
+        "Multisig script message {} {decision}: signing key {}, sender offset key {}, output hash {}, UTXO commitment \
+         {} ({checked})",
+        message.to_hex(),
+        signing_key.to_hex(),
+        offset_hex.as_deref().unwrap_or("none"),
+        checked_output_hash.map(|h| h.to_hex()).as_deref().unwrap_or("none"),
+        commitment_hex.as_deref().unwrap_or("none"),
+    );
+    out.flush()?;
+    if approved {
+        Ok(())
+    } else {
+        Err(CommandError::General("SignScriptMessage not signed: declined".into()))
+    }
+}
+
 /// Writes the summary of an offline payload and returns it confirmed, or an error if it was not confirmed.
 fn review_offline_payload<P: OfflinePayload>(
     summary: PayloadSummary<P>,
@@ -761,6 +1002,7 @@ pub async fn command_runner(
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
     let key_manager_service = wallet.key_manager_service.clone();
+    let payload_key_policy = config.transaction_service_config.payload_key_policy();
 
     let mut tx_ids = Vec::new();
 
@@ -2833,6 +3075,7 @@ pub async fn command_runner(
                         OutputFeatures::default(),
                         MicroMinotari::from(config.fee_per_gram),
                         memo,
+                        payload_lifetime(args.payload_expiry_hours),
                     )
                     .await
                     .map_err(CommandError::TransactionServiceError);
@@ -2865,7 +3108,13 @@ pub async fn command_runner(
                     .collect::<Result<Vec<_>, CommandError>>()?;
 
                 let result = wallet_transaction_service
-                    .prepare_deposit_multisig_transaction(args.amount, args.party_number, public_keys, recipient)
+                    .prepare_deposit_multisig_transaction(
+                        args.amount,
+                        args.party_number,
+                        public_keys,
+                        recipient,
+                        payload_lifetime(args.payload_expiry_hours),
+                    )
                     .await?;
 
                 println!("Prepared deposit multisig transaction: {:?}", result);
@@ -2892,7 +3141,12 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::InvalidArgument(format!("Invalid UTXO commitment: {e}")))?;
 
                 let result = wallet_transaction_service
-                    .prepare_withdraw_multisig_transaction(commitment, schnorr_signatures, recipient)
+                    .prepare_withdraw_multisig_transaction(
+                        commitment,
+                        schnorr_signatures,
+                        recipient,
+                        payload_lifetime(args.payload_expiry_hours),
+                    )
                     .await?;
 
                 println!("Prepared withdraw multisig transaction: {:?}", result);
@@ -2903,12 +3157,17 @@ pub async fn command_runner(
                 let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
-                let review = review_offline_payload(
-                    PayloadSummary::from_one_sided(request),
-                    mode,
-                    &mut offline_summary_output(mode),
-                    &mut io::stdin().lock(),
-                );
+                // A payload this wallet would refuse is never shown for approval
+                let review = verify_offline_payload(&key_manager_service, &payload_key_policy, &request)
+                    .map_err(|e| CommandError::General(e.to_string()))
+                    .and_then(|()| {
+                        review_offline_payload(
+                            PayloadSummary::from_one_sided(request),
+                            mode,
+                            &mut offline_summary_output(mode),
+                            &mut io::stdin().lock(),
+                        )
+                    });
                 let confirmed = match review {
                     Ok(confirmed) => confirmed,
                     Err(e) => {
@@ -2942,12 +3201,18 @@ pub async fn command_runner(
                 let request = PrepareDepositMultisigTransactionResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
-                let review = review_offline_payload(
-                    PayloadSummary::from_multisig(request),
-                    mode,
-                    &mut offline_summary_output(mode),
-                    &mut io::stdin().lock(),
-                );
+                // A payload this wallet would refuse is never shown for approval
+                let review = verify_offline_payload(&key_manager_service, &payload_key_policy, &request)
+                    .and_then(|()| PayloadSummary::from_multisig(request))
+                    .map_err(|e| CommandError::General(e.to_string()))
+                    .and_then(|summary| {
+                        review_offline_payload(
+                            summary,
+                            mode,
+                            &mut offline_summary_output(mode),
+                            &mut io::stdin().lock(),
+                        )
+                    });
                 let confirmed = match review {
                     Ok(confirmed) => confirmed,
                     Err(e) => {
@@ -2981,12 +3246,17 @@ pub async fn command_runner(
                 let request = PrepareWithdrawMultisigTransactionResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
-                let review = review_offline_payload(
-                    PayloadSummary::from_withdraw_multisig(request),
-                    mode,
-                    &mut offline_summary_output(mode),
-                    &mut io::stdin().lock(),
-                );
+                // A payload this wallet would refuse is never shown for approval
+                let review = verify_offline_payload(&key_manager_service, &payload_key_policy, &request)
+                    .map_err(|e| CommandError::General(e.to_string()))
+                    .and_then(|()| {
+                        review_offline_payload(
+                            PayloadSummary::from_withdraw_multisig(request),
+                            mode,
+                            &mut offline_summary_output(mode),
+                            &mut io::stdin().lock(),
+                        )
+                    });
                 let confirmed = match review {
                     Ok(confirmed) => confirmed,
                     Err(e) => {
@@ -3014,6 +3284,40 @@ pub async fn command_runner(
                     Err(e) => eprintln!("SignOneSidedWithdrawMultisigTransaction error! {e}"),
                 }
             },
+            ImportPayloadKey(args) => {
+                let (private_key, public_key) = read_payload_key(&args)?;
+                wallet.import_payload_auth_key(args.index, private_key)?;
+                println!(
+                    "Payload key #{} imported (public key {public_key}). Check it matches the public key the signer \
+                     printed at export.",
+                    args.index
+                );
+                if let Some(path) = &args.file {
+                    println!("Delete {} now: it holds the payload private key.", path.display());
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        if fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o077 != 0) {
+                            println!(
+                                "WARNING: {} can be read by other users of this machine.",
+                                path.display()
+                            );
+                        }
+                    }
+                    #[cfg(not(unix))]
+                    println!(
+                        "WARNING: file permissions are not restricted on this platform; keep the file in a private \
+                         location until it is deleted."
+                    );
+                }
+            },
+            ClearPayloadKey => {
+                if wallet.clear_payload_auth_key()? {
+                    println!("Payload key removed; payloads will be signed with the view key.");
+                } else {
+                    println!("No payload key was imported.");
+                }
+            },
             BroadcastSignedOneSidedTransaction(args) => {
                 let data = read_payload_file(&args.input_file)?;
                 let request = SignedOneSidedTransactionResult::from_json(&data)?;
@@ -3036,56 +3340,50 @@ pub async fn command_runner(
                 }
             },
             SignMessage(args) => {
-                let mut commitment_bytes = [0u8; 32];
-                let hex_msg = args.message.trim().trim_start_matches("0x");
-                let msg_bytes = Vec::<u8>::from_hex(hex_msg)
-                    .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
-                commitment_bytes.clone_from_slice(&msg_bytes);
+                let commitment_bytes = parse_message_32(&args.message)?;
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
 
                 let signature = key_manager_service.sign_message_with_spend_key(&commitment_bytes, sender_offset)?;
 
-                if let Some(file) = args.output_file {
-                    if let Some(parent) = file.parent() {
-                        std::fs::create_dir_all(parent)
-                            .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
-                    }
-
-                    let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
-                        .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
-                    let signature_json = serde_json::to_string(&signature_binary.to_hex())
-                        .map_err(|e| CommandError::JsonFile(e.to_string()))?;
-
-                    fs::write(&file, signature_json)
-                        .map_err(|err| CommandError::FileWriteError { file_path: file, err })?;
-                }
+                output_signature(&signature, args.output_file)?;
             },
 
             SignScriptMessage(args) => {
-                let mut commitment_bytes = [0u8; 32];
-                let hex_msg = args.message.trim().trim_start_matches("0x");
-                let msg_bytes = Vec::<u8>::from_hex(hex_msg)
-                    .map_err(|e| CommandError::General(format!("message must be 32-byte hex: {}", e)))?;
-                commitment_bytes.clone_from_slice(&msg_bytes);
+                let commitment_bytes = parse_message_32(&args.message)?;
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
+                let signing_key = co_signer_script_public_key(&key_manager_service, sender_offset)
+                    .map_err(|e| CommandError::General(e.to_string()))?;
+                let checked_commitment = match &args.output_hash {
+                    Some(hash) => {
+                        let output = fetch_unspent_output(&wallet, hash).await?;
+                        check_co_signed_output(
+                            &output,
+                            hash,
+                            args.utxo_commitment.as_ref(),
+                            &commitment_bytes,
+                            &signing_key,
+                        )?;
+                        Some(output.commitment)
+                    },
+                    None => None,
+                };
+                let mode = offline_confirmation_mode(non_interactive_mode);
+                confirm_script_message_signing(
+                    mode,
+                    &mut offline_summary_output(mode),
+                    &mut io::stdin().lock(),
+                    args.output_hash.as_ref(),
+                    checked_commitment.as_ref().or(args.utxo_commitment.as_ref()),
+                    &commitment_bytes,
+                    sender_offset,
+                    &signing_key,
+                )?;
                 let signature =
-                    key_manager_service.sign_script_message_with_spend_key(&commitment_bytes, sender_offset)?;
+                    key_manager_service.sign_script_message_with_spend_key_trusted(&commitment_bytes, sender_offset)?;
+                info!(target: SIGNING_LOG_TARGET, "Multisig script message {} signed", commitment_bytes.to_hex());
 
-                if let Some(file) = args.output_file {
-                    if let Some(parent) = file.parent() {
-                        std::fs::create_dir_all(parent)
-                            .map_err(|e| CommandError::JsonFile(format!("Failed to create directory: {}", e)))?;
-                    }
-
-                    let signature_binary = tari_utilities::message_format::MessageFormat::to_binary(&signature)
-                        .map_err(|e| CommandError::General(format!("Failed to convert signature to binary: {}", e)))?;
-                    let signature_json = serde_json::to_string(&signature_binary.to_hex())
-                        .map_err(|e| CommandError::JsonFile(e.to_string()))?;
-
-                    fs::write(&file, signature_json)
-                        .map_err(|err| CommandError::FileWriteError { file_path: file, err })?;
-                }
+                output_signature(&signature, args.output_file)?;
             },
             RescanWallet(args) => {
                 if args.from_height == 0 {
@@ -4070,6 +4368,261 @@ mod test {
 
     use super::*;
 
+    #[test]
+    fn script_message_signing_prints_commitment_message_and_offset_note() {
+        let commitment = CompressedCommitment::default();
+        let hash = FixedHash::from([0xcd; 32]);
+        let mut out = Vec::new();
+        confirm_script_message_signing(
+            ConfirmationMode::NonInteractive,
+            &mut out,
+            &mut io::empty(),
+            Some(&hash),
+            Some(&commitment),
+            &[0xab; 32],
+            None,
+            &CompressedPublicKey::default(),
+        )
+        .unwrap();
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains(&hash.to_hex()), "{written}");
+        assert!(written.contains("Checked with the base node"), "{written}");
+        assert!(
+            written.contains(&format!("UTXO commitment (checked): {}", commitment.to_hex())),
+            "{written}"
+        );
+        assert!(written.contains(&"ab".repeat(32)), "{written}");
+        assert!(written.contains("signing with the bare spend key"), "{written}");
+        assert!(written.contains("Signing without a prompt"), "{written}");
+        assert!(!written.chars().any(|c| c.is_control() && c != '\n'), "{written}");
+
+        let key = CompressedPublicKey::default();
+        let mut out = Vec::new();
+        confirm_script_message_signing(
+            ConfirmationMode::NonInteractive,
+            &mut out,
+            &mut io::empty(),
+            None,
+            Some(&commitment),
+            &[0xab; 32],
+            Some(&key),
+            &CompressedPublicKey::default(),
+        )
+        .unwrap();
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains(&key.to_hex()), "{written}");
+        assert!(written.contains("the output was not checked"), "{written}");
+        assert!(written.contains("UTXO commitment (not checked)"), "{written}");
+        assert!(!written.contains("bare spend key"), "{written}");
+    }
+
+    #[test]
+    fn script_message_signing_asks_and_only_signs_on_yes() {
+        for (answer, expected) in [("y\n", true), ("YES\n", true), ("n\n", false), ("", false)] {
+            let mut out = Vec::new();
+            let result = confirm_script_message_signing(
+                ConfirmationMode::Interactive,
+                &mut out,
+                &mut answer.as_bytes(),
+                None,
+                None,
+                &[0xab; 32],
+                None,
+                &CompressedPublicKey::default(),
+            );
+            match result {
+                Ok(()) => assert!(expected, "{answer:?}"),
+                Err(e) => {
+                    assert!(!expected, "{answer:?}");
+                    assert!(e.to_string().contains("not signed: declined"), "{e}");
+                },
+            }
+            assert!(String::from_utf8(out).unwrap().contains("[y/N]"));
+        }
+    }
+
+    fn multisig_output(keys: Vec<CompressedPublicKey>, message: [u8; 32]) -> TransactionOutput {
+        let n = u8::try_from(keys.len()).unwrap();
+        TransactionOutput {
+            script: tari_script::TariScript::new(vec![Opcode::CheckMultiSigVerify(1, n, keys, Box::new(message))])
+                .unwrap(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn co_signed_output_check_refuses_anything_but_the_agreed_output() {
+        let own_key = KeyManager::new_random().unwrap().get_spend_key().pub_key;
+        let other_key = KeyManager::new_random().unwrap().get_spend_key().pub_key;
+        let message = [0xab; 32];
+        let output = multisig_output(vec![other_key.clone(), own_key.clone()], message);
+        let hash = output.hash();
+        let check = |output: &TransactionOutput, hash: &FixedHash, commitment, message: &[u8; 32]| {
+            check_co_signed_output(output, hash, commitment, message, &own_key).map_err(|e| e.to_string())
+        };
+
+        check(&output, &hash, None, &message).unwrap();
+        check(&output, &hash, Some(&output.commitment), &message).unwrap();
+
+        let refused = |result: Result<(), String>, why: &str| {
+            let err = result.unwrap_err();
+            assert!(err.contains(why), "{err}");
+        };
+        refused(check(&output, &FixedHash::zero(), None, &message), "different hash");
+        let other_commitment = CompressedCommitment::from_hex(&other_key.to_hex()).unwrap();
+        refused(
+            check(&output, &hash, Some(&other_commitment), &message),
+            "--utxo-commitment",
+        );
+        refused(check(&output, &hash, None, &[0xcd; 32]), "different message");
+
+        let without_own_key = multisig_output(vec![other_key.clone()], message);
+        refused(
+            check(&without_own_key, &without_own_key.hash(), None, &message),
+            "not one of the output's multisig keys",
+        );
+
+        let two_checks = TransactionOutput {
+            script: tari_script::TariScript::new(vec![
+                Opcode::CheckMultiSigVerify(1, 1, vec![own_key.clone()], Box::new(message)),
+                Opcode::CheckMultiSigVerify(1, 1, vec![other_key.clone()], Box::new([0xcd; 32])),
+            ])
+            .unwrap(),
+            ..Default::default()
+        };
+        refused(
+            check(&two_checks, &two_checks.hash(), None, &message),
+            "more than one multisig check",
+        );
+
+        let not_multisig = TransactionOutput {
+            script: push_pubkey_script(&own_key),
+            ..Default::default()
+        };
+        refused(
+            check(&not_multisig, &not_multisig.hash(), None, &message),
+            "not a multisig script",
+        );
+    }
+
+    #[test]
+    fn unspent_check_accepts_only_an_unspent_entry_for_the_requested_hash() {
+        use tari_transaction_components::rpc::models::DeletedUtxoInfo;
+        let hash = FixedHash::from([1; 32]);
+        let header = Some((5, vec![2; 32]));
+        let response = |utxo_hash: &FixedHash, found_in_header, spent_in_header| GetUtxosDeletedInfoResponse {
+            utxos: vec![DeletedUtxoInfo {
+                utxo_hash: utxo_hash.to_vec(),
+                found_in_header,
+                spent_in_header,
+            }],
+            best_block_hash: vec![],
+            best_block_height: 0,
+        };
+
+        require_unspent(&response(&hash, header.clone(), None), &hash).unwrap();
+        let no_entry = GetUtxosDeletedInfoResponse {
+            utxos: vec![],
+            best_block_hash: vec![],
+            best_block_height: 0,
+        };
+        assert!(require_unspent(&no_entry, &hash).is_err());
+        assert!(require_unspent(&response(&FixedHash::from([3; 32]), header.clone(), None), &hash).is_err());
+        assert!(require_unspent(&response(&hash, header.clone(), header.clone()), &hash).is_err());
+        assert!(require_unspent(&response(&hash, None, None), &hash).is_err());
+    }
+
+    #[test]
+    fn sign_message_parsing_takes_exactly_32_bytes_of_hex() {
+        assert_eq!(
+            parse_message_32(&format!(" 0x{} ", "ab".repeat(32))).unwrap(),
+            [0xab; 32]
+        );
+        assert!(parse_message_32(&"ab".repeat(31)).is_err());
+        assert!(parse_message_32(&"ab".repeat(33)).is_err());
+        assert!(parse_message_32("zz").is_err());
+    }
+
+    #[test]
+    fn sign_script_message_rejects_non_hex_utxo_commitment() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            args: crate::cli::SignScriptMessageArgs,
+        }
+        let parsed = Wrapper::try_parse_from(["test", "--message", "00", "--utxo-commitment", "\x1b[2J"]);
+        assert!(parsed.is_err());
+    }
+
+    fn import_args(index: u64, key: Option<&str>, file: Option<PathBuf>) -> ImportPayloadKeyArgs {
+        ImportPayloadKeyArgs {
+            index,
+            key: key.map(str::to_string),
+            file,
+        }
+    }
+
+    #[test]
+    fn import_payload_key_reads_an_exported_key() {
+        let signer = KeyManager::new_random().unwrap();
+        let private_key = signer.get_private_key(&TariKeyId::PayloadAuth { index: 1 }).unwrap();
+        let public_key = CompressedPublicKey::from_secret_key(&private_key);
+        let export = |index: u64, public_key: &CompressedPublicKey| {
+            let path = std::env::temp_dir().join(format!("payload_key_{}_{index}.json", std::process::id()));
+            let export = ExportedPayloadKey {
+                index,
+                private_key: private_key.to_hex(),
+                public_key: public_key.to_hex(),
+            };
+            fs::write(&path, serde_json::to_string(&export).unwrap()).unwrap();
+            path
+        };
+
+        let file = export(1, &public_key);
+        assert_eq!(
+            read_payload_key(&import_args(1, None, Some(file.clone()))).unwrap(),
+            (private_key.clone(), public_key.clone())
+        );
+        let err = read_payload_key(&import_args(2, None, Some(file.clone()))).unwrap_err();
+        assert!(err.to_string().contains("holds payload key #1, not #2"), "{err}");
+        fs::remove_file(file).unwrap();
+
+        let file = export(3, &signer.get_view_key().pub_key);
+        let err = read_payload_key(&import_args(3, None, Some(file.clone()))).unwrap_err();
+        assert!(err.to_string().contains("does not match"), "{err}");
+        fs::remove_file(file).unwrap();
+
+        assert_eq!(
+            read_payload_key(&import_args(1, Some(&private_key.to_hex()), None)).unwrap(),
+            (private_key, public_key)
+        );
+    }
+
+    #[test]
+    fn import_payload_key_refuses_a_bad_key() {
+        let zero = PrivateKey::default().to_hex();
+        assert!(read_payload_key(&import_args(1, Some(&zero), None)).is_err());
+        // The group order, which is not a canonical scalar
+        let order = "edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010";
+        assert!(read_payload_key(&import_args(1, Some(order), None)).is_err());
+        assert!(read_payload_key(&import_args(1, Some("not hex"), None)).is_err());
+    }
+
+    #[test]
+    fn import_payload_key_args_do_not_print_the_key() {
+        let printed = format!("{:?}", import_args(1, Some("deadbeef"), None));
+        assert!(!printed.contains("deadbeef"), "{printed}");
+    }
+
+    fn an_hour_from_now() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_add(3600)
+    }
+
     fn payload_with_memo(memo: &[u8]) -> PrepareOneSidedTransactionForSigningResult {
         use tari_transaction_components::offline_signing::models::{
             OneSidedTransactionInfo,
@@ -4099,6 +4652,8 @@ mod test {
             payload_signature: PayloadIntegritySignature {
                 signature: Default::default(),
             },
+            payload_key_id: None,
+            expires_at: an_hour_from_now(),
         }
     }
 

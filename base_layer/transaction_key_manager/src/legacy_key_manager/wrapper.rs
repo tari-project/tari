@@ -218,6 +218,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner.get_view_key()
     }
 
+    fn get_payload_auth_key(&self) -> Option<u64> {
+        self.transaction_key_manager_inner.key_manager().get_payload_auth_key()
+    }
+
+    fn derive_payload_auth_public_key(&self, index: u64) -> Result<CompressedPublicKey, KeyManagerError> {
+        self.transaction_key_manager_inner
+            .key_manager()
+            .derive_payload_auth_public_key(index)
+    }
+
     fn is_ledger(&self) -> bool {
         self.transaction_key_manager_inner.get_wallet_type().is_ledger()
     }
@@ -448,13 +458,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .sign_script_message(private_key_id, challenge)
     }
 
-    fn sign_script_message_with_spend_key(
+    fn sign_script_message_with_spend_key_trusted(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
         self.transaction_key_manager_inner
-            .sign_script_message_with_spend_key(message, sender_offset_pub_key)
+            .sign_script_message_with_spend_key_trusted(message, sender_offset_pub_key)
     }
 
     fn sign_with_nonce_and_challenge(

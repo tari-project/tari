@@ -30,6 +30,7 @@ use tari_crypto::hash_domain;
 pub(crate) use unconfirmed_pool::reads_block_height;
 pub use unconfirmed_pool::{
     HeightValidation,
+    InsertOutcome,
     MAX_BLOCK_TEMPLATE_BODY_BYTES,
     MAX_SPENDS_PER_OUTPUT,
     RetrieveResults,

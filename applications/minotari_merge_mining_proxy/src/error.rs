@@ -70,6 +70,8 @@ pub enum MmProxyError {
     InvalidMonerodResponse(String),
     #[error("Failed to send request to monerod: {0}")]
     MonerodRequestFailed(reqwest::Error),
+    #[error("Monerod response exceeds {limit} bytes")]
+    MonerodResponseTooLarge { limit: usize },
     #[error("GRPC request failed with `{status}` {details}")]
     GrpcRequestError {
         #[source]
@@ -100,8 +102,8 @@ pub enum MmProxyError {
     ServersUnavailable(String),
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
-    #[error("TLS connection error: {0}")]
-    TlsConnectionError(String),
+    #[error("Base node gRPC client error: {0}")]
+    GrpcClient(#[from] minotari_node_grpc_client::GrpcClientError),
     #[error("Key manager error: {0}")]
     CoreKeyManagerError(#[from] KeyManagerError),
     #[error("Consensus build error: {0}")]

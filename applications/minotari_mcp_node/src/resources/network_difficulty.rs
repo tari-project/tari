@@ -28,15 +28,14 @@ use async_trait::async_trait;
 use minotari_mcp_common::{McpError, McpResource, McpResult};
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Resource providing network difficulty information
 pub struct NetworkDifficultyResource {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: Arc<BaseNodeGrpcClient>,
 }
 
 impl NetworkDifficultyResource {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> Self {
         Self { grpc_client }
     }
 }
@@ -63,10 +62,12 @@ impl McpResource for NetworkDifficultyResource {
         let mut client = self.grpc_client.as_ref().clone();
 
         // Get chain metadata for difficulty info
-        let metadata_response = client
-            .get_tip_info(Empty {})
-            .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get metadata: {e}")))?;
+        let metadata_response = client.get_tip_info(Empty {}).await.map_err(|e| {
+            McpError::resource_access_failed(format!(
+                "Failed to get metadata: {}",
+                minotari_mcp_common::sanitize_upstream_message(e.message())
+            ))
+        })?;
 
         let tip_info = metadata_response.into_inner();
 
