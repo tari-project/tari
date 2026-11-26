@@ -247,7 +247,7 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Not covered:** The builder must still refuse such a transaction when every sender offset key was handed back by
   `reserve_sender_offset_keys` or derived by the host (`with_host_derived_partial_script_offset`), whatever the caller
   does with them.
-- **Where:** `base_layer/transaction_components` (`transaction_builder`), `base_layer/wallet`, `multisig`.
+- **Where:** `base_layer/transaction_components` (`transaction_builder`, `multisig`), `base_layer/wallet`.
 - **Recorded:** 2026-11-25.
 
 ## Withdrawn entries
