@@ -1012,3 +1012,67 @@ async fn slow_peers_are_short_banned_when_latency_backoff_aborts() {
             .any(|(id, dur, _)| *id == slow_b_id && *dur == short_ban_period)
     );
 }
+
+#[tokio::test]
+async fn slow_peer_is_short_banned_when_fast_peer_completes_round() {
+    let (db, chain_blocks) = chain_headers_ahead_of_blocks(12);
+    let genesis_hash = db.fetch_chain_header(0).unwrap().hash().to_vec();
+    let tip_claim = claim_for(chain_blocks.last().unwrap());
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+
+    let (slow_peer, _slow_server) = connect_streaming_peer(
+        &connectivity_mock,
+        StreamingChainPeer {
+            genesis_hash: genesis_hash.clone(),
+            chain: chain_blocks.clone(),
+            per_block_delay: Duration::from_millis(20),
+        },
+        tip_claim.clone(),
+    )
+    .await;
+    let (fast_peer, _fast_server) = connect_streaming_peer(
+        &connectivity_mock,
+        StreamingChainPeer {
+            genesis_hash,
+            chain: chain_blocks,
+            per_block_delay: Duration::ZERO,
+        },
+        tip_claim,
+    )
+    .await;
+    let slow_id = slow_peer.node_id().clone();
+    let fast_id = fast_peer.node_id().clone();
+
+    let config = BlockchainSyncConfig {
+        initial_max_sync_latency: Duration::from_millis(5),
+        max_latency_increase: Duration::from_secs(2),
+        ..Default::default()
+    };
+    let short_ban_period = config.short_ban_period;
+    let mut sync_peers = vec![slow_peer, fast_peer];
+    let mut attempts_without_block = HashMap::new();
+    let mut synchronizer = BlockSynchronizer::new(
+        config,
+        db.clone().into(),
+        connectivity.clone(),
+        &mut sync_peers,
+        Arc::new(MockValidator::new(true)),
+        &mut attempts_without_block,
+    );
+    synchronizer.synchronize().await.unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 12);
+    assert_eq!(sync_peers.len(), 1);
+    assert_eq!(sync_peers[0].node_id(), &fast_id);
+    let banned = banned_peers(connectivity, &connectivity_mock).await;
+    let [(banned_peer, ban_duration, ban_reason)] = banned.as_slice() else {
+        panic!("expected slow peer to receive a short ban when fast peer finished round, got {banned:?}");
+    };
+    assert_eq!(*banned_peer, slow_id);
+    assert_eq!(*ban_duration, short_ban_period);
+    assert!(
+        ban_reason.contains("exceeded maximum permitted sync latency"),
+        "{ban_reason}"
+    );
+}

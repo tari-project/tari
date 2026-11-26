@@ -359,9 +359,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             );
             match self.synchronize_blocks(sync_peer, client, max_latency).await {
                 Ok(_) => {
-                    // When a sync round completes, any peer that was merely too slow earlier in the round is not
-                    // banned so honest peers on slower links (e.g. Tor) are not penalized.
-                    self.deferred_slow_peers.clear();
+                    // Short-ban peers that exceeded `max_latency` earlier in this round once another peer finishes it;
+                    // peers that were slow in a previous backoff round are not banned because `deferred_slow_peers` is
+                    // cleared at the start of each `attempt_block_sync`.
+                    self.ban_deferred_slow_peers().await;
                     self.attempts_without_block.remove(&node_id);
                     return Ok(());
                 },
