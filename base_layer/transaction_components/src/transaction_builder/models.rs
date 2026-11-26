@@ -1,7 +1,6 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
@@ -22,7 +21,7 @@ pub struct RecipientDetails {
     pub recipient_address: Option<TariAddress>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,

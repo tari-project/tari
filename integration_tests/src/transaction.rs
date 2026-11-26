@@ -26,7 +26,7 @@ use tari_script::{TariScript, inputs, script};
 use tari_transaction_components::{
     MicroMinotari,
     helpers::borsh::SerializedSize,
-    key_manager::{KeyManager, TariKeyId},
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
     test_helpers::{TestParams, create_transaction_with},
     transaction_components::{
         OutputFeatures,
@@ -53,12 +53,18 @@ struct TestTransactionBuilder {
 
 impl TestTransactionBuilder {
     pub fn new(key_manager: &KeyManager) -> Self {
+        // `build` hands every sender offset key back and leaves no change, which the builder only allows for inputs
+        // whose script key is not derived from the spend key - and this output is spent by the next hop.
+        let mut keys = TestParams::new(key_manager);
+        let script_key = key_manager.get_random_key(None, None).unwrap();
+        keys.script_key_id = script_key.key_id;
+        keys.script_key_pk = script_key.pub_key;
         Self {
             amount: MicroMinotari(0),
             fee_per_gram: MicroMinotari(1),
             inputs_max_height: 0,
             inputs: vec![],
-            keys: TestParams::new(key_manager),
+            keys,
             lock_height: 0,
             output: None,
         }
