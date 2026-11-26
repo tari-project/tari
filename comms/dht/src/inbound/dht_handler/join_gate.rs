@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -100,6 +101,102 @@ impl JoinCooldown {
     }
 }
 
+/// The origins whose Discovery requests this node answered and when, plus origins currently being processed. An origin
+/// is answered at most once per `discovery_cooldown_interval`, even when its identity claim has not changed: a known
+/// peer cannot force repeated peer-DB writes or outbound Discovery responses by streaming Discovery requests through
+/// relays (including concurrent bursts before the first DB lookup completes), while an honest peer rediscovering this
+/// node with an unchanged claim is answered again once the cooldown passes. Past `capacity` origins, the least
+/// recently answered is forgotten first.
+#[derive(Debug, Default)]
+pub(super) struct DiscoveryCooldown {
+    answered: HashMap<CommsPublicKey, (Instant, u64)>,
+    /// The origins in the order they were last answered. The sequence number orders answers at the same instant.
+    by_age: BTreeMap<(Instant, u64), CommsPublicKey>,
+    /// Origins with an inbound Discovery currently in flight between the early gate and completion/rejection.
+    in_flight: HashSet<CommsPublicKey>,
+    next_seq: u64,
+}
+
+/// Per-origin in-progress reservation held while validating and storing an inbound Discovery. Dropping it without
+/// calling [`Self::commit`] releases the in-flight reservation without starting a cooldown.
+pub(super) struct DiscoveryLease {
+    gate: Arc<Mutex<DiscoveryCooldown>>,
+    origin: Option<CommsPublicKey>,
+}
+
+impl DiscoveryLease {
+    /// Releases the in-flight reservation and records an answered Discovery cooldown for the origin.
+    pub fn commit(mut self, now: Instant, capacity: usize) {
+        let Some(origin) = self.origin.take() else {
+            return;
+        };
+        let mut gate = match self.gate.lock() {
+            Ok(gate) => gate,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        gate.in_flight.remove(&origin);
+        gate.record_answer(&origin, now, capacity);
+    }
+}
+
+impl Drop for DiscoveryLease {
+    fn drop(&mut self) {
+        if let Some(origin) = self.origin.take() {
+            let mut gate = match self.gate.lock() {
+                Ok(gate) => gate,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            gate.in_flight.remove(&origin);
+        }
+    }
+}
+
+impl DiscoveryCooldown {
+    /// Reserves `origin` for processing unless it is currently in cooldown or already has a Discovery in flight.
+    pub fn try_begin(
+        gate: &Arc<Mutex<Self>>,
+        origin: &CommsPublicKey,
+        now: Instant,
+        interval: Duration,
+    ) -> Option<DiscoveryLease> {
+        let Ok(mut guard) = gate.lock() else {
+            return None;
+        };
+        if guard.in_cooldown(origin, now, interval) || !guard.in_flight.insert(origin.clone()) {
+            return None;
+        }
+        drop(guard);
+        Some(DiscoveryLease {
+            gate: Arc::clone(gate),
+            origin: Some(origin.clone()),
+        })
+    }
+
+    /// Returns true if a Discovery from `origin` was answered within `interval` of `now`.
+    pub fn in_cooldown(&self, origin: &CommsPublicKey, now: Instant, interval: Duration) -> bool {
+        self.answered
+            .get(origin)
+            .is_some_and(|(at, _)| now.saturating_duration_since(*at) < interval)
+    }
+
+    /// Records a Discovery answer for `origin` at `now`. Past `capacity` origins, the least recently answered is
+    /// forgotten.
+    pub fn record_answer(&mut self, origin: &CommsPublicKey, now: Instant, capacity: usize) {
+        let seq = self.next_seq;
+        self.next_seq = self.next_seq.wrapping_add(1);
+        if let Some(previous) = self.answered.insert(origin.clone(), (now, seq)) {
+            self.by_age.remove(&previous);
+        }
+        self.by_age.insert((now, seq), origin.clone());
+        while self.answered.len() > capacity {
+            let Some((_, oldest)) = self.by_age.pop_first() else {
+                break;
+            };
+            self.answered.remove(&oldest);
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
@@ -173,5 +270,76 @@ mod test {
         assert!(gate.propagated.contains_key(&origins[0]));
         assert!(gate.propagated.contains_key(&origins[2]));
         assert_eq!(gate.by_age.len(), 2);
+    }
+
+    #[test]
+    fn an_origin_is_answered_once_per_interval_and_again_after_expiry() {
+        let gate = Arc::new(Mutex::new(DiscoveryCooldown::default()));
+        let origin = make_node_identity().public_key().clone();
+        let other = make_node_identity().public_key().clone();
+        let interval = Duration::from_secs(60);
+        let start = Instant::now();
+
+        assert!(!gate.lock().unwrap().in_cooldown(&origin, start, interval));
+        DiscoveryCooldown::try_begin(&gate, &origin, start, interval)
+            .expect("first discovery admitted")
+            .commit(start, 10);
+        assert!(gate.lock().unwrap().in_cooldown(&origin, start, interval));
+        let within = start + Duration::from_secs(59);
+        assert!(gate.lock().unwrap().in_cooldown(&origin, within, interval));
+        assert!(DiscoveryCooldown::try_begin(&gate, &origin, within, interval).is_none());
+        DiscoveryCooldown::try_begin(&gate, &other, start + Duration::from_secs(1), interval)
+            .expect("other origin admitted")
+            .commit(start + Duration::from_secs(1), 10);
+
+        let expired = start + interval;
+        assert!(!gate.lock().unwrap().in_cooldown(&origin, expired, interval));
+        DiscoveryCooldown::try_begin(&gate, &origin, expired, interval)
+            .expect("admitted after expiry")
+            .commit(expired, 10);
+    }
+
+    #[test]
+    fn discovery_cooldown_forgets_least_recently_answered_origin_past_capacity() {
+        let mut gate = DiscoveryCooldown::default();
+        let origins = (0..3)
+            .map(|_| make_node_identity().public_key().clone())
+            .collect::<Vec<_>>();
+        let interval = Duration::from_secs(60);
+        let start = Instant::now();
+
+        gate.record_answer(&origins[0], start, 2);
+        gate.record_answer(&origins[1], start + Duration::from_secs(1), 2);
+        let later = start + interval + Duration::from_secs(1);
+        gate.record_answer(&origins[0], later, 2);
+        gate.record_answer(&origins[2], later, 2);
+
+        assert!(!gate.answered.contains_key(&origins[1]));
+        assert!(gate.answered.contains_key(&origins[0]));
+        assert!(gate.answered.contains_key(&origins[2]));
+        assert_eq!(gate.answered.len(), 2);
+        assert_eq!(gate.by_age.len(), 2);
+    }
+
+    #[test]
+    fn in_flight_guard_blocks_concurrent_requests_and_releases_without_cooldown_on_drop() {
+        let gate = Arc::new(Mutex::new(DiscoveryCooldown::default()));
+        let origin = make_node_identity().public_key().clone();
+        let interval = Duration::from_secs(60);
+        let start = Instant::now();
+
+        let lease = DiscoveryCooldown::try_begin(&gate, &origin, start, interval).expect("first request admitted");
+        assert!(DiscoveryCooldown::try_begin(&gate, &origin, start, interval).is_none());
+
+        // Dropping without commit releases the in-flight reservation without starting a cooldown
+        drop(lease);
+        assert!(!gate.lock().unwrap().in_cooldown(&origin, start, interval));
+
+        let lease = DiscoveryCooldown::try_begin(&gate, &origin, start, interval).expect("re-admitted after drop");
+        lease.commit(start, 10);
+        assert!(DiscoveryCooldown::try_begin(&gate, &origin, start, interval).is_none());
+        DiscoveryCooldown::try_begin(&gate, &origin, start + interval, interval)
+            .expect("re-admitted after expiry")
+            .commit(start + interval, 10);
     }
 }
