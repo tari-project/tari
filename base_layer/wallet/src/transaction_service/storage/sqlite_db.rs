@@ -1648,60 +1648,50 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         let mut conn = self.database_connection.get_pooled_connection()?;
         let unproved_rows = burn_proofs::table
-            .select((burn_proofs::output_hash, burn_proofs::kernel_excess_sig))
+            .select((
+                burn_proofs::output_hash,
+                burn_proofs::kernel_excess_sig,
+                burn_proofs::kernel,
+            ))
             .filter(burn_proofs::burn_output_proof.is_null())
-            .load::<(Vec<u8>, Option<Vec<u8>>)>(&mut conn)?;
+            .load::<(Vec<u8>, Option<Vec<u8>>, Vec<u8>)>(&mut conn)?;
         if unproved_rows.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut with_sig: Vec<(FixedHash, Vec<u8>)> = Vec::new();
-        let mut without_sig: HashSet<FixedHash> = HashSet::new();
-        for (raw_hash, maybe_sig) in unproved_rows {
+        let mut with_sig: Vec<(FixedHash, Vec<u8>)> = Vec::with_capacity(unproved_rows.len());
+        for (raw_hash, maybe_sig, raw_kernel) in unproved_rows {
             let Ok(hash) = FixedHash::try_from(raw_hash.as_slice()) else {
                 continue;
             };
-            match maybe_sig.filter(|s| !s.is_empty()) {
-                Some(sig) => with_sig.push((hash, sig)),
-                None => {
-                    without_sig.insert(hash);
+            let sig = match maybe_sig.filter(|s| !s.is_empty()) {
+                Some(sig) => sig,
+                None => match bincode_decode::<TransactionKernel>(&raw_kernel) {
+                    Ok(kernel) => kernel.excess_sig.get_signature().to_vec(),
+                    Err(_) => continue,
                 },
-            }
+            };
+            with_sig.push((hash, sig));
         }
+        if with_sig.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let sigs: Vec<Vec<u8>> = with_sig.iter().map(|(_, s)| s.clone()).collect();
+        let confirmed_sigs: HashSet<Vec<u8>> = completed_transactions::table
+            .select(completed_transactions::transaction_signature_key)
+            .filter(completed_transactions::transaction_signature_key.eq_any(&sigs))
+            .filter(completed_transactions::status.eq(LegacyTransactionStatus::MinedConfirmed as i32))
+            .filter(completed_transactions::cancelled.is_null())
+            .load::<Vec<u8>>(&mut conn)?
+            .into_iter()
+            .collect();
 
         let mut result = Vec::new();
         let mut seen = HashSet::new();
-
-        if !with_sig.is_empty() {
-            let sigs: Vec<Vec<u8>> = with_sig.iter().map(|(_, s)| s.clone()).collect();
-            let confirmed_sigs: HashSet<Vec<u8>> = completed_transactions::table
-                .select(completed_transactions::transaction_signature_key)
-                .filter(completed_transactions::transaction_signature_key.eq_any(&sigs))
-                .filter(completed_transactions::status.eq(LegacyTransactionStatus::MinedConfirmed as i32))
-                .filter(completed_transactions::cancelled.is_null())
-                .load::<Vec<u8>>(&mut conn)?
-                .into_iter()
-                .collect();
-            for (hash, sig) in with_sig {
-                if confirmed_sigs.contains(&sig) && seen.insert(hash) {
-                    result.push(hash);
-                }
-            }
-        }
-
-        if !without_sig.is_empty() {
-            let confirmed_sent_blobs = completed_transactions::table
-                .select(completed_transactions::sent_output_hashes)
-                .filter(completed_transactions::status.eq(LegacyTransactionStatus::MinedConfirmed as i32))
-                .filter(completed_transactions::cancelled.is_null())
-                .filter(completed_transactions::sent_output_hashes.is_not_null())
-                .load::<Option<Vec<u8>>>(&mut conn)?;
-            for blob in confirmed_sent_blobs.into_iter().flatten() {
-                for hash in bytes_to_fixedhash_vec(&blob) {
-                    if without_sig.contains(&hash) && seen.insert(hash) {
-                        result.push(hash);
-                    }
-                }
+        for (hash, sig) in with_sig {
+            if confirmed_sigs.contains(&sig) && seen.insert(hash) {
+                result.push(hash);
             }
         }
 

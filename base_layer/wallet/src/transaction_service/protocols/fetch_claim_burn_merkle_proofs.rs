@@ -396,7 +396,7 @@ mod tests {
             covenants::Covenant,
         },
     };
-    use tari_transaction_key_manager::legacy_key_manager::{MemoryKeyManager, create_new_random_key_manager};
+    use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
     use tari_utilities::{ByteArray, SafePassword};
     use tempfile::tempdir;
     use tokio::sync::{Notify, mpsc, watch};
@@ -427,6 +427,7 @@ mod tests {
     #[derive(Default)]
     struct MockBaseNodeState {
         tip_height: u64,
+        headers: HashMap<u64, models::BlockHeader>,
         proof_responses: HashMap<CompressedCommitment, VecDeque<Result<BurnOutputProof, String>>>,
         proof_calls: HashMap<CompressedCommitment, usize>,
     }
@@ -436,6 +437,10 @@ mod tests {
             let client = Self::default();
             client.state.lock().unwrap().tip_height = tip_height;
             client
+        }
+
+        fn set_header(&self, header: models::BlockHeader) {
+            self.state.lock().unwrap().headers.insert(header.height, header);
         }
 
         fn with_blocking_proof_gate(tip_height: u64) -> (Self, Arc<Notify>, Arc<Notify>) {
@@ -501,8 +506,8 @@ mod tests {
             })
         }
 
-        async fn get_header_by_height(&self, _height: u64) -> Result<Option<models::BlockHeader>, anyhow::Error> {
-            unimplemented!("unused in fetch_claim_burn_merkle_proofs tests")
+        async fn get_header_by_height(&self, height: u64) -> Result<Option<models::BlockHeader>, anyhow::Error> {
+            Ok(self.state.lock().unwrap().headers.get(&height).cloned())
         }
 
         async fn get_height_at_time(&self, _epoch_time: u64) -> Result<u64, anyhow::Error> {
@@ -557,10 +562,8 @@ mod tests {
             let tip_height = self.state.lock().unwrap().tip_height;
             Ok(TxQueryResponse {
                 location: TxLocation::Mined,
-                best_block_hash: Some(FixedHash::zero().to_vec()),
-                confirmations: 10,
-                is_synced: true,
-                best_block_height: tip_height,
+                mined_height: Some(tip_height),
+                mined_header_hash: Some(FixedHash::zero().to_vec()),
                 mined_timestamp: Some(1_700_000_000),
             })
         }
@@ -967,7 +970,10 @@ mod tests {
 
         // burn_a can be re-acquired immediately while burn_b is still retrying
         let reacquired_a = InFlightBurnProofsGuard::try_acquire(&in_flight, [burn_a_hash]);
-        assert!(reacquired_a.is_some(), "burn_a should be acquirable while burn_b is still retrying");
+        assert!(
+            reacquired_a.is_some(),
+            "burn_a should be acquirable while burn_b is still retrying"
+        );
         drop(reacquired_a);
 
         // Unblock remaining retries of burn_b so the task finishes cleanly
@@ -1027,12 +1033,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sweeps_legacy_null_kernel_excess_sig_row_and_skips_once_cancelled() {
+        use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+
+        use crate::schema::burn_proofs;
+
+        let (dir, _wallet_db, tx_db) = setup_dbs();
+        let legacy_burn = build_burn_fixture(40, OutputType::Burn, 400);
+        insert_confirmed_burn(&tx_db, &legacy_burn);
+
+        let db_path = dir.path().join("wallet.sqlite");
+        let mut conn = SqliteConnection::establish(db_path.to_str().unwrap()).unwrap();
+        diesel::update(burn_proofs::table.filter(burn_proofs::output_hash.eq(legacy_burn.output_hash.as_bytes())))
+            .set(burn_proofs::kernel_excess_sig.eq(None::<Vec<u8>>))
+            .execute(&mut conn)
+            .unwrap();
+
+        assert_eq!(
+            tx_db.fetch_confirmed_burns_without_output_proof().unwrap(),
+            vec![legacy_burn.output_hash]
+        );
+
+        tx_db
+            .reject_completed_transaction(legacy_burn.tx_id, TxCancellationReason::UserCancelled, None)
+            .unwrap();
+        assert!(tx_db.fetch_confirmed_burns_without_output_proof().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn validation_protocol_sweeps_stranded_confirmed_burn_and_stores_proof() {
         let (_dir, _wallet_db, tx_db) = setup_dbs();
         let stranded = build_burn_fixture(50, OutputType::Burn, 500);
         insert_confirmed_burn(&tx_db, &stranded);
 
         let client = MockBaseNodeClient::with_tip(520);
+        client.set_header(stranded.rpc_header.clone());
         client.push_proof_response(stranded.commitment.clone(), Ok(stranded.burn_output_proof.clone()));
         let connectivity = MockConnectivity::new(client.clone());
         let (event_tx, _event_rx) = broadcast::channel(16);
@@ -1078,6 +1113,7 @@ mod tests {
         insert_confirmed_burn(&tx_db, &stranded);
 
         let (client, started, gate) = MockBaseNodeClient::with_blocking_proof_gate(525);
+        client.set_header(stranded.rpc_header.clone());
         client.push_proof_response(stranded.commitment.clone(), Ok(stranded.burn_output_proof.clone()));
         let connectivity = MockConnectivity::new(client.clone());
         let (event_tx, _event_rx) = broadcast::channel(16);
