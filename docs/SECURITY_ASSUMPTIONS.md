@@ -130,6 +130,28 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Where:** `applications/minotari_app_grpc`, `applications/minotari_node`, `applications/minotari_console_wallet`.
 - **Recorded:** 2026-11-17.
 
+### A-GRPC-02: The miner, merge-mining proxy and node MCP server trust the base node they connect to
+
+- **Assumption:** The base node a miner, merge-mining proxy or node MCP server connects to over gRPC is the operator's
+  own, and so is the network path to it unless TLS is configured. These clients do not re-verify the block templates
+  and blocks the node returns, including the coinbase and the merge-mining hash.
+- **What that means:** A node the operator does not control, or anyone on a plaintext network path, can redirect
+  mining rewards and read Basic credentials. Plaintext to a non-loopback host is allowed and logs a warning on each
+  connect; it is never refused. Only `http://`, `https://` and `unix:` socket addresses are accepted. An `https://`
+  address with no CA configured is verified against whichever tonic root features are compiled into the binary: the
+  system store always, plus the bundled Mozilla (webpki) roots where `tls-webpki-roots` is enabled (the merge-mining
+  proxy, and possibly other binaries in a workspace-wide build through Cargo feature unification). Any of those
+  authorities can vouch for the node.
+- **Not covered:** Sending credentials to a party they were not configured for: the merge-mining proxy's p2pool node
+  receives only the `p2pool_grpc_*` credentials and TLS settings, never the base node's. The miner's p2pool
+  connection gets the base node's credentials and TLS settings only when it reuses `base_node_grpc_address`; a
+  prompted or default p2pool address gets none. Connecting in plaintext when
+  TLS is configured. Unbounded memory from node responses (messages are capped at 8 MiB by default). Blocks returned
+  by a p2pool node, which are still checked for the configured coinbase address.
+- **Where:** `clients/rust/base_node_grpc_client`, `applications/minotari_miner`,
+  `applications/minotari_merge_mining_proxy`, `applications/minotari_mcp_node`, `applications/minotari_app_utilities`.
+- **Recorded:** 2026-11-25, in the pull request that added the base node gRPC client constructor.
+
 ### A-HTTP-01: The base node wallet query HTTP service is a public, unauthenticated service
 
 - **Assumption:** The base node's wallet query HTTP service exists so that wallets can query a base node over the
@@ -169,7 +191,8 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   unconfirmed attempts can also use up the budget. The budget is held in memory and a server restart resets it. It
   only limits calls made through the MCP server: an agent or process that can reach the wallet's gRPC interface
   directly (the MCP server does not yet authenticate to it, so it must be left open to local clients; see A-GRPC-01),
-  or that can restart the MCP server, can bypass or reset it.
+  or that can restart the MCP server, can bypass or reset it. The node MCP server, unlike the wallet one, can
+  authenticate to its base node (Basic credentials from the environment or a password file, and TLS); see A-GRPC-02.
 - **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
   not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
   configured spend budget or paying more than the fee ceiling through the MCP server, and making the server use
@@ -177,6 +200,55 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   the client itself is not yet bounded by the stdio transport.
 - **Where:** `applications/minotari_mcp_common`, `applications/minotari_mcp_node`, `applications/minotari_mcp_wallet`.
 - **Recorded:** 2026-11-23.
+
+### A-MMPROXY-01: The merge-mining proxy treats upstream monerod nodes as untrusted, and its listener as trusted miners only
+
+- **Assumption:** The `monerod_url` entries, including the public defaults (many of them plain `http://`), are
+  untrusted third parties. TLS to monerod deliberately skips certificate checks (PR #7060) so the proxy can fall back
+  to raw IP addresses. The Tari coinbase and reward come over gRPC from the operator-configured base node, or from the
+  p2pool node when `p2pool_enabled` is set (the proxy checks that its coinbase pays the configured wallet address),
+  never from monerod. The listener (loopback by default) serves trusted miners; exposing it is the operator's choice.
+- **What that means:** A monerod node can serve bad or stale templates or withhold responses, which costs
+  merge-mining availability. The proxy moves on to another configured monerod when a request times out or fails, or
+  when the response body is too large or not valid JSON (including empty or HTML error pages); a monerod that
+  returns an error status with a JSON body, or a template the proxy rejects, stays selected. The client that
+  forwards requests to monerod does not follow redirects, so monerod cannot point it at other hosts. Monerod cannot
+  change the Tari coinbase or reward destination, but with `submit_to_origin` on (the default) a found block goes to
+  monerod first, so a selected monerod can stop found Tari blocks from being submitted; running your own monerod
+  avoids this, and setting `submit_to_origin = false` keeps the block from being sent to monerod (submission still
+  waits for, and can fail on, monerod selection). The Monero side is exposed: monerod builds the Monero block
+  template, so an untrusted or on-path monerod can pay the Monero block reward to someone else, and it sees
+  `monerod_username`/`monerod_password` when `monerod_use_auth` is set (in cleartext over `http://`, and over
+  `https://` too because certificates are not checked). Operators who care should run their own monerod (see the
+  SECURITY note in `common/config/presets/f_merge_mining_proxy.toml`). Requests the proxy does not recognise are
+  forwarded to monerod, which should run with `--restricted-rpc`.
+- **Not covered:** A monerod response must not be able to crash the proxy. Each response body is read under a fixed
+  raw-byte limit (`MAX_MONEROD_RESPONSE_BYTES`, 8 MiB) and the per-request monerod timeout; the parsed JSON tree for
+  a body within the limit can be many times larger per in-flight request, which is accepted. Upstream data must not
+  change the Tari coinbase or the reward destination.
+- **Where:** `applications/minotari_merge_mining_proxy` (`proxy/inner.rs`, `proxy/utils.rs`, `run_merge_miner.rs`,
+  `config.rs`).
+- **Recorded:** 2026-11-25, PR #8434.
+
+### A-BUILDER-01: Callers keep the key ids of builder-made recipient outputs to themselves
+
+- **Assumption:** `TransactionBuilder` treats the sender offset key it reserves for a recipient spec as one the view
+  key holder cannot learn, and counts it toward the rule that a transaction spending a spend-key-derived input keeps
+  at least one sender offset key with the signer. That key's id (wrapped under the view key) still reaches the
+  returned `FinalizedTransaction`: in every `RecipientKeys` mode it is each `sent_outputs` entry's
+  `sender_offset_key_id` (crate private; `OutputPair` has no serde), and with `RecipientKeys::DiffieHellman` it is also
+  embedded in that entry's `custom_recovery_key_id` and in the output's `commitment_mask_key_id` in `sent_outputs` and
+  `spec_outputs`. When no change key stays inside the builder, the calling flow is trusted not to persist or export
+  those key ids.
+- **What that means:** A flow that stores those key ids, or hands them to a party holding only the view key, gives that
+  party every sender offset key of a transaction without change, and with the published script offset, the spend key.
+  The offline signer hands its recipients' key ids back to the online wallet; that is safe only because
+  `with_change_required` keeps the change key with the signer, and dropping that requirement there would be unsafe.
+- **Not covered:** The builder must still refuse such a transaction when every sender offset key was handed back by
+  `reserve_sender_offset_keys` or derived by the host (`with_host_derived_partial_script_offset`), whatever the caller
+  does with them.
+- **Where:** `base_layer/transaction_components` (`transaction_builder`, `multisig`), `base_layer/wallet`.
+- **Recorded:** 2026-11-25.
 
 ## Withdrawn entries
 

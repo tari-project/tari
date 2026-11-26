@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use minotari_app_grpc::authentication::BasicAuthError;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
+use minotari_node_grpc_client::GrpcClientError;
 use tari_max_size::MaxSizeBytesError;
 use thiserror::Error;
 use tonic::codegen::http::uri::InvalidUri;
@@ -49,8 +50,8 @@ pub enum MinerError {
     BasicAuthError(#[from] BasicAuthError),
     #[error("Invalid gRPC url: {0}")]
     InvalidUri(#[from] InvalidUri),
-    #[error("TLS connection error: {0}")]
-    TlsConnectionError(String),
+    #[error("Base node gRPC client error: {0}")]
+    GrpcClient(#[from] GrpcClientError),
     #[error("Coinbase error: {0}")]
     CoinbaseError(String),
     #[error("Consensus build error: {0}")]

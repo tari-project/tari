@@ -28,7 +28,7 @@ use minotari_app_grpc::{
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{Cli, run_miner};
-use minotari_node_grpc_client::BaseNodeGrpcClient;
+use minotari_node_grpc_client::RawBaseNodeGrpcClient;
 use minotari_wallet_grpc_client::{WalletGrpcClient, grpc};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
@@ -49,7 +49,7 @@ use tonic::transport::Channel;
 
 use crate::TariWorld;
 
-type BaseNodeClient = BaseNodeGrpcClient<Channel>;
+type BaseNodeClient = RawBaseNodeGrpcClient<Channel>;
 
 #[derive(Clone, Debug)]
 pub struct MinerProcess {

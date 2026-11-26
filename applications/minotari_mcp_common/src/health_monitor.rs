@@ -29,7 +29,7 @@
 use std::time::{Duration, Instant};
 
 use tokio::time::timeout;
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Endpoint};
 
 use crate::error::{McpError, McpResult};
 
@@ -63,6 +63,8 @@ pub struct HealthCheckResult {
 pub struct HealthMonitor {
     service_name: String,
     endpoint: String,
+    /// Dialled by the gRPC check instead of `endpoint`, so it carries the client's TLS settings
+    grpc_endpoint: Option<Endpoint>,
     timeout_duration: Duration,
     max_consecutive_failures: u32,
 }
@@ -73,6 +75,7 @@ impl HealthMonitor {
         Self {
             service_name,
             endpoint,
+            grpc_endpoint: None,
             timeout_duration: Duration::from_secs(5),
             max_consecutive_failures: 3,
         }
@@ -81,6 +84,12 @@ impl HealthMonitor {
     /// Create health monitor with custom timeout
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout_duration = timeout;
+        self
+    }
+
+    /// Run the gRPC check against this prebuilt endpoint
+    pub fn with_grpc_endpoint(mut self, endpoint: Endpoint) -> Self {
+        self.grpc_endpoint = Some(endpoint);
         self
     }
 
@@ -160,8 +169,12 @@ impl HealthMonitor {
     /// Test gRPC connection with a simple channel creation
     async fn test_grpc_connection(&self) -> McpResult<()> {
         // Create a channel to test connectivity
-        let _channel = Channel::from_shared(self.endpoint.clone())
-            .map_err(|e| McpError::server_error(format!("Invalid endpoint: {e}")))?
+        let endpoint = match &self.grpc_endpoint {
+            Some(endpoint) => endpoint.clone(),
+            None => Channel::from_shared(self.endpoint.clone())
+                .map_err(|e| McpError::server_error(format!("Invalid endpoint: {e}")))?,
+        };
+        let _channel = endpoint
             .timeout(self.timeout_duration)
             .connect()
             .await
@@ -267,6 +280,21 @@ impl ServiceHealthMonitors {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn grpc_check_dials_the_prebuilt_endpoint() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(
+            tonic::transport::Server::builder()
+                .add_routes(tonic::service::Routes::default())
+                .serve_with_incoming(tonic::transport::server::TcpIncoming::from(listener)),
+        );
+        // Nothing listens on the string endpoint, so only the prebuilt one can pass.
+        let monitor = HealthMonitor::new("test".to_string(), "http://127.0.0.1:1".to_string())
+            .with_grpc_endpoint(Endpoint::from_shared(format!("http://{addr}")).unwrap());
+        assert_eq!(monitor.check_grpc_health().await.status, HealthStatus::Healthy);
+    }
 
     #[tokio::test]
     async fn test_connectivity_check_invalid_address() {

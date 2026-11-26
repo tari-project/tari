@@ -28,7 +28,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use minotari_node_grpc_client::BaseNodeGrpcClient;
+use minotari_node_grpc_client::{BaseNodeGrpcClient, GrpcClientError};
 use minotari_wallet_grpc_client::WalletGrpcClient as TariWalletGrpcClient;
 use serde_json::Value;
 use tonic::{Status, transport::Channel};
@@ -50,6 +50,12 @@ impl From<Status> for McpError {
             sanitize_upstream_message(status.message()),
             status.code()
         ))
+    }
+}
+
+impl From<GrpcClientError> for McpError {
+    fn from(e: GrpcClientError) -> Self {
+        McpError::config_error(format!("Base node gRPC client error: {e}"))
     }
 }
 
@@ -96,11 +102,11 @@ pub(crate) const WALLET_METHODS: &[&str] = &[
 
 /// Real node gRPC client implementation
 pub struct NodeGrpcClientImpl {
-    client: BaseNodeGrpcClient<Channel>,
+    client: BaseNodeGrpcClient,
 }
 
 impl NodeGrpcClientImpl {
-    pub fn new(client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(client: BaseNodeGrpcClient) -> Self {
         Self { client }
     }
 }
@@ -183,7 +189,7 @@ mod tests {
     async fn node_dispatch_matches_supported_list() {
         // Nothing listens here, so every implemented call fails at the transport or parameter check
         let channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
-        let client = NodeGrpcClientImpl::new(BaseNodeGrpcClient::new(channel));
+        let client = NodeGrpcClientImpl::new(BaseNodeGrpcClient::from_channel(channel, &Default::default()).unwrap());
 
         for method in base_node_methods() {
             let result = client.execute_method(&method.name, json!({})).await;
