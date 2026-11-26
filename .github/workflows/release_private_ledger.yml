@@ -23,7 +23,7 @@ name: Private Release Ledger (reusable)
 env:
   TS_FILENAME: "minotari_ledger_wallet"
   SHARUN: "shasum --algorithm 256"
-  DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10"
+  DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.5.4"
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
