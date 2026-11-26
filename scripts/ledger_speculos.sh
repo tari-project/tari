@@ -35,7 +35,7 @@
 #   MODELS                Models to cover.            Default: "nanosplus stax"
 #   SEEDS                 Seeds to cover.             Default: "default alternate"
 #   SPECULOS_IMAGE        Simulator image.            Default: ghcr.io/ledgerhq/speculos, digest pinned below
-#   BUILDER_IMAGE         Device app builder image.   Default: ledger-app-builder :5.3.10, digest pinned below
+#   BUILDER_IMAGE         Device app builder image.   Default: ledger-app-builder :5.5.4, digest pinned below
 #   SPECULOS_RUN_ID       Isolates concurrent runs.   Default: the GitHub run/job, else this shell's PID
 #   JUNIT_DIR             Where JUnit XML is written. Default: <repo>/target/speculos-junit
 #   SPECULOS_LOG_DIR      Where logs are written.     Default: <repo>/target/speculos-logs
@@ -73,7 +73,7 @@ SEEDS="${SEEDS:-default alternate}"
 # produced it. A tag is also a standing code-execution grant to whoever can repoint it, on every developer machine
 # and every fresh CI runner, in a container that until recently ran unconfined.
 #
-# `:latest` was the obvious offender but `:5.3.10` is mutable too - a version tag is still just a tag - so both are
+# `:latest` was the obvious offender but `:5.5.4` is mutable too - a version tag is still just a tag - so both are
 # pinned. The tag is kept in the reference for readability; when both are present Docker resolves the digest and
 # ignores the tag, so the comment cannot drift into a lie.
 #
@@ -89,7 +89,7 @@ SPECULOS_IMAGE="${SPECULOS_IMAGE:-ghcr.io/ledgerhq/speculos:latest@sha256:6ed9ee
 # Both CI build jobs - `ledger-build-tests` in .github/workflows/ci.yml and the Speculos job in ledger_tests.yml -
 # build through `cmd_build` below, so this pin is theirs too. .github/workflows/build_ledger_wallet.yml, the release
 # build, still names the image by tag in its own DOCKER_IMAGE; keep that tag in step with this one.
-BUILDER_IMAGE="${BUILDER_IMAGE:-ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10@sha256:3853136d5bba5bff4e3d5fc9d6629389e3e0c56a679b2eb4e05c97a7017bf566}"
+BUILDER_IMAGE="${BUILDER_IMAGE:-ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.5.4@sha256:ae7d066d52fefa7a6a5b5f0f6dd3a274d11266f12a9e2d7929505603945495ee}"
 # The one test `cmd_test` skips, on every model. Named once so the exclusion and the comment that explains it
 # cannot drift apart; see `cmd_test`.
 BLOCKING_PROBE="a_wrong_length_payload_does_not_block_on_a_button_press"

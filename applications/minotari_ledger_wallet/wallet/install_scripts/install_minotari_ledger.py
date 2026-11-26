@@ -443,9 +443,13 @@ def install_apdu_file(apdu_path: Path, model: LedgerModel) -> None:
     if result.returncode != 0:
         output = result.stdout if isinstance(result.stdout, str) else ""
         if "Invalid status 511f" in output or "OS version on your device does not seem compatible" in output:
+            # 0x511F: the app was built against a different SDK API_LEVEL than the device OS. Either side can be
+            # the older one, so do not tell the user which to update.
             raise InstallerError(
-                "The Ledger firmware is too old for this Minotari Ledger app artifact. "
-                "Update the Ledger device firmware in Ledger Live, unlock the device, and run this installer again."
+                "The Ledger firmware and this Minotari Ledger app artifact were built for different Ledger OS API "
+                "levels. Update the Ledger device firmware in Ledger Live and run this installer again; if the "
+                "firmware is already up to date, this release does not support it yet - install a newer "
+                "Minotari Ledger release (or pass --tag to choose one)."
             )
         if output:
             print(output, file=sys.stderr, end="" if output.endswith("\n") else "\n")
