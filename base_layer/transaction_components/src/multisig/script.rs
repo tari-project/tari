@@ -175,7 +175,7 @@ mod test {
         }
 
         // Consensus accepts repeated keys and up to 32 keys, so existing outputs of that shape stay spendable.
-        let repeated = keys[0].clone();
+        let repeated = keys.first().unwrap().clone();
         let duplicate = multisig_script(2, 2, vec![repeated.clone(), repeated.clone()]);
         assert_eq!(
             get_multi_sig_script_components(&duplicate),

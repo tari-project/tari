@@ -137,7 +137,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         output: WalletOutput,
         consensus_constants: &ConsensusConstants,
     ) -> Result<(FinalizedTransaction, MemoField, MicroMinotari), TransactionBuilderError> {
-        // `CheckMultiSigVerify` consumes exactly `m` signatures; any extra would fail the spend with StackNotEmpty.
+        // `CheckMultiSigVerify` consumes exactly `m` signatures; any extra would fail the spend with
+        // NonUnitLengthStack.
         validate_multisig_spend_signature_count(output.script(), signatures.len())?;
 
         let mut input_stack = ExecutionStack::default();
@@ -361,7 +362,7 @@ mod test {
         let session = MultisigSession::new(key_manager.clone());
 
         // Excess signatures (> threshold) must be rejected before building a transaction that would fail with
-        // StackNotEmpty
+        // NonUnitLengthStack
         let amount = MicroMinotari(100_000);
         let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
         let party_key = key_manager.get_random_key(None, None).unwrap();
