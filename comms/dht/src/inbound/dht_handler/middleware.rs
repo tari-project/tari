@@ -32,7 +32,10 @@ use tari_comms::{
 };
 use tower::Service;
 
-use super::{join_gate::JoinCooldown, task::ProcessDhtMessage};
+use super::{
+    join_gate::{DiscoveryCooldown, JoinCooldown},
+    task::ProcessDhtMessage,
+};
 use crate::{
     DhtConfig,
     DhtRequester,
@@ -53,6 +56,7 @@ pub struct DhtHandlerMiddleware<S> {
     discovery_requester: DhtDiscoveryRequester,
     config: Arc<DhtConfig>,
     join_cooldown: Arc<Mutex<JoinCooldown>>,
+    discovery_cooldown: Arc<Mutex<DiscoveryCooldown>>,
     source_budget: SharedSourceBudget,
     accepted_joins: SharedAcceptedJoins,
 }
@@ -67,6 +71,7 @@ impl<S> DhtHandlerMiddleware<S> {
         discovery_requester: DhtDiscoveryRequester,
         config: Arc<DhtConfig>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
+        discovery_cooldown: Arc<Mutex<DiscoveryCooldown>>,
         source_budget: SharedSourceBudget,
         accepted_joins: SharedAcceptedJoins,
     ) -> Self {
@@ -79,6 +84,7 @@ impl<S> DhtHandlerMiddleware<S> {
             discovery_requester,
             config,
             join_cooldown,
+            discovery_cooldown,
             source_budget,
             accepted_joins,
         }
@@ -110,6 +116,7 @@ where
                 message,
                 self.config.clone(),
                 self.join_cooldown.clone(),
+                self.discovery_cooldown.clone(),
                 self.source_budget.clone(),
                 self.accepted_joins.clone(),
             )
