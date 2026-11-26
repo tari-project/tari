@@ -62,6 +62,12 @@ minotari_mcp_node --help
 - `MINOTARI_NODE_MCP_AUDIT_LOGGING`: Enable audit logging
 - `MINOTARI_NODE_MCP_AUDIT_LOG_PATH`: Audit log file path
 - `MINOTARI_NODE_GRPC_ADDRESS`: Node gRPC endpoint (default: 127.0.0.1:18142)
+- `MINOTARI_NODE_GRPC_USERNAME`: Node gRPC Basic auth username (`--node-grpc-username`)
+- `MINOTARI_NODE_GRPC_PASSWORD`: Node gRPC Basic auth password; there is no command line flag for it
+- `MINOTARI_NODE_GRPC_PASSWORD_FILE`: File holding the password instead (`--node-grpc-password-file`, chmod 600)
+- `MINOTARI_NODE_GRPC_TLS_DOMAIN_NAME`: Domain name in the node's TLS certificate; enables TLS
+  (`--node-grpc-tls-domain-name`)
+- `MINOTARI_NODE_GRPC_CA_CERT`: PEM file of the CA that signed the node's TLS certificate (`--node-grpc-ca-cert`)
 
 ## Usage
 

@@ -52,6 +52,17 @@ mod add_aux_data {
         let v = add_aux_data(v, json!({"it": "is broken"}));
         assert!(v["result"][MMPROXY_AUX_KEY_NAME]["it"].as_str().is_none());
     }
+
+    #[test]
+    fn it_does_not_panic_on_malformed_responses() {
+        for v in [json!([]), json!("x")] {
+            assert_eq!(add_aux_data(v.clone(), json!({"test": 1})), v);
+        }
+        let v = add_aux_data(json!({"result": "x"}), json!({"test": 1}));
+        assert_eq!(v, json!({"result": {MMPROXY_AUX_KEY_NAME: {"test": 1}}}));
+        let v = add_aux_data(json!({"result": {MMPROXY_AUX_KEY_NAME: 1}}), json!({"test": 1}));
+        assert_eq!(v, json!({"result": {MMPROXY_AUX_KEY_NAME: {"test": 1}}}));
+    }
 }
 
 mod append_aux_chain_data {
@@ -79,5 +90,13 @@ mod append_aux_chain_data {
         assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["chains"].as_array().unwrap(), &[
             json!({"id": "xtr"})
         ]);
+    }
+
+    #[test]
+    fn it_does_not_panic_on_malformed_responses() {
+        for v in [json!([]), json!("x"), json!({"result": {MMPROXY_AUX_KEY_NAME: 1}})] {
+            let v = append_aux_chain_data(v, json!({"id": "xtr"}));
+            assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["chains"], json!([{"id": "xtr"}]));
+        }
     }
 }

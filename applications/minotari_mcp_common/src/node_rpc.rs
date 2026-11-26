@@ -33,7 +33,7 @@ use minotari_node_grpc_client::{
 };
 use prost::Message;
 use serde_json::{Value, json};
-use tonic::{codec::Streaming, transport::Channel};
+use tonic::codec::Streaming;
 
 use crate::{McpError, McpResult, clean_upstream_text, get_required_string_param};
 
@@ -43,7 +43,7 @@ pub const MAX_STREAM_ITEMS: usize = 512;
 pub const DEFAULT_MEMPOOL_TX_LIMIT: u64 = 100;
 pub const MAX_MEMPOOL_TX_LIMIT: u64 = 1000;
 
-type Client = BaseNodeGrpcClient<Channel>;
+type Client = BaseNodeGrpcClient;
 
 /// Where the collectors read messages from: a gRPC server stream, or a queue in tests
 pub(crate) trait MessageSource<T> {

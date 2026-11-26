@@ -90,6 +90,9 @@ pub struct MergeMiningProxyConfig {
     pub base_node_grpc_tls_domain_name: Option<String>,
     /// GRPC ca cert name for TLS
     pub base_node_grpc_ca_cert_filename: String,
+    /// Per-request gRPC timeout for the base node and p2pool node; 0 disables it (default = 30s)
+    #[serde(with = "serializers::seconds")]
+    pub base_node_grpc_request_timeout: Duration,
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
@@ -120,6 +123,12 @@ pub struct MergeMiningProxyConfig {
     pub range_proof_type: RangeProofType,
     /// Use p2pool to submit and get block templates (default = false)
     pub p2pool_enabled: bool,
+    /// gRPC authentication for the p2pool node
+    pub p2pool_grpc_authentication: GrpcAuthentication,
+    /// gRPC domain name for p2pool node TLS validation
+    pub p2pool_grpc_tls_domain_name: Option<String>,
+    /// gRPC CA cert name for p2pool node TLS
+    pub p2pool_grpc_ca_cert_filename: String,
     /// The timeout duration for connecting to monerod (default = 2s)
     #[serde(with = "serializers::seconds")]
     pub monerod_connection_timeout: Duration,
@@ -160,6 +169,7 @@ impl fmt::Debug for MergeMiningProxyConfig {
             .field("base_node_grpc_authentication", &self.base_node_grpc_authentication)
             .field("base_node_grpc_tls_domain_name", &self.base_node_grpc_tls_domain_name)
             .field("base_node_grpc_ca_cert_filename", &self.base_node_grpc_ca_cert_filename)
+            .field("base_node_grpc_request_timeout", &self.base_node_grpc_request_timeout)
             .field("listener_address", &self.listener_address)
             .field("submit_to_origin", &self.submit_to_origin)
             .field(
@@ -177,6 +187,9 @@ impl fmt::Debug for MergeMiningProxyConfig {
             .field("wallet_payment_address", &self.wallet_payment_address)
             .field("range_proof_type", &self.range_proof_type)
             .field("p2pool_enabled", &self.p2pool_enabled)
+            .field("p2pool_grpc_authentication", &self.p2pool_grpc_authentication)
+            .field("p2pool_grpc_tls_domain_name", &self.p2pool_grpc_tls_domain_name)
+            .field("p2pool_grpc_ca_cert_filename", &self.p2pool_grpc_ca_cert_filename)
             .field("monerod_connection_timeout", &self.monerod_connection_timeout)
             .finish()
     }
@@ -231,6 +244,7 @@ impl Default for MergeMiningProxyConfig {
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
+            base_node_grpc_request_timeout: Duration::from_secs(30),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
@@ -242,6 +256,9 @@ impl Default for MergeMiningProxyConfig {
             wallet_payment_address: TariAddress::default().to_base58(),
             range_proof_type: RangeProofType::RevealedValue,
             p2pool_enabled: false,
+            p2pool_grpc_authentication: GrpcAuthentication::default(),
+            p2pool_grpc_tls_domain_name: None,
+            p2pool_grpc_ca_cert_filename: "p2pool_ca.pem".to_string(),
             monerod_connection_timeout: Duration::from_secs(2),
         }
     }
@@ -264,6 +281,7 @@ impl SubConfigPath for MergeMiningProxyConfig {
 #[cfg(test)]
 mod test {
 
+    use minotari_wallet_grpc_client::GrpcAuthentication;
     use tari_common::{DefaultConfigLoader, configuration::StringList};
 
     use crate::config::MergeMiningProxyConfig;
@@ -278,6 +296,7 @@ mod test {
               monerod_url = [ "http://network.a.org" ]
               monerod_password = "password_igor"
               base_node_grpc_address = "http://base_node_a:8080"
+              base_node_grpc_authentication = { username = "miner", password = "base_node_secret" }
             [config_b.merge_mining_proxy]
               submit_to_origin = false
               monerod_url = [ "http://network.b.org" ]
@@ -313,6 +332,8 @@ mod test {
         assert_eq!(config.monerod_username.as_str(), "cmot");
         assert_eq!(config.monerod_password.reveal(), b"password_igor");
         assert!(!format!("{config:?}").contains("password_igor"));
+        assert!(matches!(config.p2pool_grpc_authentication, GrpcAuthentication::None));
+        assert_eq!(config.p2pool_grpc_ca_cert_filename, "p2pool_ca.pem");
         assert_eq!(
             config.base_node_grpc_address,
             Some("http://base_node_a:8080".to_string())

@@ -30,16 +30,16 @@ use minotari_app_grpc::tari_rpc::{GetNewBlockTemplateWithCoinbasesRequest, NewBl
 use minotari_mcp_common::{MAX_ENCODED_BLOCK_HEX_LEN, McpError, McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::Request;
 
 /// Tool for getting a new block template (existing implementation, enhanced)
 #[derive(Clone)]
 pub struct GetNewBlockTemplateTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNewBlockTemplateTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -84,11 +84,11 @@ impl McpTool for GetNewBlockTemplateTool {
 /// Tool for constructing a new block from a template
 #[derive(Clone)]
 pub struct GetNewBlockTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNewBlockTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -131,11 +131,11 @@ impl McpTool for GetNewBlockTool {
 /// Tool for getting block template with custom coinbase outputs
 #[derive(Clone)]
 pub struct GetNewBlockTemplateWithCoinbasesTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNewBlockTemplateWithCoinbasesTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -309,11 +309,11 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
 #[derive(Clone)]
 pub struct GetNewBlockWithCoinbasesTool {
     #[allow(dead_code)] // False positive: field is used in execute() method line 337-340
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNewBlockWithCoinbasesTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -359,11 +359,11 @@ impl McpTool for GetNewBlockWithCoinbasesTool {
 /// Tool for mining operation analysis and recommendations
 #[derive(Clone)]
 pub struct MiningAnalysisTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl MiningAnalysisTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }

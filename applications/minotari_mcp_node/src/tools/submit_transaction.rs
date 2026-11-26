@@ -33,15 +33,14 @@ use minotari_mcp_common::{
 };
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
-use tonic::transport::Channel;
 
 /// Tool for submitting transactions to the mempool
 pub struct SubmitTransactionTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl SubmitTransactionTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
