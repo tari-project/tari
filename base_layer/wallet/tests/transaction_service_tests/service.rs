@@ -28,7 +28,11 @@ use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{Days, Utc};
 use digest::consts::U32;
 use minotari_wallet::{
-    base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
+    base_node_service::{
+        BaseNodeServiceInitializer,
+        handle::{BaseNodeEvent, BaseNodeServiceHandle},
+        service::BaseNodeState,
+    },
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     output_manager_service::{
         OutputManagerServiceInitializer,
@@ -311,6 +315,7 @@ pub struct TransactionServiceNoCommsInterface {
     base_node_rpc_mock_state: BaseNodeWalletRpcMockState,
     _rpc_server_connection: PeerConnection,
     output_manager_service_event_publisher: broadcast::Sender<Arc<OutputManagerEvent>>,
+    base_node_service_event_publisher: broadcast::Sender<Arc<BaseNodeEvent>>,
     ts_db: TransactionServiceSqliteDatabase,
     oms_db: OutputManagerDatabase<OutputManagerSqliteDatabase>,
     wallet_db: WalletDatabase<WalletSqliteDatabase>,
@@ -374,7 +379,7 @@ async fn setup_transaction_service_no_comms_with_oms_config(
     let (sender, _receiver_bns) = reply_channel::unbounded();
     let (base_node_service_event_publisher, _) = broadcast::channel(100);
 
-    let base_node_service_handle = BaseNodeServiceHandle::new(sender, base_node_service_event_publisher);
+    let base_node_service_handle = BaseNodeServiceHandle::new(sender, base_node_service_event_publisher.clone());
 
     let passphrase = SafePassword::from("My lovely secret passphrase");
     let wallet =
@@ -463,6 +468,7 @@ async fn setup_transaction_service_no_comms_with_oms_config(
         base_node_rpc_mock_state,
         _rpc_server_connection: rpc_server_connection,
         output_manager_service_event_publisher,
+        base_node_service_event_publisher,
         ts_db: ts_service_db,
         oms_db,
         wallet_db,
@@ -1519,7 +1525,7 @@ async fn test_htlc_send_and_claim() {
     let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
         alice_node_identity,
         consensus_manager.clone(),
         factories.clone(),
@@ -1527,6 +1533,17 @@ async fn test_htlc_send_and_claim() {
         shutdown.to_signal(),
     )
     .await;
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(
+                ChainMetadata::new(0, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap(),
+            ),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
 
     let bob_temp_dir = tempdir().unwrap();
     let bob_db_path_string = bob_temp_dir.path().to_str().unwrap().to_string();
@@ -1691,6 +1708,17 @@ async fn test_htlc_send_and_refund() {
         shutdown.to_signal(),
     )
     .await;
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(
+                ChainMetadata::new(0, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap(),
+            ),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
 
     let uo1 = make_input(
         &mut rand::rng(),
@@ -1743,7 +1771,7 @@ async fn test_htlc_send_and_refund() {
     let (refund_tx_id, fee, refund_amount, refund_tx) =
         alice_oms.create_htlc_refund_transaction(hash, 20.into()).await.unwrap();
     assert_eq!(refund_amount, value - fee);
-    // The send locks the refund branch until 720 blocks past the wallet's last scanned height, which is 0 here.
+    // The send locks the refund branch until 720 blocks past the base node's tip height, which is 0 here.
     let validator = TransactionInternalConsistencyValidator::new(false, consensus_manager, factories);
     validator
         .validate(&refund_tx, None, None, 719)
@@ -1825,7 +1853,7 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
     let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
         alice_node_identity,
         consensus_manager.clone(),
         factories.clone(),
@@ -1833,6 +1861,17 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
         shutdown.to_signal(),
     )
     .await;
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(
+                ChainMetadata::new(0, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap(),
+            ),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts_interface, _bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
@@ -1910,6 +1949,394 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
         }
     }
     assert!(payment_id_verified);
+}
+
+#[tokio::test]
+async fn test_htlc_send_refund_lock_height_uses_tip_and_fails_closed() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager.clone(),
+        factories.clone(),
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+
+    let initial_wallet_value: MicroMinotari = 25000.into();
+    let uo1 = make_input(
+        &mut rand::rng(),
+        initial_wallet_value,
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
+        .unwrap();
+
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+    let value: MicroMinotari = 10000.into();
+
+    // 1. Fail closed when the base node tip query errors (tip info not configured / unreachable node).
+    let err = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address.clone(),
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect_err("HTLC send must fail closed when tip height cannot be queried");
+    assert!(matches!(err, TransactionServiceError::ServiceError(_)), "got {err:?}");
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().available_balance,
+        initial_wallet_value
+    );
+
+    // 2. Fail closed when the base node returns `TipInfoResponse { metadata: None, .. }`.
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_tip_info(TipInfoResponse {
+            metadata: None,
+            is_synced: false,
+        })
+        .await
+        .unwrap();
+    let err = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address.clone(),
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect_err("HTLC send must fail closed when tip metadata is None");
+    assert!(matches!(err, TransactionServiceError::ServiceError(_)), "got {err:?}");
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().available_balance,
+        initial_wallet_value
+    );
+
+    // 3. Fail closed when the base node has chain metadata set alongside `is_synced: false`.
+    let tip_height = 5000;
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(
+                ChainMetadata::new(
+                    tip_height,
+                    HashOutput::zero(),
+                    0,
+                    0,
+                    1.into(),
+                    EpochTime::now().as_u64(),
+                )
+                .unwrap(),
+            ),
+            is_synced: false,
+        })
+        .await
+        .unwrap();
+    let err = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address.clone(),
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect_err("HTLC send must fail closed when the base node is not synced");
+    assert!(matches!(err, TransactionServiceError::ServiceError(_)), "got {err:?}");
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().available_balance,
+        initial_wallet_value
+    );
+
+    // 4. If the caller cancels while the tip lookup is pending, do not build or submit the HTLC when the lookup
+    //    finishes; also reject concurrent sends while a tip lookup is already in flight.
+    let rpc_mock = alice_connectivity.obtain_base_node_wallet_rpc_client().await;
+    rpc_mock
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(
+                ChainMetadata::new(
+                    tip_height,
+                    HashOutput::zero(),
+                    0,
+                    0,
+                    1.into(),
+                    EpochTime::now().as_u64(),
+                )
+                .unwrap(),
+            ),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
+    rpc_mock.set_tip_info_delay(Some(Duration::from_millis(250))).await;
+
+    let mut alice_ts_concurrent = alice_ts.clone();
+    let bob_for_cancelled = bob_address.clone();
+    let cancelled_send = tokio::spawn(async move {
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            alice_ts_concurrent.send_sha_atomic_swap_transaction(
+                bob_for_cancelled,
+                value,
+                UtxoSelectionCriteria::default(),
+                20.into(),
+                MemoField::new_empty(),
+            ),
+        )
+        .await
+    });
+    sleep(Duration::from_millis(20)).await;
+    let in_flight_err = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address.clone(),
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect_err("second HTLC send while a tip lookup is in flight must be rejected");
+    assert!(
+        matches!(in_flight_err, TransactionServiceError::ServiceError(_)),
+        "got {in_flight_err:?}"
+    );
+    cancelled_send
+        .await
+        .unwrap()
+        .expect_err("caller timeout must fire before delayed tip lookup returns");
+    sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().available_balance,
+        initial_wallet_value
+    );
+    assert_eq!(rpc_mock.submit_transaction_calls().await, 0);
+    rpc_mock.set_tip_info_delay(None).await;
+
+    // 5. With `last_scanned_height` still unset (0), anchor the refund lock height to the live tip (5000 + 720 = 5720).
+    let (_tx_id, _pre_image, output) = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address,
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect("HTLC send must succeed once chain tip metadata is available");
+
+    let hash = output.hash();
+    alice_db.mark_outputs_as_unspent(vec![(hash, true)]).unwrap();
+    let (_refund_tx_id, _fee, _refund_amount, refund_tx) =
+        alice_oms.create_htlc_refund_transaction(hash, 20.into()).await.unwrap();
+
+    let validator = TransactionInternalConsistencyValidator::new(false, consensus_manager, factories);
+    validator
+        .validate(&refund_tx, None, None, tip_height + 719)
+        .expect_err("the refund must not validate before tip_height + 720");
+    validator
+        .validate(&refund_tx, None, None, tip_height + 720)
+        .expect("the refund must validate at tip_height + 720");
+}
+
+#[tokio::test]
+async fn test_htlc_send_uses_cached_chain_metadata_and_clears_on_outage() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let mut ts_interface =
+        setup_transaction_service_no_comms(factories.clone(), make_wallet_database_memory_connection(), None).await;
+
+    let per_utxo_value: MicroMinotari = 25000.into();
+    let uo1 = make_input(
+        &mut rand::rng(),
+        per_utxo_value,
+        &OutputFeatures::default(),
+        ts_interface.key_manager_handle.key_manager(),
+    );
+    let uo2 = make_input(
+        &mut rand::rng(),
+        per_utxo_value,
+        &OutputFeatures::default(),
+        ts_interface.key_manager_handle.key_manager(),
+    );
+    ts_interface
+        .output_manager_service_handle
+        .add_output(uo1.clone(), None)
+        .await
+        .unwrap();
+    ts_interface
+        .output_manager_service_handle
+        .add_output(uo2.clone(), None)
+        .await
+        .unwrap();
+    ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true), (uo2.output_hash(), true)])
+        .unwrap();
+    let initial_balance = ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap()
+        .available_balance;
+
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+    let value: MicroMinotari = 10000.into();
+
+    // Leave `base_node_mock` tip info unset so any cache miss falls through to an RPC error.
+    // 1. Cached metadata with `is_synced: Some(false)` must not be used; fallback lookup fails closed.
+    ts_interface
+        .base_node_service_event_publisher
+        .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
+            chain_metadata: Some(
+                ChainMetadata::new(8000, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap(),
+            ),
+            is_synced: Some(false),
+            updated: None,
+            latency: None,
+        })))
+        .unwrap();
+    sleep(Duration::from_millis(50)).await;
+    let err = ts_interface
+        .transaction_service_handle
+        .send_sha_atomic_swap_transaction(
+            bob_address.clone(),
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect_err("unsynced cached metadata must not be used");
+    assert!(matches!(err, TransactionServiceError::ServiceError(_)), "got {err:?}");
+    assert_eq!(
+        ts_interface
+            .output_manager_service_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .available_balance,
+        initial_balance
+    );
+
+    // 2. Cached metadata with `is_synced: Some(true)` is used directly without hitting the unset mock RPC.
+    let cached_height = 4200;
+    ts_interface
+        .base_node_service_event_publisher
+        .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
+            chain_metadata: Some(
+                ChainMetadata::new(
+                    cached_height,
+                    HashOutput::zero(),
+                    0,
+                    0,
+                    1.into(),
+                    EpochTime::now().as_u64(),
+                )
+                .unwrap(),
+            ),
+            is_synced: Some(true),
+            updated: None,
+            latency: None,
+        })))
+        .unwrap();
+    sleep(Duration::from_millis(50)).await;
+    let (_tx_id, _pre_image, output) = ts_interface
+        .transaction_service_handle
+        .send_sha_atomic_swap_transaction(
+            bob_address.clone(),
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect("synced cached metadata must allow HTLC send even while mock RPC tip is unset");
+
+    let hash = output.hash();
+    ts_interface.oms_db.mark_outputs_as_unspent(vec![(hash, true)]).unwrap();
+    let (_refund_tx_id, _fee, _refund_amount, refund_tx) = ts_interface
+        .output_manager_service_handle
+        .create_htlc_refund_transaction(hash, 20.into())
+        .await
+        .unwrap();
+    let validator = TransactionInternalConsistencyValidator::new(false, consensus_manager, factories);
+    validator
+        .validate(&refund_tx, None, None, cached_height + 719)
+        .expect_err("the refund must not validate before cached_height + 720");
+    validator
+        .validate(&refund_tx, None, None, cached_height + 720)
+        .expect("the refund must validate at cached_height + 720");
+
+    // 3. Publishing `chain_metadata: None` clears the cache; the next send falls through to lookup and fails closed
+    //    without spending the remaining unspent UTXO.
+    let balance_before_outage_send = ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap()
+        .available_balance;
+    assert!(balance_before_outage_send >= per_utxo_value);
+
+    ts_interface
+        .base_node_service_event_publisher
+        .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
+            chain_metadata: None,
+            is_synced: None,
+            updated: None,
+            latency: None,
+        })))
+        .unwrap();
+    sleep(Duration::from_millis(50)).await;
+    let err = ts_interface
+        .transaction_service_handle
+        .send_sha_atomic_swap_transaction(
+            bob_address,
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect_err("outage event must clear cached tip and fail closed when lookup errors");
+    assert!(matches!(err, TransactionServiceError::ServiceError(_)), "got {err:?}");
+    assert_eq!(
+        ts_interface
+            .output_manager_service_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .available_balance,
+        balance_before_outage_send
+    );
 }
 
 #[tokio::test]

@@ -36,6 +36,7 @@ use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     burn_proof::PartialBurnClaimProof,
+    chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
@@ -164,6 +165,33 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
+const HTLC_TIP_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_PENDING_HTLC_TIP_LOOKUPS: usize = 1;
+
+#[derive(Clone, Copy, Debug)]
+pub enum HtlcTipSource {
+    Cached,
+    Lookup,
+}
+
+impl std::fmt::Display for HtlcTipSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cached => f.write_str("cached"),
+            Self::Lookup => f.write_str("lookup"),
+        }
+    }
+}
+
+struct PendingHtlcTipLookup {
+    destination: TariAddress,
+    amount: MicroMinotari,
+    selection_criteria: UtxoSelectionCriteria,
+    fee_per_gram: MicroMinotari,
+    payment_id: MemoField,
+    tip_height: Result<u64, TransactionServiceError>,
+    reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+}
 
 /// TransactionService allows for the management of multiple inbound and outbound transaction protocols
 /// which are uniquely identified by a tx_id. The TransactionService generates and accepts the various protocol
@@ -186,6 +214,8 @@ pub struct TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterfac
     active_transaction_broadcast_protocols: HashSet<TxId>,
     timeout_update_watch: Watch<Duration>,
     base_node_service: BaseNodeServiceHandle,
+    base_node_chain_metadata: Option<ChainMetadata>,
+    base_node_is_synced: Option<bool>,
     validation_in_progress: Arc<Mutex<()>>,
 }
 
@@ -256,6 +286,8 @@ where
             active_transaction_broadcast_protocols: HashSet::new(),
             timeout_update_watch,
             base_node_service,
+            base_node_chain_metadata: None,
+            base_node_is_synced: None,
             validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
@@ -287,6 +319,8 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         > = FuturesUnordered::new();
 
+        let mut pending_htlc_tip_lookups: FuturesUnordered<JoinHandle<PendingHtlcTipLookup>> = FuturesUnordered::new();
+
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
         let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
         let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
@@ -311,7 +345,15 @@ where
                 event = base_node_service_event_stream.recv() => {
                     match event {
                         Ok(msg) => self.handle_base_node_service_event(msg).await,
-                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {e}"),
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Lagging read on base node event broadcast channel ({n} missed); clearing cached chain metadata"
+                            );
+                            self.base_node_chain_metadata = None;
+                            self.base_node_is_synced = None;
+                        },
+                        Err(e) => debug!(target: LOG_TARGET, "Error reading from base node event broadcast channel: {e}"),
                     };
                 },
                 event = utxo_scanner_events.recv() => {
@@ -329,6 +371,7 @@ where
                     let _result = self.handle_request(request,
                         &mut transaction_broadcast_protocol_handles,
                         &mut transaction_validation_protocol_handles,
+                        &mut pending_htlc_tip_lookups,
                         reply_tx,
                     ).await.inspect_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {e:?}");
@@ -376,6 +419,42 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {e:?}"),
                     };
                 }
+                Some(join_result) = pending_htlc_tip_lookups.next() => {
+                    match join_result {
+                        Ok(pending) => {
+                            if pending.reply_channel.is_closed() {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "send_sha_atomic_swap_transaction: caller dropped reply channel before HTLC tip lookup completed; skipping send"
+                                );
+                                continue;
+                            }
+                            let resp = match pending.tip_height {
+                                Ok(tip_height) => self
+                                    .send_sha_atomic_swap_transaction(
+                                        pending.destination,
+                                        pending.amount,
+                                        pending.selection_criteria,
+                                        pending.fee_per_gram,
+                                        pending.payment_id,
+                                        tip_height,
+                                        HtlcTipSource::Lookup,
+                                        &mut transaction_broadcast_protocol_handles,
+                                    )
+                                    .await
+                                    .map(TransactionServiceResponse::ShaAtomicSwapTransactionSent),
+                                Err(e) => Err(e),
+                            };
+                            if pending.reply_channel.send(resp).is_err() {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "send_sha_atomic_swap_transaction: service reply cancelled"
+                                );
+                            }
+                        },
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving HTLC tip lookup task: {e:?}"),
+                    };
+                }
                  _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Transaction service shutting down because it received the shutdown signal");
                     break;
@@ -397,6 +476,7 @@ where
         transaction_validation_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
+        pending_htlc_tip_lookups: &mut FuturesUnordered<JoinHandle<PendingHtlcTipLookup>>,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let mut reply_channel = Some(reply_channel);
@@ -1162,20 +1242,41 @@ where
                 fee_per_gram,
                 payment_id,
             ) => {
-                async {
-                    let res = self
-                        .send_sha_atomic_swap_transaction(
-                            destination,
-                            amount,
-                            selection_criteria,
-                            fee_per_gram,
-                            payment_id,
-                            transaction_broadcast_join_handles,
-                        )
-                        .await?;
-                    Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(res))
+                if let Err(err) = self.validate_sha_atomic_swap_send(&destination, &selection_criteria) {
+                    Err(err)
+                } else if let (Some(true), Some(metadata)) =
+                    (self.base_node_is_synced, self.base_node_chain_metadata.as_ref())
+                {
+                    let tip_height = metadata.best_block_height();
+                    self.send_sha_atomic_swap_transaction(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        fee_per_gram,
+                        payment_id,
+                        tip_height,
+                        HtlcTipSource::Cached,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await
+                    .map(TransactionServiceResponse::ShaAtomicSwapTransactionSent)
+                } else if pending_htlc_tip_lookups.len() >= MAX_PENDING_HTLC_TIP_LOOKUPS {
+                    Err(TransactionServiceError::ServiceError(
+                        "Base node tip lookup already in progress for HTLC send".to_string(),
+                    ))
+                } else {
+                    let reply_channel = reply_channel.take().expect("reply_channel is Some");
+                    self.spawn_htlc_tip_lookup(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        fee_per_gram,
+                        payment_id,
+                        reply_channel,
+                        pending_htlc_tip_lookups,
+                    );
+                    return Ok(());
                 }
-                .await
             },
 
             TransactionServiceRequest::CancelPendingTransaction(tx_id) => {
@@ -1847,8 +1948,15 @@ where
 
     async fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
-            BaseNodeEvent::BaseNodeStateChanged(_state) => {
-                trace!(target: LOG_TARGET, "Received BaseNodeStateChanged event, but igoring",);
+            BaseNodeEvent::BaseNodeStateChanged(state) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Received BaseNodeStateChanged event (tip height: {:?}, is_synced: {:?})",
+                    state.chain_metadata.as_ref().map(|m| m.best_block_height()),
+                    state.is_synced,
+                );
+                self.base_node_chain_metadata = state.chain_metadata;
+                self.base_node_is_synced = state.is_synced;
             },
         }
     }
@@ -2189,23 +2297,11 @@ where
         Ok(tx_id)
     }
 
-    /// broadcasts a SHA-XTR atomic swap transaction
-    /// # Arguments
-    /// 'dest_pubkey': The Comms pubkey of the recipient node
-    /// 'amount': The amount of Tari to send to the recipient
-    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
-    #[allow(clippy::too_many_lines)]
-    pub async fn send_sha_atomic_swap_transaction(
-        &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
+    fn validate_sha_atomic_swap_send(
+        &self,
+        destination: &TariAddress,
+        selection_criteria: &UtxoSelectionCriteria,
+    ) -> Result<(), TransactionServiceError> {
         // A ledger device signs an output's metadata only over the standard stealth script to the receiver, which it
         // builds itself, so it cannot sign the HTLC output's script. Refused here, before any input is selected,
         // rather than deep inside the build. Claiming or refunding an HTLC is not affected by this refusal.
@@ -2219,18 +2315,101 @@ where
                 reason: "Range limit coin-join cannot be set for send_sha_atomic_swap_transaction".to_string(),
             });
         }
+        self.verify_send(destination, TariAddressFeatures::create_one_sided_only())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_htlc_tip_lookup(
+        &self,
+        destination: TariAddress,
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        payment_id: MemoField,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+        pending_htlc_tip_lookups: &mut FuturesUnordered<JoinHandle<PendingHtlcTipLookup>>,
+    ) {
+        let connectivity = self.resources.connectivity.clone();
+        let mut shutdown_signal = self.resources.shutdown_signal.clone();
+        pending_htlc_tip_lookups.push(tokio::spawn(async move {
+            let tip_height = tokio::select! {
+                biased;
+                _ = shutdown_signal.wait() => Err(TransactionServiceError::Shutdown),
+                res = tokio::time::timeout(HTLC_TIP_LOOKUP_TIMEOUT, async {
+                    let client = connectivity.obtain_base_node_wallet_rpc_client().await;
+                    let tip_info = client.get_tip_info().await.map_err(|e| {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Failed to query base node tip height for HTLC refund lock height: {e}"
+                        );
+                        TransactionServiceError::ServiceError(
+                            "Failed to query base node tip height for HTLC refund lock height".to_string(),
+                        )
+                    })?;
+                    let metadata = tip_info.metadata.ok_or_else(|| {
+                        TransactionServiceError::ServiceError(
+                            "Base node tip info contains no chain metadata; cannot determine HTLC refund lock height"
+                                .to_string(),
+                        )
+                    })?;
+                    if !tip_info.is_synced {
+                        return Err(TransactionServiceError::ServiceError(
+                            "Base node is not synced; cannot determine HTLC refund lock height".to_string(),
+                        ));
+                    }
+                    Ok(metadata.best_block_height())
+                }) => match res {
+                    Ok(inner) => inner,
+                    Err(_) => Err(TransactionServiceError::ServiceError(
+                        "Timed out querying base node tip height for HTLC refund lock height".to_string(),
+                    )),
+                },
+            };
+            PendingHtlcTipLookup {
+                destination,
+                amount,
+                selection_criteria,
+                fee_per_gram,
+                payment_id,
+                tip_height,
+                reply_channel,
+            }
+        }));
+    }
+
+    /// Sends a SHA_XTR atomic swap transaction
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    pub async fn send_sha_atomic_swap_transaction(
+        &mut self,
+        destination: TariAddress,
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        payment_id: MemoField,
+        tip_height: u64,
+        tip_source: HtlcTipSource,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
+        self.validate_sha_atomic_swap_send(&destination, &selection_criteria)?;
         let temp_tx_id = TxId::new_random();
-        self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         // this can be anything, so lets generate a random private key
         let pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
-        // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
-
-        let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
-
+        // Anchor the refund unlock height a day ahead of the current chain tip (2 min blocks = 30 blocks/hour * 24h)
+        // rather than `last_scanned_height`, which can lag or be unset and would otherwise lock the refund in the past.
         const BLOCKS_PER_DAY: u64 = 24 * 30;
-        let height = tip_height.saturating_add(BLOCKS_PER_DAY);
+        let height = tip_height.checked_add(BLOCKS_PER_DAY).ok_or_else(|| {
+            TransactionServiceError::ServiceError(
+                "Base node tip height overflowed when computing HTLC refund lock height".to_string(),
+            )
+        })?;
 
         // lets create the HTLC script
         let script = script!(
@@ -2343,6 +2522,14 @@ where
         .await?;
 
         let tx_output = output.to_transaction_output()?;
+        info!(
+            target: LOG_TARGET,
+            "Submitted HTLC transaction (TxId: {}, tip_height: {}, tip_source: {}, refund_lock_height: {})",
+            finalized.tx_id,
+            tip_height,
+            tip_source,
+            height,
+        );
 
         Ok(Box::new((finalized.tx_id, pre_image, tx_output)))
     }
