@@ -29,16 +29,16 @@ use minotari_app_grpc::tari_rpc::Empty;
 use minotari_mcp_common::{McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::Request;
 
 /// Tool for getting network status
 #[derive(Clone)]
 pub struct GetNetworkStatusTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNetworkStatusTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -73,11 +73,11 @@ impl McpTool for GetNetworkStatusTool {
 /// Tool for listing connected peers
 #[derive(Clone)]
 pub struct ListConnectedPeersTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl ListConnectedPeersTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -113,11 +113,11 @@ impl McpTool for ListConnectedPeersTool {
 /// Tool for getting all peers (including disconnected)
 #[derive(Clone)]
 pub struct GetAllPeersTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetAllPeersTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -160,11 +160,11 @@ impl McpTool for GetAllPeersTool {
 /// Tool for getting node identity
 #[derive(Clone)]
 pub struct GetNodeIdentityTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNodeIdentityTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -212,11 +212,11 @@ impl McpTool for GetNodeIdentityTool {
 /// Tool for network diagnostics
 #[derive(Clone)]
 pub struct NetworkDiagnosticsTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl NetworkDiagnosticsTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }

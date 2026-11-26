@@ -42,7 +42,6 @@ pub use network_difficulty::NetworkDifficultyResource;
 pub use network_status::NetworkStatusResource;
 pub use peer_list::PeerListResource;
 pub use sync_progress::SyncProgressResource;
-use tonic::transport::Channel;
 pub use transaction_info::TransactionInfoResource;
 
 /// Registry for node-specific MCP resources
@@ -51,7 +50,7 @@ pub struct NodeResourceRegistry;
 impl NodeResourceRegistry {
     /// Create a new node resource registry with all available resources
     #[allow(clippy::new_ret_no_self)] // Factory method for registry
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> ResourceRegistry {
+    pub fn new(grpc_client: Arc<BaseNodeGrpcClient>) -> ResourceRegistry {
         let mut registry = ResourceRegistry::new();
 
         // Static resources (always available)

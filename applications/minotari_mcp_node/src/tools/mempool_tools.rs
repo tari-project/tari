@@ -29,7 +29,7 @@ use minotari_app_grpc::tari_rpc::{Empty, GetMempoolTransactionsRequest, Signatur
 use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::Request;
 
 /// Fee and weight samples taken from every transaction currently in the mempool
 #[derive(Default)]
@@ -50,11 +50,11 @@ fn percentile_index(len: usize, percentile: usize) -> usize {
 /// Tool for getting mempool statistics
 #[derive(Clone)]
 pub struct GetMempoolStatsTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetMempoolStatsTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -89,11 +89,11 @@ impl McpTool for GetMempoolStatsTool {
 /// Tool for getting all mempool transactions
 #[derive(Clone)]
 pub struct GetMempoolTransactionsTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetMempoolTransactionsTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -135,11 +135,11 @@ impl McpTool for GetMempoolTransactionsTool {
 /// Tool for checking transaction state
 #[derive(Clone)]
 pub struct GetTransactionStateTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetTransactionStateTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -218,11 +218,11 @@ impl McpTool for GetTransactionStateTool {
 /// Tool for analyzing mempool transaction patterns
 #[derive(Clone)]
 pub struct AnalyzeMempoolTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl AnalyzeMempoolTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 
