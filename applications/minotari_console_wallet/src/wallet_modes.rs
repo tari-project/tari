@@ -517,6 +517,11 @@ async fn run_grpc(
     };
 
     let listener = bind_grpc_listener(address).map_err(|e| format!("Unable to bind gRPC server to {address}: {e}"))?;
+    let local_addr = listener
+        .local_addr()
+        .map_err(|e| format!("Unable to determine local gRPC listener address: {e}"))?;
+    info!(target: LOG_TARGET, "GRPC server listening on {local_addr}");
+    println!("Minotari Console Wallet gRPC listening on {local_addr}");
     // Stop serving as soon as shutdown is signalled. `Wallet::wait_until_shutdown` waits for every wallet handle to be
     // dropped, including the gRPC service's own, which are only released once the server's connections are closed.
     let serve_result = serve_with_shutdown_grace(

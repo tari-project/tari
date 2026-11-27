@@ -7,7 +7,7 @@ A Model Context Protocol (MCP) server that provides AI agents with secure access
 ### Security-First Design
 - **Local-only binding**: Server only binds to loopback addresses (127.0.0.1) for security
 - **Permission levels**: Separate read-only and control operations with explicit user consent
-- **Rate limiting**: Configurable request rate limits per client
+- **Rate limiting**: Configurable request rate limits per process
 - **Audit logging**: Optional comprehensive logging of all operations
 
 ### Wallet Operations
@@ -54,10 +54,15 @@ minotari_mcp_wallet --help
 - `MINOTARI_WALLET_MCP_PORT`: Server port (default: 8081)
 - `MINOTARI_WALLET_MCP_MAX_CONNECTIONS`: Max concurrent connections (default: 5)
 - `MINOTARI_WALLET_MCP_TIMEOUT`: Request timeout in seconds (default: 60)
-- `MINOTARI_WALLET_MCP_RATE_LIMIT`: Max requests per minute per client (default: 30)
+- `MINOTARI_WALLET_MCP_RATE_LIMIT`: Max requests per minute per process (default: 30)
 - `MINOTARI_WALLET_MCP_AUDIT_LOGGING`: Enable audit logging
 - `MINOTARI_WALLET_MCP_AUDIT_LOG_PATH`: Audit log file path
 - `MINOTARI_WALLET_GRPC_ADDRESS`: Wallet gRPC endpoint (default: 127.0.0.1:18143)
+- `MINOTARI_WALLET_GRPC_USERNAME` / `--wallet-grpc-username`: Wallet gRPC Basic authentication username
+- `MINOTARI_WALLET_GRPC_PASSWORD` / `--wallet-grpc-password-file`: Wallet gRPC Basic authentication password (from env
+  or an owner-only file)
+- `MINOTARI_MCP_WALLET_PASSWORD` / `--wallet-password-file`: Console wallet password for auto-launch (from env or an
+  owner-only file)
 - `MINOTARI_WALLET_MCP_SPEND_BUDGET` / `--mcp-spend-budget`: Most µT the server may move out of the wallet in total
   per process, fees included (default: 1000000000000, i.e. 1,000,000 Tari)
 - `MINOTARI_WALLET_MCP_MAX_FEE_PER_GRAM` / `--mcp-max-fee-per-gram`: Highest fee per gram, in µT, any fund-moving call
@@ -117,10 +122,12 @@ Example MCP client configuration:
    budget cannot cover. `--mcp-max-fee-per-gram` (default 10,000 µT) caps the fee rate of every such call. Set the
    budget to what you are prepared to lose. Failed or unconfirmed attempts can also use up the budget, and restarting
    the server resets it. The budget only limits calls made through the MCP server: an agent or process that can reach
-   the wallet's gRPC interface directly (the MCP server does not yet authenticate to it, so it must be left open to
-   local clients), or that can restart the MCP server, can bypass or reset it.
+   the wallet's gRPC interface directly (with the wallet's gRPC credentials if Basic authentication is enabled), or
+   that can restart the MCP server, can bypass or reset it.
 
-4. **Audit Logging**: Enable audit logging in production environments to track all operations.
+4. **gRPC Authentication & Auto-Launched Wallets**: Provide credentials via `MINOTARI_WALLET_GRPC_USERNAME` and `MINOTARI_WALLET_GRPC_PASSWORD` (or `--wallet-grpc-password-file`), and `MINOTARI_MCP_WALLET_PASSWORD` (or `--wallet-password-file`) for the console wallet password, so secrets are never exposed in process argument lists. When auto-launching a wallet without configured gRPC credentials, the MCP server generates a per-run random gRPC password. Graceful termination (`SIGINT` / `SIGTERM`) stops the auto-launched wallet process; if the MCP server is killed with an untrappable signal (`SIGKILL`), the auto-launched wallet keeps running with that per-run password until stopped manually.
+
+5. **Audit Logging**: Enable audit logging in production environments to track all operations.
 
 ### Recommended Settings
 

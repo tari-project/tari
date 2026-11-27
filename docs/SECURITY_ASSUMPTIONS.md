@@ -190,9 +190,10 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   may have left the wallet is still charged, as is a call the wallet accepts but reports as failed, so failed or
   unconfirmed attempts can also use up the budget. The budget is held in memory and a server restart resets it. It
   only limits calls made through the MCP server: an agent or process that can reach the wallet's gRPC interface
-  directly (the MCP server does not yet authenticate to it, so it must be left open to local clients; see A-GRPC-01),
-  or that can restart the MCP server, can bypass or reset it. The node MCP server, unlike the wallet one, can
-  authenticate to its base node (Basic credentials from the environment or a password file, and TLS); see A-GRPC-02.
+  directly (with the wallet's gRPC credentials if Basic authentication is enabled; see A-GRPC-01), or that can restart
+  the MCP server, can bypass or reset it. The wallet MCP server authenticates to its wallet with Basic credentials
+  (from the environment, a password file, or a per-run generated password when auto-launching), and the node MCP server
+  can authenticate to its base node (Basic credentials from the environment or a password file, and TLS); see A-GRPC-02.
 - **Not covered:** Reaching a control tool when control operations are disabled, calling a gRPC method the server does
   not list as a tool, passing a discovered tool arguments its input schema does not accept, moving more than the
   configured spend budget or paying more than the fee ceiling through the MCP server, and making the server use

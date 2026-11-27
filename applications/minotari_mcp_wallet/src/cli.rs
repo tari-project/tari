@@ -34,7 +34,6 @@ use minotari_mcp_common::{
     wallet_rpc::{DEFAULT_MAX_FEE_PER_GRAM, DEFAULT_SPEND_BUDGET},
 };
 use tari_common::configuration::{ConfigOverrideProvider, Network};
-use tari_utilities::SafePassword;
 
 #[derive(Parser, Debug)]
 #[clap(name = "minotari_mcp_wallet")]
@@ -58,7 +57,7 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_MCP_TIMEOUT", default_value = "60")]
     pub mcp_timeout: u64,
 
-    /// Rate limit: maximum requests per minute per client
+    /// Rate limit: maximum requests per minute per process
     #[clap(long, env = "MINOTARI_WALLET_MCP_RATE_LIMIT", default_value = "30")]
     pub mcp_rate_limit: u32,
 
@@ -91,10 +90,20 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_MCP_MAX_FEE_PER_GRAM", default_value_t = DEFAULT_MAX_FEE_PER_GRAM)]
     pub mcp_max_fee_per_gram: u64,
 
+    /// Wallet gRPC Basic auth username. The password is read from the MINOTARI_WALLET_GRPC_PASSWORD environment
+    /// variable or from --wallet-grpc-password-file.
+    #[clap(long, env = "MINOTARI_WALLET_GRPC_USERNAME")]
+    pub wallet_grpc_username: Option<String>,
+
+    /// File holding the wallet gRPC Basic auth password (should be readable only by its owner)
+    #[clap(long, env = "MINOTARI_WALLET_GRPC_PASSWORD_FILE")]
+    pub wallet_grpc_password_file: Option<PathBuf>,
+
     // Wallet-specific flags for auto-launch (prefixed to avoid conflicts)
-    /// Wallet: Password for the console wallet
-    #[clap(long, env = "MINOTARI_MCP_WALLET_PASSWORD", hide_env_values = true)]
-    pub wallet_password: Option<SafePassword>,
+    /// Wallet: File holding the password for the console wallet (should be readable only by its owner).
+    /// The password can also be read from the MINOTARI_MCP_WALLET_PASSWORD environment variable.
+    #[clap(long, env = "MINOTARI_MCP_WALLET_PASSWORD_FILE")]
+    pub wallet_password_file: Option<PathBuf>,
 
     /// Wallet: Force wallet recovery
     #[clap(long, env = "MINOTARI_MCP_WALLET_RECOVERY")]
@@ -216,11 +225,7 @@ impl Cli {
             args.push(log_config.to_string_lossy().to_string());
         }
 
-        // Add wallet-specific flags
-        if let Some(ref password) = self.wallet_password {
-            args.push("--password".to_string());
-            args.push(String::from_utf8_lossy(password.reveal()).to_string());
-        }
+        // Add wallet-specific flags (passwords must be passed via MINOTARI_WALLET_PASSWORD env, not argv)
         if self.wallet_recovery {
             args.push("--recovery".to_string());
         }
@@ -280,25 +285,6 @@ impl CliConfigExtractor for Cli {
         let config = self.extract_launch_config();
         let mut builder = WalletArgumentBuilder::wallet_args_only(config);
 
-        // Add wallet-specific flags based on CLI arguments
-        if self.wallet_grpc_enabled {
-            builder = builder.enable_grpc();
-        }
-
-        if let Some(ref alt_addr) = self.wallet_alt_grpc_address {
-            builder = builder.with_grpc_address(alt_addr.clone());
-        }
-
-        if self.wallet_non_interactive {
-            builder = builder.non_interactive();
-        }
-
-        if let Some(ref password) = self.wallet_password {
-            // Convert SafePassword to String (be careful with this in production)
-            let password_str = String::from_utf8_lossy(password.reveal()).to_string();
-            builder = builder.with_password(password_str);
-        }
-
         if self.wallet_recovery {
             builder = builder.force_recovery();
         }
@@ -308,5 +294,24 @@ impl CliConfigExtractor for Cli {
         }
 
         builder.build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secrets_cannot_be_passed_on_the_command_line() {
+        assert!(Cli::try_parse_from(["minotari_mcp_wallet", "--wallet-password", "secret"]).is_err());
+        assert!(Cli::try_parse_from(["minotari_mcp_wallet", "--wallet-grpc-password", "secret"]).is_err());
+    }
+
+    #[test]
+    fn require_confirmation_is_visible_in_help() {
+        use clap::CommandFactory;
+        let mut cmd = Cli::command();
+        let help = cmd.render_long_help().to_string();
+        assert!(help.contains("--require-confirmation"), "{help}");
     }
 }

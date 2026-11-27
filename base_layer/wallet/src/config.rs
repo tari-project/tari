@@ -239,3 +239,61 @@ pub enum TransactionStage {
     Mined,
     TimedOut,
 }
+
+#[cfg(test)]
+mod test {
+    use tari_common::{
+        DefaultConfigLoader,
+        configuration::{ConfigOverrideProvider, Network},
+        load_configuration,
+    };
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
+
+    use super::WalletConfig;
+
+    struct NoOverrides;
+    impl ConfigOverrideProvider for NoOverrides {
+        fn get_config_property_overrides(&self, _network: &Network) -> Vec<(String, String)> {
+            Vec::new()
+        }
+    }
+
+    struct EnvGuard(&'static [&'static str]);
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for key in self.0 {
+                // SAFETY: Scoped test cleanup for process environment variables.
+                unsafe {
+                    std::env::remove_var(key);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn env_vars_populate_wallet_grpc_basic_authentication() {
+        const USER_ENV: &str = "TARI_WALLET__GRPC_AUTHENTICATION__USERNAME";
+        const PASS_ENV: &str = "TARI_WALLET__GRPC_AUTHENTICATION__PASSWORD";
+        let _guard = EnvGuard(&[USER_ENV, PASS_ENV]);
+
+        // SAFETY: Test-scoped environment variables for WalletConfig loading.
+        unsafe {
+            std::env::set_var(USER_ENV, "mcp_wallet");
+            std::env::set_var(PASS_ENV, "per_run_secret_token");
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        let network = Network::get_current_or_user_setting_or_default();
+        let cfg = load_configuration(&config_path, true, true, &NoOverrides, Some(network)).unwrap();
+        let wallet_cfg = WalletConfig::load_from(&cfg).unwrap();
+
+        match wallet_cfg.grpc_authentication {
+            GrpcAuthentication::Basic { username, password } => {
+                assert_eq!(username, "mcp_wallet");
+                assert_eq!(password.reveal().as_slice(), b"per_run_secret_token");
+            },
+            other => panic!("Expected GrpcAuthentication::Basic, got {other:?}"),
+        }
+    }
+}

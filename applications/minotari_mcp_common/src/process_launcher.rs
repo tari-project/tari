@@ -150,17 +150,19 @@ impl ProcessLauncher {
             executable_path.display(),
             self.config.args
         );
-        log::debug!("Process launch config: {:?}", self.config);
 
         // Prepare command
         let mut command = Command::new(&executable_path);
         command
             .args(&self.config.args)
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
-            // The node MCP server's credential for the node; the launched process has no use for it.
-            .env_remove("MINOTARI_NODE_GRPC_PASSWORD");
+            // The MCP server's credentials for upstream; the launched process only receives explicit env_vars.
+            .env_remove("MINOTARI_NODE_GRPC_PASSWORD")
+            .env_remove("MINOTARI_WALLET_GRPC_PASSWORD")
+            .env_remove("MINOTARI_MCP_WALLET_PASSWORD");
 
         // Set environment variables
         for (key, value) in &self.config.env_vars {
@@ -279,6 +281,9 @@ impl ProcessLauncher {
 
     /// Wait for process to become healthy
     async fn wait_for_health(&self) -> McpResult<()> {
+        if self.config.health_check_config.grpc_endpoint.ends_with(":0") {
+            return Ok(());
+        }
         if let Some(ref health_monitor) = self.health_monitor {
             // Initial delay before starting health checks
             tokio::time::sleep(self.config.health_check_config.initial_delay).await;
@@ -535,6 +540,7 @@ impl TariProcessLauncher {
         network: Option<String>,
         grpc_address: String,
         additional_args: Vec<String>,
+        env_vars: HashMap<String, String>,
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
         // Convert IP:PORT format to multiaddr format
         let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
@@ -564,12 +570,17 @@ impl TariProcessLauncher {
             max_wait_time: Duration::from_secs(180), // Wallet can take up to 3 minutes
         };
 
-        let config = LaunchConfigBuilder::new()
+        let mut builder = LaunchConfigBuilder::new()
             .with_executable(TariExecutables::find_wallet()?)
             .with_args(args)
             .with_startup_timeout(Duration::from_secs(200))
-            .with_health_check(health_config)
-            .build()?;
+            .with_health_check(health_config);
+
+        for (k, v) in env_vars {
+            builder = builder.with_env_var(k, v);
+        }
+
+        let config = builder.build()?;
 
         Ok(ProcessLauncher::new(config))
     }
