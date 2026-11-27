@@ -87,7 +87,8 @@ pub struct Cli {
     /// feature only)
     #[clap(long)]
     pub no_libtor: bool,
-    /// Path to the libtor data directory. Defaults to `<base path>/libtor/peer_sync`.
+    /// Base directory under which the bundled tor's `libtor/peer_sync` data directory is placed. Defaults to `<base
+    /// path>`.
     #[clap(short = 'z', long)]
     pub libtor_data_dir: Option<PathBuf>,
     /// Override the configured transport. `tor`, `tor-tcp` and `tcp-tor` need a running tor with a control port;
