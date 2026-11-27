@@ -15,4 +15,11 @@ ignore = [
     # test harness. Last reviewed 2026-10-27; remove once `pgp` and `k256` move off `elliptic-curve` 0.13.
     "RUSTSEC-2026-0387",
 
+    # RUSTSEC-2026-0543 (chrono unmaintained; informational advisory, no known vulnerability). All versions are
+    # affected so no fix release exists. chrono is pulled in transitively via log4rs 1.4 (pattern encoder `{d}`
+    # date formatting), which tari_common and application crates depend on. No deny.toml entry is needed because
+    # `unmaintained = "workspace"` does not report transitive crates. Last reviewed 2026-11-24; re-review by
+    # 2027-05-24 or when log4rs drops or replaces chrono.
+    "RUSTSEC-2026-0543",
+
 ]
