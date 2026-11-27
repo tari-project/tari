@@ -123,7 +123,8 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   for the bind address, authentication, TLS and the list of enabled methods.
 - **What that means:** An authenticated wallet gRPC client can spend funds, and can release the inputs locked by a
   prepared offline-signing payload with `CancelTransaction`. An authenticated base node gRPC client
-  can call every enabled method, including expensive ones.
+  can call every enabled method, including expensive ones. Every entry in `grpc_credentials` grants the same full
+  access to the enabled methods.
 - **Not covered:** Reaching a method without the configured credentials, reaching a method the operator disabled,
   and anything an unauthenticated or remote peer-to-peer party can cause through these interfaces. Read-only methods
   the operator exposes publicly must stay bounded in cost.

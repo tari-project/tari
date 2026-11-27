@@ -38,7 +38,7 @@ use tari_common::{
         serializers,
     },
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredential, resolve_grpc_credentials};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
@@ -112,7 +112,17 @@ pub struct WalletConfig {
     pub grpc_enabled: bool,
     /// GRPC bind address of the wallet
     pub grpc_address: Option<Multiaddr>,
-    /// GRPC authentication mode
+    /// GRPC server credentials list
+    #[serde(
+        default,
+        deserialize_with = "tari_common_types::grpc_authentication::deserialize_grpc_credentials"
+    )]
+    pub grpc_credentials: Vec<GrpcCredential>,
+    /// GRPC authentication mode (deprecated: use `grpc_credentials`)
+    #[serde(
+        default,
+        deserialize_with = "tari_common_types::grpc_authentication::deserialize_grpc_authentication"
+    )]
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
@@ -184,6 +194,7 @@ impl Default for WalletConfig {
             notify_file: None,
             grpc_enabled: false,
             grpc_address: None,
+            grpc_credentials: Vec::new(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             grpc_server_allow_methods: default_grpc_server_allow_methods(),
@@ -227,6 +238,17 @@ impl WalletConfig {
             *path_mut = base_path.as_ref().join(path_mut.as_path());
         }
     }
+
+    /// Returns the effective gRPC credentials. When `grpc_credentials` is non-empty it takes precedence and any
+    /// deprecated `grpc_authentication` setting is ignored with a warning. When only `grpc_authentication` is set,
+    /// its credential is used and a deprecation warning is logged.
+    pub fn effective_grpc_credentials(&self) -> Vec<GrpcCredential> {
+        let (creds, warning) = resolve_grpc_credentials(&self.grpc_credentials, &self.grpc_authentication);
+        if let Some(msg) = warning {
+            log::warn!(target: "base_layer::wallet::config", "{msg}");
+        }
+        creds
+    }
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy, Serialize, Deserialize)]
@@ -238,4 +260,68 @@ pub enum TransactionStage {
     MinedUnconfirmed,
     Mined,
     TimedOut,
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common::{DefaultConfigLoader, load_configuration};
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn wallet_config_loads_and_resolves_grpc_credentials() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[wallet]
+grpc_credentials = [{ username = "wallet_admin", password = "secret" }]
+grpc_authentication = { username = "legacy", password = "old" }
+"#,
+        )
+        .unwrap();
+
+        let cfg = load_configuration(&config_path, false, &[], None).unwrap();
+        let wallet_cfg = WalletConfig::load_from(&cfg).unwrap();
+        let creds = wallet_cfg.effective_grpc_credentials();
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds.first().unwrap().username, "wallet_admin");
+
+        let blank_override = load_configuration(&config_path, false, &[("wallet.grpc_credentials", "")], None).unwrap();
+        assert!(WalletConfig::load_from(&blank_override).is_err());
+
+        let empty_pass = load_configuration(
+            &config_path,
+            false,
+            &[(
+                "wallet.grpc_credentials",
+                r#"[{"username":"wallet_admin","password":""}]"#,
+            )],
+            None,
+        )
+        .unwrap();
+        let err = WalletConfig::load_from(&empty_pass).unwrap_err().to_string();
+        assert!(
+            err.contains("grpc_credentials[0] ('wallet_admin') has an empty password"),
+            "{err}"
+        );
+
+        let duplicate_user = load_configuration(
+            &config_path,
+            false,
+            &[(
+                "wallet.grpc_credentials",
+                r#"[{"username":"wallet_admin","password":"pw1"},{"username":"wallet_admin","password":"pw2"}]"#,
+            )],
+            None,
+        )
+        .unwrap();
+        let dup_err = WalletConfig::load_from(&duplicate_user).unwrap_err().to_string();
+        assert!(
+            dup_err.contains("grpc_credentials[1] has duplicate username 'wallet_admin'"),
+            "{dup_err}"
+        );
+    }
 }
