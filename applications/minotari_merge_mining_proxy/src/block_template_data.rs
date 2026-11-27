@@ -24,38 +24,50 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-#[cfg(not(test))]
-use chrono::Duration;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
 use tari_core::{AuxChainHashes, proof_of_work::monero_rx::FixedByteArray};
 use tokio::sync::RwLock;
-use tracing::trace;
+use tracing::{trace, warn};
 
 use crate::{block_template_manager::FinalBlockTemplateData, error::MmProxyError};
 
 const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
 
-/// Structure for holding hashmap of hashes -> [BlockRepositoryItem] and [TemplateRepositoryItem].
-#[derive(Debug, Clone)]
-pub(crate) struct BlockTemplateRepository {
-    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockRepositoryItem>>>,
+/// Maximum number of active merge-mining block templates retained in memory at once.
+pub(crate) const MAX_STORED_BLOCK_TEMPLATES: usize = 512;
+
+const BLOCK_TEMPLATE_TTL_MINUTES: i64 = 20;
+
+#[derive(Debug, Default)]
+struct BlockTemplateStore {
+    entries: HashMap<Vec<u8>, BlockRepositoryItem>,
+    next_seq: u64,
 }
 
-/// Structure holding [FinalBlockTemplateData] along with a timestamp.
+/// Structure for holding bounded hashmap of hashes -> [BlockRepositoryItem].
+#[derive(Debug, Clone)]
+pub(crate) struct BlockTemplateRepository {
+    blocks: Arc<RwLock<BlockTemplateStore>>,
+    max_entries: usize,
+}
+
+/// Structure holding [FinalBlockTemplateData] along with a creation timestamp and insertion sequence.
 #[derive(Debug, Clone)]
 pub(crate) struct BlockRepositoryItem {
     pub data: FinalBlockTemplateData,
     datetime: DateTime<Utc>,
+    seq: u64,
 }
 
 impl BlockRepositoryItem {
-    /// Create new [Self] with current time in UTC.
-    pub fn new(final_block: FinalBlockTemplateData) -> Self {
+    /// Create new [Self] with current time in UTC and monotonic insertion sequence.
+    pub fn new(final_block: FinalBlockTemplateData, seq: u64) -> Self {
         Self {
             data: final_block,
             datetime: Utc::now(),
+            seq,
         }
     }
 
@@ -67,47 +79,99 @@ impl BlockRepositoryItem {
 
 impl BlockTemplateRepository {
     pub fn new() -> Self {
+        Self::with_max_entries(MAX_STORED_BLOCK_TEMPLATES)
+    }
+
+    pub(crate) fn with_max_entries(max_entries: usize) -> Self {
         Self {
-            blocks: Arc::new(RwLock::new(HashMap::new())),
+            blocks: Arc::new(RwLock::new(BlockTemplateStore::default())),
+            max_entries,
         }
     }
 
-    /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
+    /// Return [FinalBlockTemplateData] with the associated hash. None if the hash is not stored.
     pub async fn get_final_template<T: AsRef<[u8]>>(&self, merge_mining_hash: T) -> Option<FinalBlockTemplateData> {
-        let b = self.blocks.read().await;
-        b.get(merge_mining_hash.as_ref()).map(|item| item.data.clone())
+        let store = self.blocks.read().await;
+        store
+            .entries
+            .get(merge_mining_hash.as_ref())
+            .map(|item| item.data.clone())
     }
 
-    /// Store [FinalBlockTemplateData] at the hash value if the key does not exist.
+    /// Store [FinalBlockTemplateData] at the hash value if the key does not exist, bounding total stored templates to
+    /// `max_entries` by pruning expired items first and then evicting the oldest entry if still at capacity.
     pub async fn save_final_block_template_if_key_unique(&self, block_template: FinalBlockTemplateData) {
+        if self.max_entries == 0 {
+            return;
+        }
+
         let merge_mining_hash = block_template.aux_chain_mr.to_vec();
-        let mut b = self.blocks.write().await;
-        b.entry(merge_mining_hash)
-            .or_insert_with(|| BlockRepositoryItem::new(block_template));
+        let mut store = self.blocks.write().await;
+        if store.entries.contains_key(&merge_mining_hash) {
+            return;
+        }
+
+        if store.entries.len() >= self.max_entries {
+            let ttl_threshold = Utc::now()
+                .checked_sub_signed(Duration::minutes(BLOCK_TEMPLATE_TTL_MINUTES))
+                .unwrap_or(DateTime::<Utc>::MIN_UTC);
+            store.entries.retain(|_, item| item.datetime() >= ttl_threshold);
+
+            while store.entries.len() >= self.max_entries {
+                let Some((oldest_key, oldest_datetime)) = store
+                    .entries
+                    .iter()
+                    .min_by_key(|(_, item)| (item.datetime(), item.seq))
+                    .map(|(k, item)| (k.clone(), item.datetime()))
+                else {
+                    break;
+                };
+                store.entries.remove(&oldest_key);
+                if oldest_datetime >= ttl_threshold {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Evicting active block template `{}` created at {} (younger than {}-minute TTL) because the template store reached capacity ({})",
+                        hex::encode(&oldest_key),
+                        oldest_datetime,
+                        BLOCK_TEMPLATE_TTL_MINUTES,
+                        self.max_entries
+                    );
+                }
+            }
+        }
+
+        let seq = store.next_seq;
+        store.next_seq = store.next_seq.saturating_add(1);
+        store
+            .entries
+            .insert(merge_mining_hash, BlockRepositoryItem::new(block_template, seq));
     }
 
     /// Remove any data that is older than 20 minutes.
     pub async fn remove_outdated(&self) {
         trace!(target: LOG_TARGET, "Removing outdated final block templates");
-        let mut b = self.blocks.write().await;
+        let mut store = self.blocks.write().await;
         #[cfg(test)]
         let threshold = Utc::now();
         #[cfg(not(test))]
         let threshold = Utc::now()
-            .checked_sub_signed(Duration::minutes(20))
+            .checked_sub_signed(Duration::minutes(BLOCK_TEMPLATE_TTL_MINUTES))
             .unwrap_or(chrono::DateTime::<Utc>::MIN_UTC);
-        *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
+        store.entries.retain(|_, item| item.datetime() >= threshold);
+        if store.entries.capacity() > self.max_entries {
+            store.entries.shrink_to(self.max_entries);
+        }
     }
 
-    /// Remove a particularfinla block template for hash and return the associated [BlockRepositoryItem] if any.
+    /// Remove a particular final block template for hash and return the associated [BlockRepositoryItem] if any.
     pub async fn remove_final_block_template<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockRepositoryItem> {
         trace!(
             target: LOG_TARGET,
             "Final block template removed with merge mining hash {:?}",
             hex::encode(hash.as_ref())
         );
-        let mut b = self.blocks.write().await;
-        b.remove(hash.as_ref())
+        let mut store = self.blocks.write().await;
+        store.entries.remove(hash.as_ref())
     }
 }
 
@@ -229,8 +293,9 @@ mod test {
     use super::*;
     use crate::block_template_manager::AuxChainMr;
 
-    fn create_block_template_data() -> FinalBlockTemplateData {
-        let header = BlockHeader::new(100);
+    fn create_block_template_data_with_tag(tag: u8) -> FinalBlockTemplateData {
+        let mut header = BlockHeader::new(100);
+        header.nonce = u64::from(tag);
         let body = AggregateBody::empty();
         let block = Block::new(header, body);
         let hash = block.hash();
@@ -259,6 +324,10 @@ mod test {
         }
     }
 
+    fn create_block_template_data() -> FinalBlockTemplateData {
+        create_block_template_data_with_tag(0)
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_block_template_repository() {
         let btr = BlockTemplateRepository::new();
@@ -273,6 +342,43 @@ mod test {
         assert!(btr.get_final_template(hash1.clone()).await.is_some());
         btr.remove_outdated().await;
         assert!(btr.get_final_template(hash1).await.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn repository_enforces_max_entries_by_evicting_oldest_first() {
+        let btr = BlockTemplateRepository::with_max_entries(3);
+        let mut hashes = Vec::new();
+        for tag in 1u8..=5u8 {
+            let tpl = create_block_template_data_with_tag(tag);
+            hashes.push(tpl.aux_chain_mr.to_vec());
+            btr.save_final_block_template_if_key_unique(tpl).await;
+        }
+
+        assert!(btr.get_final_template(hashes.first().unwrap()).await.is_none());
+        assert!(btr.get_final_template(hashes.get(1).unwrap()).await.is_none());
+        assert!(btr.get_final_template(hashes.get(2).unwrap()).await.is_some());
+        assert!(btr.get_final_template(hashes.get(3).unwrap()).await.is_some());
+        assert!(btr.get_final_template(hashes.get(4).unwrap()).await.is_some());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn duplicate_key_insertion_preserves_existing_entry_without_evicting_others() {
+        let btr = BlockTemplateRepository::with_max_entries(2);
+        let tpl1 = create_block_template_data_with_tag(10);
+        let tpl2 = create_block_template_data_with_tag(11);
+        let hash1 = tpl1.aux_chain_mr.to_vec();
+        let hash2 = tpl2.aux_chain_mr.to_vec();
+
+        btr.save_final_block_template_if_key_unique(tpl1.clone()).await;
+        btr.save_final_block_template_if_key_unique(tpl2).await;
+
+        let mut duplicate_tpl1 = tpl1;
+        duplicate_tpl1.blockhashing_blob = "mutated".to_string();
+        btr.save_final_block_template_if_key_unique(duplicate_tpl1).await;
+
+        let stored1 = btr.get_final_template(&hash1).await.unwrap();
+        assert_eq!(stored1.blockhashing_blob, "no blockhashing_blob data");
+        assert!(btr.get_final_template(&hash2).await.is_some());
     }
 
     #[test]
