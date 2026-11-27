@@ -569,16 +569,23 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
     Ok(())
 }
 
-/// Writes the identity file by writing and syncing `<name>.tmp` and renaming it over `path`, so a crash at any point
-/// leaves either the old or the new file, never a partial one. Only mode 0600 and the owner carry over to the new
+#[cfg(target_family = "unix")]
+const MAX_TEMP_FILE_ATTEMPTS: u32 = 64;
+
+#[cfg(target_family = "unix")]
+fn identity_temp_path(path: &Path, pid: u32, seq: u32) -> PathBuf {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".{pid}.{seq}.tmp"));
+    PathBuf::from(tmp)
+}
+
+/// Writes the identity file by writing and syncing `<name>.<pid>.<seq>.tmp` and renaming it over `path`, so a crash at
+/// any point leaves either the old or the new file, never a partial one, and concurrent writers in the same or
+/// separate processes never clobber each other's temporary file. Only mode 0600 and the owner carry over to the new
 /// inode: SELinux/AppArmor labels, POSIX ACLs and other xattrs on the old file are lost, and an immutable
 /// (`chattr +i`) file makes the rename fail.
 #[cfg(target_family = "unix")]
 fn write_identity_file<P: AsRef<Path>>(path: P, header: &[u8], contents: &[u8]) -> io::Result<()> {
-    // Writers in this process (e.g. the node's Tor callback and bootstrap) share the fixed temp name, so take turns.
-    // No cross-process lock: other processes (minotari_peer_sync) load without persisting.
-    static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _guard = WRITE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     // Write next to the real file so a symlinked identity is updated rather than replaced by a regular file.
     let path = match fs::canonicalize(path.as_ref()) {
         Ok(real) => real,
@@ -609,30 +616,51 @@ fn write_identity_file<P: AsRef<Path>>(path: P, header: &[u8], contents: &[u8]) 
     Ok(())
 }
 
-/// Writes and syncs `<path>.tmp` with 0600 permissions and returns its path. The permissions are applied before any
-/// contents are written, so the secret is never readable by other users.
+/// Opens a unique `<path>.<pid>.<seq>.tmp` file with `create_new` and 0600 permissions, writes and syncs its contents,
+/// and returns its path. Permissions are applied before any contents are written so the secret is never readable by
+/// other users, and `AlreadyExists` collisions (e.g. a stale file after PID reuse) advance to the next sequence number
+/// without removing another writer's in-flight temporary file.
 #[cfg(target_family = "unix")]
 fn write_identity_temp_file(path: &Path, header: &[u8], contents: &[u8]) -> io::Result<PathBuf> {
     use std::{
         io::Write,
         os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     };
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    // A temp file left by a crashed write would make `create_new` fail forever; it is never the live identity.
-    match fs::remove_file(&tmp) {
-        Err(err) if err.kind() != io::ErrorKind::NotFound => return Err(err),
-        _ => {},
-    }
     // `mode()` and `chmod` only take the permission bits, so mask off the file type bits.
     let mode = REQUIRED_IDENTITY_PERMS & 0o7777;
-    // `create_new` refuses to follow a symlink planted at the temp path.
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(mode)
-        .open(&tmp)?;
+    let pid = std::process::id();
+    let mut opened = None;
+    let mut last_err = None;
+    for seq in 0..MAX_TEMP_FILE_ATTEMPTS {
+        let candidate = identity_temp_path(path, pid, seq);
+        // `create_new` refuses to follow a symlink planted at the temp path and never clobbers an existing file.
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(mode)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                opened = Some((candidate, file));
+                break;
+            },
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+                last_err = Some(err);
+            },
+            Err(err) => return Err(err),
+        }
+    }
+    let (tmp, mut file) = match opened {
+        Some(pair) => pair,
+        None => {
+            return Err(last_err.unwrap_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "exhausted temporary identity file attempts",
+                )
+            }));
+        },
+    };
     let result = (|| {
         // `mode()` is reduced by the umask, so set the exact permissions while the file is still empty.
         file.set_permissions(fs::Permissions::from_mode(mode))?;
@@ -1166,10 +1194,26 @@ mod test {
         (meta.modified().unwrap(), meta.ino())
     }
 
-    fn tmp_path(path: &Path) -> PathBuf {
-        let mut tmp = path.as_os_str().to_owned();
-        tmp.push(".tmp");
-        PathBuf::from(tmp)
+    fn temp_files_for(path: &Path) -> Vec<PathBuf> {
+        let Some(dir) = path.parent() else {
+            return Vec::new();
+        };
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            return Vec::new();
+        };
+        let prefix = format!("{name}.");
+        let Ok(entries) = fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".tmp"))
+            })
+            .collect()
     }
 
     #[test]
@@ -1196,23 +1240,32 @@ mod test {
             inode_before,
             "file must be replaced by rename"
         );
-        assert!(!tmp_path(&path).exists(), "no temp file may remain");
+        assert!(temp_files_for(&path).is_empty(), "no temp file may remain");
         assert!(has_permissions(&path, REQUIRED_IDENTITY_PERMS).unwrap());
     }
 
     #[test]
-    fn crash_before_rename_leaves_original_and_stale_temp_is_replaced() {
+    fn crash_before_rename_leaves_original_and_in_flight_temp_is_not_clobbered() {
         let (_dir, path, _id) = fresh_identity_file(false);
         let original = fs::read(&path).unwrap();
 
-        // Simulates dying after the temp file is written and synced, before the rename.
-        write_identity_temp_file(&path, b"", b"partial").unwrap();
+        // Simulates dying after the temp file is written and synced, before the rename (`seq = 0`), and a second
+        // colliding file at `seq = 1` (e.g. after PID reuse or while another writer has a temp file in flight).
+        let partial_tmp = write_identity_temp_file(&path, b"", b"partial").unwrap();
+        assert_eq!(partial_tmp, identity_temp_path(&path, std::process::id(), 0));
         assert_eq!(fs::read(&path).unwrap(), original);
-        assert!(tmp_path(&path).exists());
+        assert!(partial_tmp.exists());
+        assert!(has_permissions(&partial_tmp, REQUIRED_IDENTITY_PERMS).unwrap());
 
-        // The next write must not be blocked by the stale temp file.
+        let colliding_tmp = identity_temp_path(&path, std::process::id(), 1);
+        fs::write(&colliding_tmp, b"other writer").unwrap();
+
+        // The next write retries past `seq = 0` and `seq = 1` (`AlreadyExists`) without touching either file, writes
+        // to `seq = 2`, and renames it into place.
         load_node_identity(&path, TransportType::Tcp, true).unwrap();
-        assert!(!tmp_path(&path).exists());
+        assert_eq!(fs::read(&partial_tmp).unwrap(), b"partial");
+        assert_eq!(fs::read(&colliding_tmp).unwrap(), b"other writer");
+        assert_eq!(temp_files_for(&path).len(), 2);
         assert_ne!(fs::read(&path).unwrap(), original);
     }
 
@@ -1229,7 +1282,7 @@ mod test {
         assert!(err.to_string().contains(&path.display().to_string()));
         assert_eq!(fs::read(&path).unwrap(), original);
         assert_eq!(mtime_and_inode(&path), before);
-        assert!(!tmp_path(&path).exists());
+        assert!(temp_files_for(&path).is_empty());
     }
 
     #[test]
@@ -1274,8 +1327,11 @@ mod test {
     fn failed_save_during_load_is_fatal_and_never_replaces_the_identity() {
         let (dir, path, _id) = fresh_identity_file(false);
         let original = fs::read(&path).unwrap();
-        // A directory at the temp path makes the save fail with an error other than a read-only target.
-        fs::create_dir_all(tmp_path(&path)).unwrap();
+        // Exhausting all candidate temp slots for this path makes both saves fail with `AlreadyExists` rather than a
+        // read-only target.
+        for seq in 0..MAX_TEMP_FILE_ATTEMPTS {
+            fs::write(identity_temp_path(&path, std::process::id(), seq), b"x").unwrap();
+        }
 
         let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
         assert!(matches!(err, IdentityError::PersistFailed { .. }), "got {err:?}");
@@ -1354,7 +1410,7 @@ mod test {
         let loaded = load_node_identity(&link, TransportType::Tcp, true).unwrap();
 
         assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
-        assert!(!tmp_path(&link).exists() && !tmp_path(&real).exists());
+        assert!(temp_files_for(&link).is_empty() && temp_files_for(&real).is_empty());
         let reloaded = load_node_identity(&real, TransportType::Tcp, false).unwrap();
         assert_eq!(reloaded.public_key(), id.public_key());
         assert_eq!(
@@ -1384,7 +1440,7 @@ mod test {
 
         assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
         assert!(has_permissions(&real, REQUIRED_IDENTITY_PERMS).unwrap());
-        assert!(!tmp_path(&link).exists() && !tmp_path(&real).exists());
+        assert!(temp_files_for(&link).is_empty() && temp_files_for(&real).is_empty());
         assert_eq!(
             load_node_identity(&real, TransportType::Tcp, false)
                 .unwrap()
@@ -1411,7 +1467,7 @@ mod test {
             }
         });
         load_node_identity(&path, TransportType::Tcp, false).unwrap();
-        assert!(!tmp_path(&path).exists());
+        assert!(temp_files_for(&path).is_empty());
     }
 
     #[test]
@@ -1442,7 +1498,7 @@ mod test {
             before.1,
             "the filtered addresses must be persisted"
         );
-        assert!(!tmp_path(&path).exists());
+        assert!(temp_files_for(&path).is_empty());
         let reloaded = load_node_identity(&path, TransportType::Tor, false).unwrap();
         assert_eq!(reloaded.public_addresses(), vec![tcp.clone()]);
         reloaded
@@ -1589,5 +1645,25 @@ mod test {
             .unwrap()
             .verify(loaded.public_key(), loaded.features(), &loaded.public_addresses())
             .unwrap();
+    }
+
+    #[test]
+    fn failed_rename_cleans_up_unique_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target_dir = dir.path().join("identity.json");
+        fs::create_dir_all(&target_dir).unwrap();
+
+        let pid = std::process::id();
+        let sample = identity_temp_path(&target_dir, pid, 7);
+        assert_eq!(sample, dir.path().join(format!("identity.json.{pid}.7.tmp")));
+
+        // `target_dir` is a directory, so `write_identity_temp_file` succeeds and `fs::rename` fails (`EISDIR`),
+        // exercising the post-write cleanup path.
+        let err = write_identity_file(&target_dir, b"// hdr\n", b"{}").unwrap_err();
+        assert_ne!(err.kind(), io::ErrorKind::NotFound);
+        assert!(
+            temp_files_for(&target_dir).is_empty(),
+            "failed rename must remove its temporary file"
+        );
     }
 }
