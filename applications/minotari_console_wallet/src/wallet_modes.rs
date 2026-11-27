@@ -282,6 +282,16 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
             warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
+            if let Some(warning) = minotari_app_grpc::tls::validate_grpc_auth_transport(
+                &address,
+                config.grpc_tls_enabled,
+                &config.grpc_authentication,
+                config.grpc_require_secure_auth,
+            )
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+            {
+                warn!(target: LOG_TARGET, "{warning}");
+            }
             let grpc = WalletGrpcServer::new_with_allow_methods(
                 wallet.clone(),
                 config.grpc_server_allow_methods.as_slice().to_vec(),
@@ -442,6 +452,16 @@ pub fn grpc_mode(
                 config.grpc_server_allow_methods.as_slice().to_vec(),
             );
             let auth = config.grpc_authentication.clone();
+            if let Some(warning) = minotari_app_grpc::tls::validate_grpc_auth_transport(
+                &address,
+                config.grpc_tls_enabled,
+                &auth,
+                config.grpc_require_secure_auth,
+            )
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+            {
+                warn!(target: LOG_TARGET, "{warning}");
+            }
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {

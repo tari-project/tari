@@ -60,6 +60,8 @@
 #grpc_address = "/ip4/127.0.0.1/tcp/18143"
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
+# Refuse to start if Basic gRPC authentication is used without TLS on a non-loopback address (default = false)
+#grpc_require_secure_auth = false
 
 # List of all gRPC server methods that should be allowed (only active when `grpc_enabled = true`).
 # Comment out methods to restrict access (e.g. for a read-only monitoring integration).
