@@ -1504,74 +1504,7 @@ where B: BlockchainBackend
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
         let db = self.db_read_access()?;
-
-        let (smt_reader, current_version) = db.create_smt_reader()?;
-
-        let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
-        let mut result = Vec::with_capacity(hashes.len());
-        for hash in hashes {
-            // Take the last-mined entry if the hash is indexed under several headers.
-            let mut outputs = db.fetch_outputs(&hash)?;
-            outputs.sort_by_key(|o| o.mined_height);
-            let output = outputs.into_iter().next_back();
-
-            trace!(
-                target: LOG_TARGET,
-                "fetch_outputs_with_spend_status_at_tip: hash: {}, output: {:?}",
-                hash.to_hex(),
-                output
-            );
-            if let Some(mined_info) = output {
-                let smt_key = KeyHash(
-                    mined_info
-                        .output
-                        .commitment
-                        .as_bytes()
-                        .try_into()
-                        .expect("must be 32 bytes"),
-                );
-
-                let spent = smt
-                    .get(smt_key, current_version)
-                    .map_err(ChainStorageError::JellyfishMerkleTreeError)?
-                    .is_none();
-                trace!(
-                    target: LOG_TARGET,
-                    "fetch_outputs_with_spend_status_at_tip: smt_key: {smt_key:?}, spent: {spent}"
-                );
-                result.push(Some((mined_info.output, spent)));
-            } else {
-                result.push(None);
-            }
-        }
-        Ok(result)
-    }
-
-    pub fn fetch_outputs_mined_info(
-        &self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<Option<OutputMinedInfo>>, ChainStorageError> {
-        let db = self.db_read_access()?;
-
-        let mut result = Vec::with_capacity(hashes.len());
-        for hash in hashes {
-            // Take the last-mined entry if the hash is indexed under several headers.
-            let mut outputs = db.fetch_outputs(&hash)?;
-            outputs.sort_by_key(|o| o.mined_height);
-            result.push(outputs.into_iter().next_back());
-        }
-        Ok(result)
-    }
-
-    /// For each output hash, the latest lifecycle (see [`MinedInfo::latest`]), all read under one lock.
-    pub fn fetch_latest_mined_infos(&self, hashes: Vec<HashOutput>) -> Result<Vec<MinedInfo>, ChainStorageError> {
-        let db = self.db_read_access()?;
-
-        let mut result = Vec::with_capacity(hashes.len());
-        for hash in hashes {
-            result.push(MinedInfo::latest(db.fetch_mined_info_by_output_hash(&hash)?));
-        }
-        Ok(result)
+        fetch_outputs_with_spend_status_up_to(&*db, hashes, u64::MAX)
     }
 
     /// The TXOs of block `hash` at `height`: its outputs with their spend state at `end_hash`, its inputs, and for
@@ -1696,6 +1629,154 @@ where B: BlockchainBackend
         let (first, second) = fetch_header_pair(&*db, first_height, second_height)?;
         let best_block_height = db.fetch_chain_metadata()?.best_block_height();
         Ok((outputs, first, second, best_block_height))
+    }
+
+    /// The outputs of block `hash` at `height`, or why they are not served (see [`read_on_requested_chain`]).
+    pub(crate) fn fetch_outputs_in_block_on_chain(
+        &self,
+        height: u64,
+        hash: HashOutput,
+        end_height: u64,
+        end_hash: HashOutput,
+    ) -> Result<Result<Vec<TransactionOutput>, NotServed>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let metadata = db.fetch_chain_metadata()?;
+        if !committed_outputs_are_consistent(&*db, &metadata)? {
+            return Ok(Err(NotServed::OutputRebuild));
+        }
+        read_on_requested_chain(&*db, height, &hash, end_height, &end_hash, |db| {
+            db.fetch_outputs_in_block(&hash)
+        })
+    }
+
+    /// Validates that `start_hash` and `end_hash` exist, have stored block bodies at or below the committed tip, and
+    /// that committed outputs are not currently being rebuilt by horizon sync.
+    pub(crate) fn validate_sync_utxos_by_block_range(
+        &self,
+        start_hash: HashOutput,
+        end_hash: HashOutput,
+    ) -> Result<Result<(Option<BlockHeader>, Option<BlockHeader>), NotServed>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let metadata = db.fetch_chain_metadata()?;
+        if !committed_outputs_are_consistent(&*db, &metadata)? {
+            return Ok(Err(NotServed::OutputRebuild));
+        }
+        let tip_height = metadata.best_block_height();
+        let start_header = fetch_header_by_block_hash(&*db, start_hash)?;
+        let end_header = fetch_header_by_block_hash(&*db, end_hash)?;
+        if start_header.as_ref().is_some_and(|h| h.height > tip_height) ||
+            end_header.as_ref().is_some_and(|h| h.height > tip_height)
+        {
+            return Ok(Err(NotServed::BodyNotStored));
+        }
+        Ok(Ok((start_header, end_header)))
+    }
+
+    /// Returns the block header at `height` only if `height` is at or below the committed block tip.
+    pub(crate) fn fetch_committed_header(&self, height: u64) -> Result<Option<BlockHeader>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let tip_height = db.fetch_chain_metadata()?.best_block_height();
+        if height > tip_height {
+            return Ok(None);
+        }
+        match fetch_header(&*db, height) {
+            Ok(header) => Ok(Some(header)),
+            Err(err) if err.is_value_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Returns the current chain metadata and, for each signature, the committed block header containing its kernel (if
+    /// mined at or below the committed tip), all read under one read lock.
+    pub(crate) fn fetch_committed_kernels_info(
+        &self,
+        excess_sigs: Vec<CompressedSignature>,
+    ) -> Result<CommittedKernelsInfo, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let metadata = db.fetch_chain_metadata()?;
+        let tip_height = metadata.best_block_height();
+        let mut results = Vec::with_capacity(excess_sigs.len());
+        for excess_sig in &excess_sigs {
+            let mined = match db.fetch_kernel_by_excess_sig(excess_sig)? {
+                Some((_, block_hash)) => {
+                    fetch_committed_header_by_hash(&*db, &block_hash, tip_height)?.map(|header| (block_hash, header))
+                },
+                None => None,
+            };
+            results.push(mined);
+        }
+        Ok((metadata, results))
+    }
+
+    /// Returns the unspent outputs at the committed tip for `hashes`, or `Ok(None)` if committed outputs are currently
+    /// being rebuilt by horizon sync.
+    pub(crate) fn fetch_committed_unspent_outputs(
+        &self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Option<Vec<TransactionOutput>>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let metadata = db.fetch_chain_metadata()?;
+        if !committed_outputs_are_consistent(&*db, &metadata)? {
+            return Ok(None);
+        }
+        let tip_height = metadata.best_block_height();
+        let statuses = fetch_outputs_with_spend_status_up_to(&*db, hashes, tip_height)?;
+        let outputs = statuses
+            .into_iter()
+            .flatten()
+            .filter_map(|(output, spent)| (!spent).then_some(output))
+            .collect();
+        Ok(Some(outputs))
+    }
+
+    /// Returns the chain metadata and latest committed mined info for `hashes`, or `Ok(None)` if committed outputs are
+    /// currently being rebuilt by horizon sync.
+    pub(crate) fn fetch_committed_outputs_mined_info(
+        &self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Option<CommittedOutputsMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let metadata = db.fetch_chain_metadata()?;
+        if !committed_outputs_are_consistent(&*db, &metadata)? {
+            return Ok(None);
+        }
+        let tip_height = metadata.best_block_height();
+        let mut result = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            result.push(fetch_latest_committed_output(&*db, &hash, tip_height)?);
+        }
+        Ok(Some((metadata, result)))
+    }
+
+    /// Returns the chain metadata and latest committed lifecycle for `hashes`, checking that `must_include_header` (if
+    /// given) is on the committed chain and that committed outputs are not being rebuilt by horizon sync.
+    pub(crate) fn fetch_committed_latest_mined_infos(
+        &self,
+        hashes: Vec<HashOutput>,
+        must_include_header: Option<HashOutput>,
+    ) -> Result<Result<CommittedQueryDeletedResult, NotServed>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let metadata = db.fetch_chain_metadata()?;
+        if !committed_outputs_are_consistent(&*db, &metadata)? {
+            return Ok(Err(NotServed::OutputRebuild));
+        }
+        let tip_height = metadata.best_block_height();
+        if let Some(required_hash) = must_include_header &&
+            fetch_committed_header_by_hash(&*db, &required_hash, tip_height)?.is_none()
+        {
+            return Ok(Err(NotServed::NotOnChain));
+        }
+        let mut result = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let mut committed_infos = Vec::new();
+            for info in db.fetch_mined_info_by_output_hash(&hash)? {
+                if let Some(clean) = sanitize_committed_mined_info(&*db, info, tip_height)? {
+                    committed_infos.push(clean);
+                }
+            }
+            result.push(MinedInfo::latest(committed_infos));
+        }
+        Ok(Ok((metadata, result)))
     }
 
     /// Returns the block header at the given block height.
@@ -3167,6 +3248,133 @@ pub enum NotServed {
     NotOnChain,
     /// The requested end block is above the best block, so the bodies up to it are not all stored
     BodyNotStored,
+    /// Committed output tables are currently being rebuilt by horizon sync
+    OutputRebuild,
+}
+
+pub(crate) type CommittedKernelsInfo = (ChainMetadata, Vec<Option<(HashOutput, BlockHeader)>>);
+pub(crate) type CommittedOutputsMinedInfo = (ChainMetadata, Vec<Option<OutputMinedInfo>>);
+pub(crate) type CommittedQueryDeletedResult = (ChainMetadata, Vec<MinedInfo>);
+
+fn fetch_committed_header_by_hash<T: BlockchainBackend>(
+    db: &T,
+    hash: &FixedHash,
+    tip_height: u64,
+) -> Result<Option<BlockHeader>, ChainStorageError> {
+    let Some(header) = fetch_header_by_block_hash(db, *hash)? else {
+        return Ok(None);
+    };
+    if header.height > tip_height {
+        return Ok(None);
+    }
+    Ok(Some(header))
+}
+
+/// Returns `true` only when the output tables and output JMT match `metadata`'s committed tip and no horizon-sync
+/// output rebuild checkpoint is active.
+fn committed_outputs_are_consistent<T: BlockchainBackend>(
+    db: &T,
+    metadata: &ChainMetadata,
+) -> Result<bool, ChainStorageError> {
+    if db.fetch_horizon_sync_output_checkpoint()?.is_some() {
+        return Ok(false);
+    }
+    let Some(best_header) =
+        fetch_committed_header_by_hash(db, metadata.best_block_hash(), metadata.best_block_height())?
+    else {
+        return Ok(false);
+    };
+    match db.verify_horizon_sync_output_root(best_header.output_mr) {
+        Ok(()) => Ok(true),
+        Err(ChainStorageError::InvalidOperation(msg)) => {
+            debug!(
+                target: LOG_TARGET,
+                "Committed output root does not match best block #{} ({}): {msg}",
+                metadata.best_block_height(),
+                metadata.best_block_hash().to_hex(),
+            );
+            Ok(false)
+        },
+        Err(err) => Err(err),
+    }
+}
+
+fn fetch_latest_committed_output<T: BlockchainBackend>(
+    db: &T,
+    hash: &FixedHash,
+    tip_height: u64,
+) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    let mut committed = Vec::new();
+    for info in db.fetch_outputs(hash)? {
+        if tip_height == u64::MAX || fetch_committed_header_by_hash(db, &info.header_hash, tip_height)?.is_some() {
+            committed.push(info);
+        }
+    }
+    committed.sort_by_key(|o| o.mined_height);
+    Ok(committed.into_iter().next_back())
+}
+
+fn fetch_outputs_with_spend_status_up_to<T: BlockchainBackend>(
+    db: &T,
+    hashes: Vec<HashOutput>,
+    tip_height: u64,
+) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
+    let (smt_reader, current_version) = db.create_smt_reader()?;
+    let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
+    let mut result = Vec::with_capacity(hashes.len());
+    for hash in hashes {
+        let output = fetch_latest_committed_output(db, &hash, tip_height)?;
+        trace!(
+            target: LOG_TARGET,
+            "fetch_outputs_with_spend_status_up_to: hash: {}, output: {:?}",
+            hash.to_hex(),
+            output
+        );
+        if let Some(mined_info) = output {
+            let key_bytes: [u8; 32] = mined_info
+                .output
+                .commitment
+                .as_bytes()
+                .try_into()
+                .map_err(|_| ChainStorageError::UnexpectedResult("Commitment must be 32 bytes".to_string()))?;
+            let smt_key = KeyHash(key_bytes);
+            let expected_value = mined_info.output.smt_hash(mined_info.mined_height);
+            let stored_value = smt
+                .get(smt_key, current_version)
+                .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+                .and_then(|bytes| bincode::deserialize::<Option<Vec<u8>>>(&bytes).ok())
+                .flatten();
+            let spent = stored_value.as_deref() != Some(expected_value.as_slice());
+            trace!(
+                target: LOG_TARGET,
+                "fetch_outputs_with_spend_status_up_to: smt_key: {smt_key:?}, spent: {spent}"
+            );
+            result.push(Some((mined_info.output, spent)));
+        } else {
+            result.push(None);
+        }
+    }
+    Ok(result)
+}
+
+fn sanitize_committed_mined_info<T: BlockchainBackend>(
+    db: &T,
+    info: MinedInfo,
+    tip_height: u64,
+) -> Result<Option<MinedInfo>, ChainStorageError> {
+    let output = match info.output {
+        Some(o) if fetch_committed_header_by_hash(db, &o.header_hash, tip_height)?.is_some() => Some(o),
+        _ => None,
+    };
+    let input = match info.input {
+        Some(i) if fetch_committed_header_by_hash(db, &i.header_hash, tip_height)?.is_some() => Some(i),
+        _ => None,
+    };
+    if output.is_some() || input.is_some() {
+        Ok(Some(MinedInfo { input, output }))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Runs `read` for block `hash` and checks under the same read lock, so that no write can commit in between, that the
@@ -7020,6 +7228,66 @@ mod test {
         let (_, _, missing, best_block_height) = db.fetch_outputs_in_block_and_header_pair(*b.hash(), 2, 4).unwrap();
         assert!(missing.is_none());
         assert_eq!(best_block_height, 3);
+    }
+
+    #[test]
+    fn fetch_outputs_in_block_on_chain_checks_chain_tip_and_output_rebuild() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
+        let b = chain.get("B").unwrap();
+        let c = chain.get("C").unwrap();
+
+        let outputs = db
+            .fetch_outputs_in_block_on_chain(2, *b.hash(), 3, *c.hash())
+            .unwrap()
+            .unwrap();
+        assert_eq!(outputs, db.fetch_outputs_in_block(*b.hash()).unwrap());
+        assert!(!outputs.is_empty());
+
+        let (_, future) = create_chained_blocks(&db, block_specs!(["D->GB"]), c.clone());
+        let d = future.get("D").unwrap();
+        db.insert_valid_headers(vec![d.to_chain_header()]).unwrap();
+        let res = db.fetch_outputs_in_block_on_chain(2, *b.hash(), 4, *d.hash()).unwrap();
+        assert!(matches!(res, Err(NotServed::BodyNotStored)));
+
+        let mut txn = DbTransaction::new();
+        txn.clear_horizon_sync_output_state();
+        db.write(txn).unwrap();
+        let res = db.fetch_outputs_in_block_on_chain(2, *b.hash(), 3, *c.hash()).unwrap();
+        assert!(matches!(res, Err(NotServed::OutputRebuild)));
+    }
+
+    #[test]
+    fn fetch_outputs_with_spend_status_at_tip_checks_smt_leaf_value_when_commitment_is_reused() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let a = chain.get("A").unwrap();
+        let b = chain.get("B").unwrap();
+        let output_x = a.block().body.outputs().first().unwrap().clone();
+        let mut output_y = output_x.clone();
+        output_y.sender_offset_public_key = CompressedPublicKey::default();
+        assert_ne!(output_x.hash(), output_y.hash());
+
+        let initial = db
+            .fetch_outputs_with_spend_status_at_tip(vec![output_x.hash()])
+            .unwrap();
+        assert_eq!(initial, vec![Some((output_x.clone(), false))]);
+
+        let key_bytes: [u8; 32] = output_y.commitment.as_bytes().try_into().unwrap();
+        let mut txn = DbTransaction::new();
+        txn.delete_utxo_commitment_index_entry(output_x.commitment.clone());
+        txn.insert_utxo(output_y.clone(), *b.hash(), b.height(), b.header().timestamp.as_u64());
+        txn.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::from(key_bytes),
+            value: Some(output_y.smt_hash(b.height())),
+            replaces_value: true,
+        }]);
+        db.write(txn).unwrap();
+
+        let statuses = db
+            .fetch_outputs_with_spend_status_at_tip(vec![output_x.hash(), output_y.hash()])
+            .unwrap();
+        assert_eq!(statuses, vec![Some((output_x, true)), Some((output_y, false))]);
     }
 
     /// A rewind past a pruned node's horizon keeps none of the blocks it removes, so it must not index an orphan chain

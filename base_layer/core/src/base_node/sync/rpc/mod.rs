@@ -25,6 +25,9 @@ mod service;
 mod sync_utxos_task;
 pub use service::BaseNodeSyncRpcService;
 #[cfg(test)]
+pub(crate) use service::END_BODY_NOT_STORED;
+pub(crate) use service::{OUTPUT_REBUILD_CONFLICT_MSG, not_served_status};
+#[cfg(test)]
 pub(crate) use sync_utxos_task::SyncUtxosTask;
 
 #[cfg(test)]

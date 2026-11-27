@@ -60,6 +60,7 @@ pub use blockchain_database::{
     is_on_requested_chain,
     reorg_reintroduces_pre_ghsa_blocks,
 };
+pub(crate) use blockchain_database::{CommittedKernelsInfo, CommittedOutputsMinedInfo, CommittedQueryDeletedResult};
 mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;
 mod consts;

@@ -280,15 +280,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
     }
 }
 
-pub(super) const REORG_DETECTED: &str = "Reorg detected: the requested end block is no longer on the chain";
+pub(crate) const REORG_DETECTED: &str = "Reorg detected: the requested end block is no longer on the chain";
 pub(super) const HEADER_REORG_DETECTED: &str = "Reorg detected: header chain changed during header sync";
-pub(super) const END_BODY_NOT_STORED: &str = "The requested end block's body is not stored on this node";
+pub(crate) const END_BODY_NOT_STORED: &str = "The requested end block's body is not stored on this node";
+pub(crate) const OUTPUT_REBUILD_CONFLICT_MSG: &str =
+    "Committed output state is unavailable while horizon sync rebuilds outputs";
 
 /// The Conflict sent when a block's data is not served
-pub(super) fn not_served_status(reason: NotServed) -> RpcStatus {
+pub(crate) fn not_served_status(reason: NotServed) -> RpcStatus {
     match reason {
         NotServed::NotOnChain => RpcStatus::conflict(REORG_DETECTED),
         NotServed::BodyNotStored => RpcStatus::conflict(END_BODY_NOT_STORED),
+        NotServed::OutputRebuild => RpcStatus::conflict(OUTPUT_REBUILD_CONFLICT_MSG),
     }
 }
 
