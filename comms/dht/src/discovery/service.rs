@@ -174,6 +174,32 @@ impl DhtDiscoveryService {
         &mut self,
         discovery_msg: Box<DiscoveryResponseMessage>,
     ) -> Result<(), DhtDiscoveryError> {
+        // Check that the response is for the expected public key before removing the pending request. The DHT
+        // handler only passes on a response whose signer, source and claimed key are the same, so the responder is
+        // to blame.
+        if let Some(request) = self.inflight_discoveries.get(&discovery_msg.nonce) &&
+            discovery_msg.public_key.as_bytes() != request.public_key.as_bytes()
+        {
+            let expected_public_key = &request.public_key;
+            warn!(
+                target: LOG_TARGET,
+                "Received a discovery response from '{}' that does not match the expected public key \
+                 '{expected_public_key:#.5}'",
+                discovery_msg.public_key.to_hex()
+            );
+            if let Ok(responder) = CommsPublicKey::from_canonical_bytes(&discovery_msg.public_key) {
+                self.dht
+                    .ban_peer(
+                        responder,
+                        OffenceSeverity::Medium,
+                        "Sent a discovery response for a public key that was not requested",
+                    )
+                    .await;
+            }
+
+            return Ok(());
+        }
+
         match self.inflight_discoveries.remove(&discovery_msg.nonce) {
             Some(request) => {
                 let DiscoveryRequestState {
@@ -181,28 +207,6 @@ impl DhtDiscoveryService {
                     reply_tx,
                     start_ts,
                 } = request;
-
-                // Make sure that the response is for the expected public key. The DHT handler only passes on a
-                // response whose signer, source and claimed key are the same, so the responder is to blame.
-                if discovery_msg.public_key.as_bytes() != public_key.as_bytes() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Received a discovery response from '{}' that does not match the expected public key \
-                         '{public_key:#.5}'",
-                        discovery_msg.public_key.to_hex()
-                    );
-                    if let Ok(responder) = CommsPublicKey::from_canonical_bytes(&discovery_msg.public_key) {
-                        self.dht
-                            .ban_peer(
-                                responder,
-                                OffenceSeverity::Medium,
-                                "Sent a discovery response for a public key that was not requested",
-                            )
-                            .await;
-                    }
-
-                    return Ok(());
-                }
                 trace!(
                     target: LOG_TARGET,
                     "Received discovery response message from {public_key}"
@@ -297,12 +301,15 @@ impl DhtDiscoveryService {
         destination: NodeDestination,
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     ) -> Result<(), DhtDiscoveryError> {
-        let nonce = rand::rng().next_u64();
+        if reply_tx.is_closed() {
+            return Ok(());
+        }
         if *dest_pubkey == *self.node_identity.public_key() {
             let _result = reply_tx.send(Err(DhtDiscoveryError::CannotDiscoverThisNode));
             return Ok(());
         }
 
+        let nonce = rand::rng().next_u64();
         if let Err(err) = self.send_discover(nonce, destination, dest_pubkey.clone()).await {
             let _result = reply_tx.send(Err(err));
             return Ok(());
@@ -401,7 +408,8 @@ mod test {
         task::spawn(outbound_mock.run());
 
         let (sender, receiver) = mpsc::channel(10);
-        // Requester which timeout instantly
+        // Requester which times out after 1 ms; relies on the single-threaded #[tokio::test] runtime polling the
+        // spawned service task before the requester's timeout wakes.
         let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
         let shutdown = Shutdown::new();
         let (dht, _mock) = create_dht_actor_mock();
@@ -434,7 +442,7 @@ mod test {
     }
 
     /// A response that matches a pending request's nonce but carries another key bans the responder, not the peer
-    /// that was asked for.
+    /// that was asked for, and leaves the pending request in place so the requested peer can still resolve it.
     #[tokio::test]
     async fn a_mismatched_response_bans_the_responder() {
         let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
@@ -442,7 +450,7 @@ mod test {
         let (dht_tx, mut dht_rx) = mpsc::unbounded_channel();
         let shutdown = Shutdown::new();
         let mut service = DhtDiscoveryService::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             make_node_identity(),
             build_peer_manager(),
             DhtRequester::new(dht_tx),
@@ -453,7 +461,7 @@ mod test {
 
         let requested = make_node_identity();
         let responder = make_node_identity();
-        let (reply_tx, _reply_rx) = oneshot::channel();
+        let (reply_tx, mut reply_rx) = oneshot::channel();
         service.inflight_discoveries.insert(
             123,
             DiscoveryRequestState::new(Box::new(requested.public_key().clone()), reply_tx),
@@ -470,6 +478,15 @@ mod test {
             request => panic!("unexpected request {request}"),
         }
         assert!(dht_rx.try_recv().is_err());
+        assert!(service.inflight_discoveries.contains_key(&123));
+        assert!(matches!(reply_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)));
+
+        service
+            .handle_discovery_response(discovery_response_from(&requested, 123))
+            .await
+            .unwrap();
+        assert_eq!(reply_rx.await.unwrap().unwrap().public_key, *requested.public_key());
+        assert!(service.inflight_discoveries.is_empty());
     }
 
     fn service_with_two_requests_for(
@@ -538,5 +555,39 @@ mod test {
 
         assert_eq!(first_rx.await.unwrap().unwrap().public_key, *peer.public_key());
         assert_eq!(second_rx.await.unwrap().unwrap().public_key, *peer.public_key());
+    }
+
+    #[tokio::test]
+    async fn initiate_peer_discovery_skips_closed_reply_channel() {
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        let oms_mock_state = outbound_mock.get_state();
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht, _mock) = create_dht_actor_mock();
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(DhtConfig::default_local_test()),
+            make_node_identity(),
+            build_peer_manager(),
+            dht,
+            outbound_requester,
+            receiver,
+            Shutdown::new().to_signal(),
+        );
+
+        let dest = make_node_identity();
+        let dest_public_key = Box::new(dest.public_key().clone());
+        let (reply_tx, reply_rx) = oneshot::channel();
+        drop(reply_rx);
+
+        service
+            .initiate_peer_discovery(
+                dest_public_key.clone(),
+                NodeDestination::PublicKey(dest_public_key),
+                reply_tx,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(oms_mock_state.call_count().await, 0);
+        assert!(service.inflight_discoveries.is_empty());
     }
 }
