@@ -24,6 +24,82 @@ pub mod certs;
 pub mod error;
 pub mod identity;
 
+#[cfg(feature = "base_node")]
+use tari_common_types::grpc_authentication::GrpcAuthentication;
+#[cfg(feature = "base_node")]
+use tari_comms::multiaddr::{Multiaddr, Protocol};
+
 pub fn protocol_string(tls_enabled: bool) -> String {
     format!("http{}://", if tls_enabled { "s" } else { "" })
+}
+
+#[cfg(feature = "base_node")]
+pub fn is_grpc_loopback(address: &Multiaddr) -> bool {
+    address.iter().next().is_some_and(|protocol| match protocol {
+        Protocol::Ip4(ip) => ip.is_loopback(),
+        Protocol::Ip6(ip) => ip.is_loopback(),
+        Protocol::Dns(name) | Protocol::Dns4(name) | Protocol::Dns6(name) => name.eq_ignore_ascii_case("localhost"),
+        _ => false,
+    })
+}
+
+#[cfg(feature = "base_node")]
+pub fn validate_grpc_auth_transport(
+    address: &Multiaddr,
+    tls_enabled: bool,
+    authentication: &GrpcAuthentication,
+    require_secure_auth: bool,
+) -> Result<Option<String>, String> {
+    if tls_enabled || !matches!(authentication, GrpcAuthentication::Basic { .. }) || is_grpc_loopback(address) {
+        return Ok(None);
+    }
+    let msg = "Basic gRPC authentication on a non-loopback address without TLS exposes credentials in cleartext; \
+               enable TLS, bind to loopback (127.0.0.1, ::1, localhost), or set grpc_require_secure_auth=false";
+    if require_secure_auth {
+        Err(msg.to_string())
+    } else {
+        Ok(Some(msg.to_string()))
+    }
+}
+
+#[cfg(all(test, feature = "base_node"))]
+mod tests {
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
+    use tari_comms::multiaddr::Multiaddr;
+
+    use super::*;
+
+    fn basic() -> GrpcAuthentication {
+        GrpcAuthentication::Basic {
+            username: "user".to_string(),
+            password: "password".into(),
+        }
+    }
+
+    #[test]
+    fn server_auth_transport_validates_loopback_tls_and_strict_mode() {
+        let remote: Multiaddr = "/ip4/10.0.0.1/tcp/18142".parse().unwrap();
+        let err = validate_grpc_auth_transport(&remote, false, &basic(), true).unwrap_err();
+        assert!(err.contains("enable TLS"));
+        assert!(err.contains("loopback"));
+        assert!(err.contains("grpc_require_secure_auth=false"));
+
+        let warn = validate_grpc_auth_transport(&remote, false, &basic(), false)
+            .unwrap()
+            .expect("expected warning");
+        assert!(warn.contains("cleartext"));
+
+        let local_addrs = [
+            "/ip4/127.0.0.1/tcp/18142",
+            "/ip6/::1/tcp/18142",
+            "/dns4/localhost/tcp/18142",
+        ];
+        for local in local_addrs {
+            let addr: Multiaddr = local.parse().unwrap();
+            assert_eq!(validate_grpc_auth_transport(&addr, false, &basic(), true), Ok(None));
+        }
+        assert_eq!(validate_grpc_auth_transport(&remote, true, &basic(), true), Ok(None));
+        let crafted: Multiaddr = "/ip4/10.0.0.1/tcp/18142/ip4/127.0.0.1".parse().unwrap();
+        assert!(!is_grpc_loopback(&crafted));
+    }
 }

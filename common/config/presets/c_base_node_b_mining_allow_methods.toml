@@ -14,6 +14,9 @@ grpc_readiness_enabled = true
 # Use gRPC over TLS (default = false)
 #grpc_tls_enabled = false
 
+# Refuse to start if Basic gRPC authentication is used without TLS on a non-loopback address (default = false)
+#grpc_require_secure_auth = false
+
 # Uncomment all gRPC server methods that should be allowed (only active when `grpc_enabled = true`).
 # Setting `mining_enabled = true` adds the mining method set (`get_version`, `get_new_block_template`,
 # `get_new_block_with_coinbases`, `get_new_block_template_with_coinbases`, `get_new_block`, `get_new_block_blob`,

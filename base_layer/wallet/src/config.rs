@@ -116,6 +116,9 @@ pub struct WalletConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Refuse to start if Basic gRPC authentication is used without TLS on a non-loopback address.
+    #[serde(default)]
+    pub grpc_require_secure_auth: bool,
     /// Allowed GRPC methods for the wallet server
     #[serde(default = "default_grpc_server_allow_methods")]
     pub grpc_server_allow_methods: ConfigList<WalletGrpcMethod>,
@@ -186,6 +189,7 @@ impl Default for WalletConfig {
             grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            grpc_require_secure_auth: false,
             grpc_server_allow_methods: default_grpc_server_allow_methods(),
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,

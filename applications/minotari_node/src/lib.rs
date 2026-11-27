@@ -150,20 +150,28 @@ pub async fn run_base_node_with_cli(
         );
     }
 
-    let (grpc_address, auth, tls_identity) = prepare_grpc_params(&config).await?;
+    let grpc_params = if config.base_node.grpc_enabled {
+        Some(prepare_grpc_params(&config).await?)
+    } else {
+        None
+    };
 
     let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
     let readiness_grpc_shutdown = Shutdown::new();
     let mut readiness_task: Option<JoinHandle<Result<(), anyhow::Error>>> = None;
-    if config.base_node.grpc_enabled && config.base_node.grpc_readiness_enabled {
-        readiness_task = Some(task::spawn(run_grpc(
-            readiness_grpc_server,
-            grpc_address.clone(),
-            auth.clone(),
-            tls_identity.clone(),
-            None,
-            readiness_grpc_shutdown.to_signal(),
-        )));
+    if let Some((grpc_address, auth, tls_identity)) = &grpc_params {
+        if config.base_node.grpc_readiness_enabled {
+            readiness_task = Some(task::spawn(run_grpc(
+                readiness_grpc_server,
+                grpc_address.clone(),
+                auth.clone(),
+                tls_identity.clone(),
+                None,
+                readiness_grpc_shutdown.to_signal(),
+            )));
+        } else {
+            info!(target: LOG_TARGET, "Readiness gRPC server will not be started.");
+        }
     } else {
         info!(target: LOG_TARGET, "Readiness gRPC server will not be started.");
     }
@@ -229,7 +237,7 @@ pub async fn run_base_node_with_cli(
     // Go, GRPC, go go
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
 
-    if config.base_node.grpc_enabled {
+    if let Some((grpc_address, auth, tls_identity)) = grpc_params {
         // Spawn the main gRPC server and keep its handle so a bind failure (e.g. EADDRINUSE)
         // is surfaced as a fatal startup error rather than silently disabling gRPC for the
         // lifetime of the process.
@@ -470,6 +478,16 @@ async fn prepare_grpc_params(
     });
 
     let auth = config.base_node.grpc_authentication.clone();
+    if let Some(warning) = minotari_app_grpc::tls::validate_grpc_auth_transport(
+        &grpc_address,
+        config.base_node.grpc_tls_enabled,
+        &auth,
+        config.base_node.grpc_require_secure_auth,
+    )
+    .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+    {
+        warn!(target: LOG_TARGET, "{warning}");
+    }
 
     let mut tls_identity = None;
     if config.base_node.grpc_tls_enabled {
