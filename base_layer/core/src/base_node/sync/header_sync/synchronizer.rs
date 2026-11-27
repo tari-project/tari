@@ -1504,7 +1504,15 @@ mod test {
     use tari_common_types::types::FixedHash;
     use tari_comms::{
         peer_manager::PeerFeatures,
-        protocol::rpc::{NamedProtocolService, Request, Response, RpcStatus, Streaming, mock::MockRpcServer},
+        protocol::rpc::{
+            NamedProtocolService,
+            Request,
+            Response,
+            RpcClientBuilder,
+            RpcStatus,
+            Streaming,
+            mock::MockRpcServer,
+        },
         test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
     };
     use tari_service_framework::reply_channel;
@@ -1651,7 +1659,13 @@ mod test {
         claimed_height: u64,
         claimed_difficulty: U512,
     ) -> (rpc::BaseNodeSyncRpcClient, SyncPeer, SyncRpcServer, PeerConnection) {
-        connect_to_service(sync_service(peer_db), claimed_height, claimed_difficulty).await
+        connect_to_service(
+            sync_service(peer_db),
+            claimed_height,
+            claimed_difficulty,
+            RpcClient::builder(),
+        )
+        .await
     }
 
     fn sync_service(peer_db: &BlockchainDatabase<TempDatabase>) -> rpc::BaseNodeSyncRpcService<TempDatabase> {
@@ -1665,11 +1679,13 @@ mod test {
         )
     }
 
-    /// Serves `service` to a client over a mock connection, with the peer claiming the given chain
+    /// Serves `service` to a client built with `client_config` over a mock connection, with the peer claiming the
+    /// given chain
     async fn connect_to_service<S: rpc::BaseNodeSyncService>(
         service: S,
         claimed_height: u64,
         claimed_difficulty: U512,
+        client_config: RpcClientBuilder<rpc::BaseNodeSyncRpcClient>,
     ) -> (
         rpc::BaseNodeSyncRpcClient,
         SyncPeer,
@@ -1683,7 +1699,10 @@ mod test {
         server.serve();
         let our_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let mut conn = server.create_connection(our_identity.to_peer(), protocol.into()).await;
-        let client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await.unwrap();
+        let client = conn
+            .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(client_config)
+            .await
+            .unwrap();
         let claim = ChainMetadata::new(claimed_height, FixedHash::zero(), 0, 0, claimed_difficulty, 0).unwrap();
         let sync_peer = SyncPeer::from(PeerChainMetadata::new(peer_identity.node_id().clone(), claim, None));
         (client, sync_peer, server, conn)
@@ -1761,10 +1780,14 @@ mod test {
             inner: sync_service(peer_db),
             change,
         };
+        // The change runs inside the `sync_headers` call, so the call's deadline covers it. Adding a block that rewinds
+        // a thousand headers commits a few hundred small writes (see `HEADER_REWIND_WRITE_SIZE`), each synced to disk,
+        // which has taken more than the default two minutes on a busy CI runner.
         let (client, sync_peer, _server, _conn) = connect_to_service(
             service,
             peer_tip.height(),
             peer_tip.accumulated_data().total_accumulated_difficulty,
+            RpcClient::builder().with_deadline(Duration::from_secs(300)),
         )
         .await;
         synchronizer
