@@ -58,7 +58,6 @@ This document provides a comprehensive overview of the completed Tari Model Cont
 - **Permission levels**: Read-only vs Control operations with explicit consent
 - **Rate limiting**: 30 requests/minute default, configurable
 - **Audit logging**: Comprehensive operation logging with timestamps
-- **User confirmation**: Optional confirmation for value-transferring operations
 - **Input validation**: Robust parameter validation for all operations
 
 #### 🚀 Performance & Reliability

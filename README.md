@@ -278,8 +278,9 @@ Security-relevant options:
 - Read-only by default; `--mcp-control-enabled` opts in to operations that can move funds or change node state
 - `--mcp-spend-budget` / `--mcp-max-fee-per-gram` (wallet) cap the total, fees included, and the fee rate that control
   operations can spend per server process; there is no per-call confirmation
-- `--mcp-rate-limit` caps requests per minute per client
+- `--mcp-rate-limit` caps requests per minute per process
 - `--mcp-audit-logging` / `--mcp-audit-log-path` record every operation
+- Authentication credentials can be passed via environment variables (`MINOTARI_WALLET_GRPC_USERNAME`, `MINOTARI_WALLET_GRPC_PASSWORD`)
 - The servers connect only to local gRPC endpoints
 
 For complete documentation, see:

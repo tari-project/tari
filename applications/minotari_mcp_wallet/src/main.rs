@@ -88,8 +88,9 @@ async fn main() {
     // Load configuration
     let config = match WalletMcpConfig::load(&cli) {
         Ok(config) => config,
-        Err(_) => {
+        Err(e) => {
             // Cannot use eprintln as it interferes with MCP protocol
+            log::error!("Failed to load wallet MCP configuration: {e}");
             process::exit(1);
         },
     };
@@ -97,7 +98,8 @@ async fn main() {
     // Create and start the MCP server
     let server = match WalletMcpServer::new(config, &cli).await {
         Ok(server) => server,
-        Err(_) => {
+        Err(e) => {
+            log::error!("Failed to initialize wallet MCP server: {e}");
             process::exit(1);
         },
     };
@@ -105,14 +107,18 @@ async fn main() {
     // Set up signal handling for graceful shutdown
     let server_for_signal = server;
 
-    // Handle Ctrl+C gracefully
+    // Handle Ctrl+C (SIGINT) and SIGTERM gracefully so auto-launched wallets are stopped cleanly
     tokio::select! {
         result = server_for_signal.start() => {
-            if result.is_err() {
+            if let Err(e) = result {
+                log::error!("Wallet MCP server exited with error: {e}");
+                drop(
+                    tokio::time::timeout(std::time::Duration::from_secs(5), server_for_signal.stop()).await,
+                );
                 process::exit(1);
             }
         }
-        _ = tokio::signal::ctrl_c() => {
+        _ = wait_for_shutdown_signal() => {
             log::info!("Received shutdown signal, stopping server...");
 
             // Set a timeout for shutdown to prevent hanging
@@ -136,5 +142,28 @@ async fn main() {
             // Force exit to ensure clean termination
             process::exit(0);
         }
+    }
+}
+
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {},
+                    _ = sigterm.recv() => {},
+                }
+            },
+            Err(e) => {
+                log::warn!("Failed to install SIGTERM handler: {e}");
+                let _ = tokio::signal::ctrl_c().await;
+            },
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
     }
 }
