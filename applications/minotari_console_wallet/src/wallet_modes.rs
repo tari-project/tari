@@ -28,7 +28,7 @@ use clap::Parser;
 use futures::TryFutureExt;
 use log::*;
 use minotari_app_grpc::{
-    authentication::ServerAuthenticationInterceptor,
+    authentication::GrpcAuthLayer,
     tari_rpc::{GetBalanceRequest, wallet_server::Wallet},
     tls::identity::read_identity,
 };
@@ -44,7 +44,6 @@ use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
     Request,
-    codegen::InterceptedService,
     transport::{Identity, Server, ServerTlsConfig},
 };
 use tui::backend::CrosstermBackend;
@@ -282,6 +281,16 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
             warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
+            if let Some(warning) = minotari_app_grpc::tls::validate_grpc_auth_transport(
+                &address,
+                config.grpc_tls_enabled,
+                &config.grpc_authentication,
+                config.grpc_require_secure_auth,
+            )
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+            {
+                warn!(target: LOG_TARGET, "{warning}");
+            }
             let grpc = WalletGrpcServer::new_with_allow_methods(
                 wallet.clone(),
                 config.grpc_server_allow_methods.as_slice().to_vec(),
@@ -442,6 +451,16 @@ pub fn grpc_mode(
                 config.grpc_server_allow_methods.as_slice().to_vec(),
             );
             let auth = config.grpc_authentication.clone();
+            if let Some(warning) = minotari_app_grpc::tls::validate_grpc_auth_transport(
+                &address,
+                config.grpc_tls_enabled,
+                &auth,
+                config.grpc_require_secure_auth,
+            )
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+            {
+                warn!(target: LOG_TARGET, "{warning}");
+            }
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
@@ -500,13 +519,13 @@ async fn run_grpc(
 
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_listener_addr}");
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
-        .ok_or("Unable to prepare server gRPC authentication".to_string())?;
+    let auth_layer = GrpcAuthLayer::new_without_health(auth_config)
+        .ok_or_else(|| "Unable to prepare server gRPC authentication".to_string())?;
 
     let sized_server = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc)
         .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-    let service = InterceptedService::new(sized_server, auth);
+    let service = auth_layer.wrap(sized_server);
 
     let mut server_builder = if let Some(identity) = tls_identity {
         Server::builder()

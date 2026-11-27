@@ -10,6 +10,8 @@ grpc_readiness_enabled = true
 
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
+# Require gRPC authentication for /grpc.health.v1.Health/* probes when Basic auth is enabled (default = false)
+#grpc_health_requires_auth = false
 
 # Use gRPC over TLS (default = false)
 #grpc_tls_enabled = false

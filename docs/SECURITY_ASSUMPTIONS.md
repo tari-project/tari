@@ -123,7 +123,11 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
   for the bind address, authentication, TLS and the list of enabled methods.
 - **What that means:** An authenticated wallet gRPC client can spend funds, and can release the inputs locked by a
   prepared offline-signing payload with `CancelTransaction`. An authenticated base node gRPC client
-  can call every enabled method, including expensive ones.
+  can call every enabled method, including expensive ones. Loopback gRPC listeners (`127.0.0.1`, `::1`, `localhost`)
+  are exempt from the plaintext Basic authentication check and rely on local host isolation. On the base node, the
+  standard `grpc.health.v1.Health` liveness/readiness probe remains reachable without credentials by default
+  (`grpc_health_requires_auth = false`) so orchestrators that cannot send `Authorization` headers can probe health;
+  operators who want health probes gated by Basic authentication can set `grpc_health_requires_auth = true`.
 - **Not covered:** Reaching a method without the configured credentials, reaching a method the operator disabled,
   and anything an unauthenticated or remote peer-to-peer party can cause through these interfaces. Read-only methods
   the operator exposes publicly must stay bounded in cost.
