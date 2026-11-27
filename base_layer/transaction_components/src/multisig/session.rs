@@ -36,7 +36,7 @@ use crate::{
     consensus::ConsensusConstants,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::TransactionKeyManagerInterface,
-    multisig::script::get_multi_sig_script_components,
+    multisig::script::validate_multisig_spend_signature_count,
     offline_signing::one_sided_signer::validate_multisig_threshold,
     transaction_builder::{FinalizedTransaction, RecipientSpec},
     transaction_components::{
@@ -137,17 +137,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         output: WalletOutput,
         consensus_constants: &ConsensusConstants,
     ) -> Result<(FinalizedTransaction, MemoField, MicroMinotari), TransactionBuilderError> {
-        // Enforce correct signature count and ordering for the multisig script
-        let (_ephemeral_pubkeys, threshold) = get_multi_sig_script_components(output.script())
-            .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
-        if signatures.len() < threshold as usize {
-            return Err(TransactionError::BuilderError(format!(
-                "Insufficient signatures: need at least {}, got {}",
-                threshold,
-                signatures.len()
-            ))
-            .into());
-        }
+        // `CheckMultiSigVerify` consumes exactly `m` signatures; any extra would fail the spend with
+        // NonUnitLengthStack.
+        validate_multisig_spend_signature_count(output.script(), signatures.len())?;
 
         let mut input_stack = ExecutionStack::default();
         for sig in signatures {
@@ -351,5 +343,58 @@ mod test {
             let err = result.unwrap_err().to_string();
             assert!(err.contains("invalid multisig threshold"), "{m} of {n}: {err}");
         }
+    }
+
+    #[test]
+    fn spend_multisig_utxo_requires_exact_signature_count() {
+        let rules = create_consensus_manager();
+        let consensus_constants = rules.consensus_constants(0);
+        let key_manager = KeyManager::new_random().unwrap();
+        let recipient_key_manager = KeyManager::new_random().unwrap();
+        let recipient = TariAddress::new_dual_address(
+            recipient_key_manager.get_view_key().pub_key,
+            recipient_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let session = MultisigSession::new(key_manager.clone());
+
+        // Excess signatures (> threshold) must be rejected before building a transaction that would fail with
+        // NonUnitLengthStack
+        let amount = MicroMinotari(100_000);
+        let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let party_key = key_manager.get_random_key(None, None).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let script = TariScript::new(vec![
+            Opcode::CheckMultiSigVerify(1, 1, vec![party_key.pub_key], Box::new([0u8; 32])),
+            Opcode::PushPubKey(Box::new(script_key.pub_key)),
+        ])
+        .unwrap();
+        let input = WalletOutputBuilder::new(amount, commitment_mask.key_id)
+            .with_script(script)
+            .with_features(OutputFeatures::default())
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .unwrap()
+            .with_script_key(script_key.key_id)
+            .with_sender_offset_public_key(sender_offset.pub_key)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
+            .unwrap()
+            .try_build(&key_manager)
+            .unwrap();
+
+        let excess_sigs = vec![
+            CompressedCheckSigSchnorrSignature::default(),
+            CompressedCheckSigSchnorrSignature::default(),
+        ];
+        let spend_err = session
+            .spend_multisig_utxo(excess_sigs, recipient, input, consensus_constants)
+            .unwrap_err();
+        assert!(
+            spend_err.to_string().contains("expected exactly 1, got 2"),
+            "expected excess signatures to be rejected, got {spend_err:?}"
+        );
     }
 }

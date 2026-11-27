@@ -78,7 +78,11 @@ use tari_transaction_components::{
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
     key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
-    multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
+    multisig::{
+        script::validate_multisig_spend_signature_count,
+        session::MultisigSession,
+        types::GetMultisigUtxoDataOutput,
+    },
     offline_signing::{
         models::{PaymentRecipient, SignedOneSidedTransactionResult},
         offline_signer::{
@@ -633,18 +637,8 @@ where
 
                     let signatures = request.signatures;
 
-                    // Enforce correct signature count and ordering for the multisig script
-                    let (_ephemeral_pubkeys, threshold) =
-                        get_multi_sig_script_components(selected_utxo.wallet_output.script())
-                            .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
-
-                    if signatures.len() < threshold as usize {
-                        return Err(TransactionServiceError::Other(format!(
-                            "Insufficient signatures: need at least {}, got {}",
-                            threshold,
-                            signatures.len()
-                        )));
-                    }
+                    // Same rule as `MultisigSession::spend_multisig_utxo`: exactly `m` signatures.
+                    validate_multisig_spend_signature_count(selected_utxo.wallet_output.script(), signatures.len())?;
 
                     let mut input_stack = ExecutionStack::default();
                     for sig in signatures.clone() {

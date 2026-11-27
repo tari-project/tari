@@ -21,24 +21,46 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
 use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_script::{Opcode, TariScript};
+use tari_script::{MAX_MULTISIG_LIMIT, Opcode, TariScript};
 
 use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{TransactionError, one_sided::diffie_hellman_stealth_domain_hasher},
 };
 
-pub fn is_multisig_utxo(tari_script: &TariScript) -> bool {
-    tari_script
-        .as_slice()
-        .iter()
-        .any(|op| matches!(op, Opcode::CheckMultiSigVerify(..)))
+/// Validates that a multisig spend supplies exactly the script's threshold `m` signatures and returns `m`.
+///
+/// Every supplied signature is pushed onto the input stack and `CheckMultiSigVerify` consumes exactly `m` of them,
+/// so any excess is left on the stack and consensus rejects the spend.
+pub fn validate_multisig_spend_signature_count(
+    script: &TariScript,
+    signature_count: usize,
+) -> Result<u8, TransactionError> {
+    let (_keys, threshold) = get_multi_sig_script_components(script)
+        .ok_or_else(|| TransactionError::BuilderError("no keys found".to_string()))?;
+    if signature_count != usize::from(threshold) {
+        return Err(TransactionError::BuilderError(format!(
+            "Invalid signature count for multisig spend: expected exactly {}, got {}",
+            threshold, signature_count
+        )));
+    }
+    Ok(threshold)
 }
 
+pub fn is_multisig_utxo(tari_script: &TariScript) -> bool {
+    get_multi_sig_script_components(tari_script).is_some()
+}
+
+/// The keys and threshold of a script's `CheckMultiSigVerify`, or `None` if the opcode is one consensus can never
+/// execute (`m = 0`, `m > n`, `n` not matching the key list, or `n > MAX_MULTISIG_LIMIT`).
+///
+/// This is the spend-side rule, so it accepts everything consensus accepts. New deposits use the stricter
+/// `validate_multisig_threshold`, which also caps the script size.
 pub fn get_multi_sig_script_components(script: &TariScript) -> Option<(Vec<CompressedPublicKey>, u8)> {
     for op in script.as_slice() {
-        if let Opcode::CheckMultiSigVerify(m, _n, keys, _msg) = op {
-            return Some((keys.clone(), *m));
+        if let Opcode::CheckMultiSigVerify(m, n, keys, _msg) = op {
+            let executable = *m >= 1 && m <= n && usize::from(*n) == keys.len() && *n <= MAX_MULTISIG_LIMIT;
+            return executable.then(|| (keys.clone(), *m));
         }
     }
 
@@ -107,6 +129,64 @@ pub fn derive_multisig_ephemeral_pubkeys<KM: TransactionKeyManagerInterface>(
 mod test {
     use super::*;
     use crate::key_manager::KeyManager;
+
+    fn sample_keys(count: usize) -> Vec<CompressedPublicKey> {
+        (1..=count)
+            .map(|i| CompressedPublicKey::from_secret_key(&PrivateKey::from(i as u64)))
+            .collect()
+    }
+
+    fn multisig_script(m: u8, n: u8, keys: Vec<CompressedPublicKey>) -> TariScript {
+        TariScript::new(vec![Opcode::CheckMultiSigVerify(m, n, keys, Box::new([0u8; 32]))]).unwrap()
+    }
+
+    #[test]
+    fn spend_signature_count_must_equal_threshold() {
+        let script = multisig_script(2, 3, sample_keys(3));
+        assert_eq!(validate_multisig_spend_signature_count(&script, 2).unwrap(), 2);
+        for count in [1, 3] {
+            let err = validate_multisig_spend_signature_count(&script, count)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(&format!("expected exactly 2, got {count}")), "{err}");
+        }
+        let not_multisig = TariScript::new(vec![Opcode::Nop]).unwrap();
+        let err = validate_multisig_spend_signature_count(&not_multisig, 1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no keys found"), "{err}");
+    }
+
+    #[test]
+    fn get_multi_sig_script_components_rejects_unexecutable_opcodes() {
+        let keys = sample_keys(2);
+        let valid = multisig_script(2, 2, keys.clone());
+        assert!(is_multisig_utxo(&valid));
+        assert_eq!(get_multi_sig_script_components(&valid), Some((keys.clone(), 2)));
+
+        let limit = usize::from(MAX_MULTISIG_LIMIT);
+        for script in [
+            multisig_script(0, 2, keys.clone()),
+            multisig_script(3, 2, keys.clone()),
+            multisig_script(2, MAX_MULTISIG_LIMIT + 1, sample_keys(limit + 1)),
+        ] {
+            assert!(!is_multisig_utxo(&script));
+            assert_eq!(get_multi_sig_script_components(&script), None);
+        }
+
+        // Consensus accepts repeated keys and up to 32 keys, so existing outputs of that shape stay spendable.
+        let repeated = keys.first().unwrap().clone();
+        let duplicate = multisig_script(2, 2, vec![repeated.clone(), repeated.clone()]);
+        assert_eq!(
+            get_multi_sig_script_components(&duplicate),
+            Some((vec![repeated.clone(), repeated], 2))
+        );
+        let at_limit = sample_keys(limit);
+        assert_eq!(
+            get_multi_sig_script_components(&multisig_script(2, MAX_MULTISIG_LIMIT, at_limit.clone())),
+            Some((at_limit, 2))
+        );
+    }
 
     #[test]
     fn co_signer_key_is_the_creator_ephemeral_key_and_verifies_the_signature() {
