@@ -1098,9 +1098,8 @@ mod test {
 
     #[tokio::test]
     async fn oversized_monerod_response_clears_the_current_server() {
-        use minotari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc::base_node_client};
+        use minotari_node_grpc_client::GrpcClientConfig;
         use tari_common::configuration::StringList;
-        use tari_common_types::grpc_authentication::GrpcAuthentication;
 
         use crate::{
             block_template_data::BlockTemplateRepository,
@@ -1119,10 +1118,7 @@ mod test {
             config: Arc::new(config),
             block_templates: BlockTemplateRepository::new(),
             http_client: reqwest::Client::new(),
-            base_node_client: base_node_client::BaseNodeClient::with_interceptor(
-                channel,
-                ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
-            ),
+            base_node_client: BaseNodeGrpcClient::from_channel(channel, &GrpcClientConfig::default()).unwrap(),
             p2pool_client: None,
             initial_sync_achieved: Arc::new(AtomicBool::new(true)),
             current_monerod_server: Arc::new(RwLock::new(None)),

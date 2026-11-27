@@ -73,7 +73,13 @@ use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     rpc::models::MinedUtxoInfo,
     tari_amount::{MicroMinotari, T, uT},
-    test_helpers::{TestParams, create_consensus_manager, create_wallet_output_with_data},
+    test_helpers::{
+        TestParams,
+        UtxoTestParams,
+        create_consensus_manager,
+        create_wallet_output_with_data,
+        input_with_a_script_key_not_derived_from_the_spend_key,
+    },
     transaction_builder::PendingOutput,
     transaction_components::{
         MemoField,
@@ -2845,13 +2851,10 @@ fn production_estimate(
     Fee::new(*constants.transaction_weight_params()).calculate(fee_per_gram, 1, 1, 1, size)
 }
 
+/// The spend hands its only sender offset key back and has no change, so the input's script key must not be derived
+/// from the spend key.
 async fn spendable_input(key_manager: &MemoryKeyManager, value: MicroMinotari) -> WalletOutput {
-    make_input(
-        &mut rand::rng(),
-        value,
-        &OutputFeatures::default(),
-        key_manager.key_manager(),
-    )
+    input_with_a_script_key_not_derived_from_the_spend_key(UtxoTestParams::with_value(value), key_manager.key_manager())
 }
 
 /// Drives the production fee estimate for a whole-input spend against a real `TransactionBuilder`:
