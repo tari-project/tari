@@ -25,6 +25,7 @@
 use std::{sync::Arc, time::Duration};
 
 use minotari_mcp_common::{
+    ArcToolWrapper,
     AutoDiscoveryConfig,
     AutoDiscoveryRegistry,
     CircuitBreakerConfig,
@@ -32,7 +33,6 @@ use minotari_mcp_common::{
     CliIntegrationUtils,
     ConnectionManager,
     ConnectionPoolConfig,
-    ConversionRegistryFactory,
     GrpcErrorMapper,
     GrpcExecutor,
     HealthConfig,
@@ -50,8 +50,7 @@ use minotari_mcp_common::{
     StartupDiagnostics,
     TariProcessLauncher,
 };
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
-use tonic::transport::{Channel, Endpoint};
+use minotari_node_grpc_client::{BaseNodeGrpcClient, endpoint};
 
 use crate::{
     cli::Cli,
@@ -61,44 +60,10 @@ use crate::{
     tools::NodeToolRegistry,
 };
 
-/// Wrapper to convert Arc<dyn McpTool> to Box<dyn McpTool>
-struct ArcToolWrapper {
-    tool: Arc<dyn minotari_mcp_common::McpTool>,
-}
-
-impl ArcToolWrapper {
-    fn new(tool: Arc<dyn minotari_mcp_common::McpTool>) -> Self {
-        Self { tool }
-    }
-}
-
-#[async_trait::async_trait]
-impl minotari_mcp_common::McpTool for ArcToolWrapper {
-    fn name(&self) -> &str {
-        self.tool.name()
-    }
-
-    fn description(&self) -> &str {
-        self.tool.description()
-    }
-
-    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
-        self.tool.permission_level()
-    }
-
-    fn input_schema(&self) -> serde_json::Value {
-        self.tool.input_schema()
-    }
-
-    async fn execute(&self, args: serde_json::Value) -> minotari_mcp_common::McpResult<serde_json::Value> {
-        self.tool.execute(args).await
-    }
-}
-
 /// Minotari Node MCP Server
 pub struct NodeMcpServer {
     inner: Box<dyn McpServer>,
-    _grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    _grpc_client: Arc<BaseNodeGrpcClient>,
     launched_process: Option<Arc<ProcessLauncher>>,
 }
 
@@ -120,16 +85,11 @@ impl NodeMcpServer {
         let connection_manager = Self::create_connection_manager(&config).await?;
 
         // Create health-aware gRPC executor
-        let conversion_registry = ConversionRegistryFactory::create_node_registry();
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let node_client_impl = Arc::new(NodeGrpcClientImpl::new(
-            (*grpc_client).clone(),
-            conversion_registry.clone(),
-        ));
+        let node_client_impl = Arc::new(NodeGrpcClientImpl::new((*grpc_client).clone()));
         let grpc_executor = Arc::new(GrpcExecutor::new_node_with_health(
             node_client_impl,
             error_mapper.clone(),
-            conversion_registry,
             connection_manager.clone(),
         ));
 
@@ -229,28 +189,12 @@ impl NodeMcpServer {
     }
 
     /// Create gRPC client connection to base node
-    async fn create_grpc_client(config: &NodeMcpConfig) -> McpResult<BaseNodeGrpcClient<Channel>> {
+    async fn create_grpc_client(config: &NodeMcpConfig) -> McpResult<BaseNodeGrpcClient> {
         let endpoint_url = config.node_grpc_url();
 
         log::info!("Connecting to base node at: {endpoint_url}");
 
-        let endpoint = Endpoint::from_shared(endpoint_url)
-            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {e}")))?;
-
-        let channel = endpoint
-            .timeout(std::time::Duration::from_secs(config.node_grpc.timeout_secs))
-            .connect()
-            .await
-            .map_err(|e| McpError::config_error(format!("Failed to connect to base node: {e}")))?;
-
-        // Create client (simplified - no authentication for now)
-        let client = BaseNodeClient::new(channel);
-
-        // TODO: Test the connection with a simple call
-        // For now, skip the test call due to tonic version compatibility issues
-
-        log::info!("Base node client created (connection test skipped)");
-        Ok(client)
+        Ok(BaseNodeGrpcClient::connect(&endpoint_url, &config.grpc_client_config()?).await?)
     }
 
     /// Create connection manager with health monitoring
@@ -262,11 +206,7 @@ impl NodeMcpServer {
         let conn_manager = ConnectionManager::new(pool_config, circuit_config, health_config);
 
         // Add the base node service endpoint
-        let endpoint_url = config.node_grpc_url();
-        let endpoint = Endpoint::from_shared(endpoint_url)
-            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {e}")))?
-            .timeout(Duration::from_secs(config.node_grpc.timeout_secs))
-            .connect_timeout(Duration::from_secs(5));
+        let endpoint = endpoint(&config.node_grpc_url(), &config.grpc_client_config()?)?;
 
         conn_manager.add_service("base_node".to_string(), endpoint).await?;
         conn_manager.start_maintenance().await?;
@@ -280,7 +220,8 @@ impl NodeMcpServer {
         let port = CliIntegrationUtils::extract_port_from_address(&config.node_grpc.address).unwrap_or(18142);
 
         // Check if already running using proper health monitor
-        let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address);
+        let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address)
+            .with_grpc_endpoint(endpoint(&config.node_grpc_url(), &config.grpc_client_config()?)?);
         if health_monitor.is_service_ready().await {
             log::info!("Base node already running and healthy on port {port}");
             return Ok(None); // No process launched by us

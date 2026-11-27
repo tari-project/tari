@@ -378,6 +378,7 @@ fn build_node_identity(cli: &Cli, config: &PeerSyncConfig) -> Result<Arc<NodeIde
             true,
             PeerFeatures::COMMUNICATION_NODE,
             config.base_node.p2p.transport.transport_type,
+            false,
         );
     }
     Ok(Arc::new(NodeIdentity::random_multiple_addresses(

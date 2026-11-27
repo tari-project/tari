@@ -334,7 +334,7 @@ class TestApduInstall(unittest.TestCase):
             with self.assertRaisesRegex(installer.InstallerError, "ledgerblue runScript failed"):
                 installer.install_apdu_file(Path("app.apdu"), installer.SUPPORTED_MODELS["flex"])
 
-    def test_apdu_install_reports_old_firmware(self):
+    def test_apdu_install_reports_api_level_mismatch(self):
         completed = mock.Mock(
             returncode=1,
             stdout=(
@@ -344,7 +344,7 @@ class TestApduInstall(unittest.TestCase):
         )
 
         with mock.patch.object(installer.subprocess, "run", return_value=completed):
-            with self.assertRaisesRegex(installer.InstallerError, "firmware is too old"):
+            with self.assertRaisesRegex(installer.InstallerError, "different Ledger OS API levels"):
                 installer.install_apdu_file(Path("app.apdu"), installer.SUPPORTED_MODELS["nanosplus"])
 
 

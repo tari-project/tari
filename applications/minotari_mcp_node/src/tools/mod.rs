@@ -65,7 +65,6 @@ pub use network_tools::{
 };
 pub use submit_block::SubmitBlockTool;
 pub use submit_transaction::SubmitTransactionTool;
-use tonic::transport::Channel;
 
 /// Registry for node-specific MCP tools
 pub struct NodeToolRegistry;
@@ -73,7 +72,7 @@ pub struct NodeToolRegistry;
 impl NodeToolRegistry {
     /// Create a new node tool registry with all available tools
     #[allow(clippy::new_ret_no_self)] // Factory method for registry
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>, control_enabled: bool) -> ToolRegistry {
+    pub fn new(grpc_client: BaseNodeGrpcClient, control_enabled: bool) -> ToolRegistry {
         let mut registry = ToolRegistry::new();
 
         // Always available tools (read-only operations)

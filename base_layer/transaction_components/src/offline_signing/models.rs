@@ -364,16 +364,9 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
 /// `prepare_*` functions in [`crate::offline_signing::offline_signer`] do not check); a payload refused by the signer
 /// has to be prepared again with a smaller amount.
 ///
-/// The rule closes one way for the online wallet, which holds the view key, to recover the spend key: through the
-/// script offset of a transaction without change. The transaction publishes
-/// `script offset = sum(input script keys) - sum(sender offset keys)`, and every input script key is
-/// `H(mask) + spend key` with a mask the online wallet knows. Each recipient output in `outputs` carries its sender
-/// offset key id inside its `commitment_mask_key_id` (the `DHCommitmentMask` wrapper), wrapped under the view key, so
-/// the online wallet can learn those sender offset keys. The
-/// change output's sender offset key is generated and used inside the signer and never leaves it (`change_output`
-/// carries only its public key), so with a change output present that sum always has a term the online wallet cannot
-/// learn, and it cannot solve for the spend key. Outputs that arrived fully formed in the payload also have their
-/// sender offset keys replaced inside the signer, and those are not returned either; the rule does not rely on them.
+/// The change output's sender offset key never leaves the signer, which is what the builder's sender offset key
+/// invariant needs here: the recipient outputs' keys are handed back to the online wallet. See "One sender offset key
+/// the host cannot learn" on [`crate::TransactionBuilder`].
 ///
 /// This only addresses recovery through the script offset. It does not make it safe to treat the online wallet as
 /// untrusted in general: anyone holding the view key can produce a payload that passes the integrity check, so the
@@ -390,11 +383,35 @@ pub struct SignedTransaction {
     pub tx_id: TxId,
 }
 
+/// How the signing of a payload was approved. Mirrors [`crate::offline_signing::ConfirmationMode`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ConfirmationKind {
+    /// An operator approved the summary at a prompt.
+    Prompt,
+    /// The summary was written out and signed without asking anyone.
+    NoPrompt,
+}
+
+/// A record of what the offline signer approved and signed. It is not signed, so anyone handling the result can
+/// rewrite it: it is not proof of approval and nothing should trust it as such.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SigningReceipt {
+    pub tx_id: TxId,
+    /// Domain-separated Blake2b-256 of the canonical payload bytes, the bytes the payload signature covers.
+    pub payload_hash: FixedHash,
+    pub confirmation: ConfirmationKind,
+    /// Unix time in seconds, by the signer's clock.
+    pub signed_at: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedOneSidedTransactionResult {
     pub version: Version,
     pub request: PrepareOneSidedTransactionForSigningResult,
     pub signed_transaction: SignedTransaction,
+    /// Absent from results written by signers that predate it.
+    #[serde(default)]
+    pub receipt: Option<SigningReceipt>,
 }
 
 impl TransactionResult for SignedOneSidedTransactionResult {}
@@ -410,6 +427,9 @@ pub struct SignedOneSidedDepositMultisigTransactionResult {
     pub version: Version,
     pub request: PrepareDepositMultisigTransactionResult,
     pub signed_transaction: SignedTransaction,
+    /// Absent from results written by signers that predate it.
+    #[serde(default)]
+    pub receipt: Option<SigningReceipt>,
 }
 
 impl TransactionResult for SignedOneSidedDepositMultisigTransactionResult {}
@@ -425,6 +445,9 @@ pub struct SignedOneSidedWithdrawMultisigTransactionResult {
     pub version: Version,
     pub request: PrepareWithdrawMultisigTransactionResult,
     pub signed_transaction: SignedTransaction,
+    /// Absent from results written by signers that predate it.
+    #[serde(default)]
+    pub receipt: Option<SigningReceipt>,
 }
 
 impl TransactionResult for SignedOneSidedWithdrawMultisigTransactionResult {}

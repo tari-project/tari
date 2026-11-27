@@ -289,7 +289,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
             first_height: u64,
             second_height: u64,
         )
-            -> (Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>),
+            -> (Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>, u64),
         "fetch_outputs_in_block_and_header_pair"
     );
 

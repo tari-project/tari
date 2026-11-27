@@ -26,10 +26,10 @@
 //! and transaction validation status.
 
 use minotari_app_grpc::tari_rpc::{Empty, GetMempoolTransactionsRequest, Signature, TransactionStateRequest};
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
+use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::Request;
 
 /// Fee and weight samples taken from every transaction currently in the mempool
 #[derive(Default)]
@@ -39,6 +39,7 @@ struct MempoolSamples {
     total_fees: u64,
     total_weight: usize,
     tx_count: usize,
+    truncated: bool,
 }
 
 /// Index into a sorted distribution for the given percentile, clamped to the last element
@@ -49,11 +50,11 @@ fn percentile_index(len: usize, percentile: usize) -> usize {
 /// Tool for getting mempool statistics
 #[derive(Clone)]
 pub struct GetMempoolStatsTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetMempoolStatsTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -81,33 +82,18 @@ impl McpTool for GetMempoolStatsTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let response = self
-            .grpc_client
-            .clone()
-            .get_mempool_stats(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "unconfirmed_txs": response.unconfirmed_txs,
-            "reorg_txs": response.reorg_txs,
-            "unconfirmed_weight": response.unconfirmed_weight,
-            "total_transactions": response.unconfirmed_txs.saturating_add(response.reorg_txs),
-        }))
+        node_rpc::get_mempool_stats(self.grpc_client.clone()).await
     }
 }
 
 /// Tool for getting all mempool transactions
 #[derive(Clone)]
 pub struct GetMempoolTransactionsTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetMempoolTransactionsTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -142,82 +128,18 @@ impl McpTool for GetMempoolTransactionsTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(100); // Default limit to prevent overwhelming responses
-
-        let request = Request::new(GetMempoolTransactionsRequest {});
-
-        let mut response_stream = self
-            .grpc_client
-            .clone()
-            .get_mempool_transactions(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
-            .into_inner();
-
-        let mut transactions = Vec::new();
-        let mut count = 0;
-
-        while let Some(tx_response) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read mempool transaction stream: {e}")))?
-        {
-            if count >= limit {
-                break;
-            }
-
-            if let Some(transaction) = tx_response.transaction {
-                let tx_info = json!({
-                    "offset": hex::encode(&transaction.offset),
-                    "body": {
-                        "inputs": transaction.body.as_ref()
-                            .map(|body| body.inputs.len())
-                            .unwrap_or(0),
-                        "outputs": transaction.body.as_ref()
-                            .map(|body| body.outputs.len())
-                            .unwrap_or(0),
-                        "kernels": transaction.body.as_ref()
-                            .map(|body| body.kernels.len())
-                            .unwrap_or(0),
-                    },
-                    "total_fee": transaction.body.as_ref()
-                        .map(|body| body.kernels.iter()
-                            .map(|k| k.fee)
-                            .sum::<u64>())
-                        .unwrap_or(0),
-                    "total_weight": transaction.body.as_ref()
-                        .map(|body| {
-                            body.inputs.len().saturating_add(body.outputs.len()).saturating_add(body.kernels.len())
-                        })
-                        .unwrap_or(0),
-                });
-
-                transactions.push(tx_info);
-                count = count.saturating_add(1);
-            }
-        }
-
-        Ok(json!({
-            "transactions": transactions,
-            "count": transactions.len(),
-            "limit": limit,
-            "note": if count >= limit {
-                format!("Results limited to {limit} transactions. Use limit parameter to adjust.")
-            } else {
-                "All mempool transactions returned".to_string()
-            }
-        }))
+        node_rpc::get_mempool_transactions(self.grpc_client.clone(), &params).await
     }
 }
 
 /// Tool for checking transaction state
 #[derive(Clone)]
 pub struct GetTransactionStateTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetTransactionStateTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -268,13 +190,7 @@ impl McpTool for GetTransactionStateTool {
             excess_sig: Some(signature),
         });
 
-        let response = self
-            .grpc_client
-            .clone()
-            .transaction_state(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction state: {e}")))?
-            .into_inner();
+        let response = self.grpc_client.clone().transaction_state(request).await?.into_inner();
 
         let location = match response.result {
             0 => "UNKNOWN",
@@ -302,47 +218,47 @@ impl McpTool for GetTransactionStateTool {
 /// Tool for analyzing mempool transaction patterns
 #[derive(Clone)]
 pub struct AnalyzeMempoolTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl AnalyzeMempoolTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 
     /// Stream every mempool transaction, accumulating its fee and weight
     async fn collect_samples(&self) -> McpResult<MempoolSamples> {
         let tx_request = Request::new(GetMempoolTransactionsRequest {});
-        let mut tx_stream = self
+        let tx_stream = self
             .grpc_client
             .clone()
             .get_mempool_transactions(tx_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
+            .await?
             .into_inner();
-
-        let mut samples = MempoolSamples::default();
-        while let Some(tx_response) = tx_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {e}")))?
-        {
-            if let Some(transaction) = tx_response.transaction &&
-                let Some(body) = transaction.body
-            {
+        // Keep only each transaction's fee and weight, not the transaction itself
+        let (fee_and_weight, truncated) =
+            node_rpc::collect_limited(tx_stream, node_rpc::MAX_MEMPOOL_TX_LIMIT, |tx_response| {
+                let body = tx_response.transaction.as_ref()?.body.as_ref()?;
                 let tx_fee: u64 = body.kernels.iter().map(|k| k.fee).sum();
                 let tx_weight = body
                     .inputs
                     .len()
                     .saturating_add(body.outputs.len())
                     .saturating_add(body.kernels.len());
+                Some((tx_fee, tx_weight))
+            })
+            .await?;
 
-                samples.fee_distribution.push(tx_fee);
-                samples.weight_distribution.push(tx_weight);
-                samples.total_fees = samples.total_fees.saturating_add(tx_fee);
-                samples.total_weight = samples.total_weight.saturating_add(tx_weight);
-                samples.tx_count = samples.tx_count.saturating_add(1);
-            }
+        let mut samples = MempoolSamples {
+            truncated,
+            ..Default::default()
+        };
+        for (tx_fee, tx_weight) in fee_and_weight {
+            samples.fee_distribution.push(tx_fee);
+            samples.weight_distribution.push(tx_weight);
+            samples.total_fees = samples.total_fees.saturating_add(tx_fee);
+            samples.total_weight = samples.total_weight.saturating_add(tx_weight);
+            samples.tx_count = samples.tx_count.saturating_add(1);
         }
 
         Ok(samples)
@@ -378,8 +294,7 @@ impl McpTool for AnalyzeMempoolTool {
             .grpc_client
             .clone()
             .get_mempool_stats(stats_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {e}")))?
+            .await?
             .into_inner();
 
         // Then get transaction details
@@ -389,6 +304,7 @@ impl McpTool for AnalyzeMempoolTool {
             total_fees,
             total_weight,
             tx_count,
+            truncated,
         } = self.collect_samples().await?;
 
         // Calculate statistics
@@ -423,6 +339,7 @@ impl McpTool for AnalyzeMempoolTool {
             },
             "transaction_analysis": {
                 "total_transactions_analyzed": tx_count,
+                "truncated": truncated,
                 "total_fees": total_fees,
                 "total_weight": total_weight,
                 "average_fee": avg_fee,

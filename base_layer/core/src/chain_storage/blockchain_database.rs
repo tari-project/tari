@@ -1683,18 +1683,19 @@ where B: BlockchainBackend
         fetch_header_pair(&*db, first_height, second_height)
     }
 
-    /// Returns the outputs of the block with `header_hash` and the block headers at two heights, all read under one
-    /// read lock so that they come from the same chain.
+    /// Returns the outputs of the block with `header_hash`, the block headers at two heights, and the current best
+    /// block height, all read under one read lock so that they come from the same chain.
     pub fn fetch_outputs_in_block_and_header_pair(
         &self,
         header_hash: HashOutput,
         first_height: u64,
         second_height: u64,
-    ) -> Result<(Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>), ChainStorageError> {
+    ) -> Result<(Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>, u64), ChainStorageError> {
         let db = self.db_read_access()?;
         let outputs = db.fetch_outputs_in_block(&header_hash)?;
         let (first, second) = fetch_header_pair(&*db, first_height, second_height)?;
-        Ok((outputs, first, second))
+        let best_block_height = db.fetch_chain_metadata()?.best_block_height();
+        Ok((outputs, first, second, best_block_height))
     }
 
     /// Returns the block header at the given block height.
@@ -7008,15 +7009,17 @@ mod test {
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
         let b = chain.get("B").unwrap();
 
-        let (outputs, header_at_height, end_header) =
+        let (outputs, header_at_height, end_header, best_block_height) =
             db.fetch_outputs_in_block_and_header_pair(*b.hash(), 2, 3).unwrap();
         assert_eq!(outputs, db.fetch_outputs_in_block(*b.hash()).unwrap());
         assert!(!outputs.is_empty());
         assert_eq!(header_at_height.unwrap().hash(), *b.hash());
         assert_eq!(end_header.unwrap().hash(), *chain.get("C").unwrap().hash());
+        assert_eq!(best_block_height, 3);
 
-        let (_, _, missing) = db.fetch_outputs_in_block_and_header_pair(*b.hash(), 2, 4).unwrap();
+        let (_, _, missing, best_block_height) = db.fetch_outputs_in_block_and_header_pair(*b.hash(), 2, 4).unwrap();
         assert!(missing.is_none());
+        assert_eq!(best_block_height, 3);
     }
 
     /// A rewind past a pruned node's horizon keeps none of the blocks it removes, so it must not index an orphan chain

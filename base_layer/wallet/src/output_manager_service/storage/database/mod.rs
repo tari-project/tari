@@ -269,6 +269,11 @@ where T: OutputManagerBackend + 'static
         self.db.clear_short_term_encumberances()
     }
 
+    /// See `OutputManagerBackend::release_unrecorded_transaction`.
+    pub fn release_unrecorded_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        self.db.release_unrecorded_transaction(tx_id)
+    }
+
     /// When a pending transaction is cancelled the encumbered outputs are moved back to the `unspent_outputs`
     /// collection.
     pub fn cancel_pending_transaction_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {

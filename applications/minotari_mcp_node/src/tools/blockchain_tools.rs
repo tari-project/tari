@@ -25,27 +25,20 @@
 //! This module provides comprehensive access to blockchain data including headers,
 //! blocks, network status, and synchronization information.
 
-use minotari_app_grpc::tari_rpc::{
-    Empty,
-    GetBlocksRequest,
-    GetHeaderByHashRequest,
-    GetNetworkStateRequest,
-    HeightRequest,
-    ListHeadersRequest,
-};
-use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
+use minotari_app_grpc::tari_rpc::GetNetworkStateRequest;
+use minotari_mcp_common::{McpResult, McpTool, node_rpc};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use tonic::{Request, transport::Channel};
+use tonic::Request;
 
 /// Tool for listing blockchain headers
 #[derive(Clone)]
 pub struct ListHeadersTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl ListHeadersTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -85,68 +78,18 @@ impl McpTool for ListHeadersTool {
 
     #[allow(clippy::cast_possible_truncation)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let from_height = params.get("from_height").and_then(|v| v.as_u64()).unwrap_or(0);
-
-        let num_headers = params.get("num_headers").and_then(|v| v.as_u64()).unwrap_or(10);
-
-        let sorting = params.get("sorting").and_then(|v| v.as_i64()).unwrap_or(0) as i32; // Default to SORTING_DESC
-
-        let request = Request::new(ListHeadersRequest {
-            from_height,
-            num_headers,
-            sorting,
-        });
-
-        let mut response_stream = self
-            .grpc_client
-            .clone()
-            .list_headers(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to list headers: {e}")))?
-            .into_inner();
-
-        let mut headers = Vec::new();
-        while let Some(header_response) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read header stream: {e}")))?
-        {
-            headers.push(json!({
-                "height": header_response.header.as_ref().map(|h| h.height).unwrap_or(0),
-                "hash": header_response.header.as_ref()
-                    .map(|h| hex::encode(&h.hash))
-                    .unwrap_or_default(),
-                "confirmations": header_response.confirmations,
-                "reward": header_response.reward,
-                "difficulty": header_response.difficulty,
-                "num_transactions": header_response.num_transactions,
-                "timestamp": header_response.header.as_ref()
-                    .map(|h| h.timestamp)
-                    .unwrap_or(0),
-                "version": header_response.header.as_ref()
-                    .map(|h| h.version)
-                    .unwrap_or(0),
-            }));
-        }
-
-        Ok(json!({
-            "headers": headers,
-            "count": headers.len(),
-            "from_height": from_height,
-            "num_headers": num_headers,
-            "sorting": if sorting == 0 { "desc" } else { "asc" }
-        }))
+        node_rpc::list_headers(self.grpc_client.clone(), &params).await
     }
 }
 
 /// Tool for getting a specific block header by hash
 #[derive(Clone)]
 pub struct GetHeaderByHashTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetHeaderByHashTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -179,49 +122,18 @@ impl McpTool for GetHeaderByHashTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let hash_hex = get_required_string_param(&params, "hash")?;
-
-        let hash_bytes =
-            hex::decode(&hash_hex).map_err(|e| McpError::invalid_request(format!("Invalid hex hash: {e}")))?;
-
-        let request = Request::new(GetHeaderByHashRequest { hash: hash_bytes });
-
-        let response = self
-            .grpc_client
-            .clone()
-            .get_header_by_hash(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get header: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "header": {
-                "height": response.header.as_ref().map(|h| h.height).unwrap_or(0),
-                "hash": response.header.as_ref()
-                    .map(|h| hex::encode(&h.hash))
-                    .unwrap_or_default(),
-                "prev_hash": response.header.as_ref()
-                    .map(|h| hex::encode(&h.prev_hash))
-                    .unwrap_or_default(),
-                "timestamp": response.header.as_ref().map(|h| h.timestamp).unwrap_or(0),
-                "version": response.header.as_ref().map(|h| h.version).unwrap_or(0),
-            },
-            "confirmations": response.confirmations,
-            "reward": response.reward,
-            "difficulty": response.difficulty,
-            "num_transactions": response.num_transactions,
-        }))
+        node_rpc::get_header_by_hash(self.grpc_client.clone(), &params).await
     }
 }
 
 /// Tool for getting blocks by height
 #[derive(Clone)]
 pub struct GetBlocksTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetBlocksTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -258,69 +170,18 @@ impl McpTool for GetBlocksTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let heights: Vec<u64> = params
-            .get("heights")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| McpError::invalid_request("heights array is required".to_string()))?
-            .iter()
-            .filter_map(|v| v.as_u64())
-            .collect();
-
-        if heights.is_empty() {
-            return Err(McpError::invalid_request("At least one height is required".to_string()));
-        }
-
-        let request = Request::new(GetBlocksRequest {
-            heights: heights.clone(),
-        });
-
-        let mut response_stream = self
-            .grpc_client
-            .clone()
-            .get_blocks(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get blocks: {e}")))?
-            .into_inner();
-
-        let mut blocks = Vec::new();
-        while let Some(historical_block) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read block stream: {e}")))?
-        {
-            if let Some(block) = historical_block.block {
-                blocks.push(json!({
-                    "height": block.header.as_ref().map(|h| h.height).unwrap_or(0),
-                    "hash": block.header.as_ref()
-                        .map(|h| hex::encode(&h.hash))
-                        .unwrap_or_default(),
-                    "prev_hash": block.header.as_ref()
-                        .map(|h| hex::encode(&h.prev_hash))
-                        .unwrap_or_default(),
-                    "timestamp": block.header.as_ref().map(|h| h.timestamp).unwrap_or(0),
-                    "num_inputs": block.body.as_ref().map(|b| b.inputs.len()).unwrap_or(0),
-                    "num_outputs": block.body.as_ref().map(|b| b.outputs.len()).unwrap_or(0),
-                    "num_kernels": block.body.as_ref().map(|b| b.kernels.len()).unwrap_or(0),
-                }));
-            }
-        }
-
-        Ok(json!({
-            "blocks": blocks,
-            "count": blocks.len(),
-            "requested_heights": heights,
-        }))
+        node_rpc::get_blocks(self.grpc_client.clone(), &params).await
     }
 }
 
 /// Tool for getting tip information
 #[derive(Clone)]
 pub struct GetTipInfoTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetTipInfoTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -348,52 +209,18 @@ impl McpTool for GetTipInfoTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let response = self
-            .grpc_client
-            .clone()
-            .get_tip_info(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get tip info: {e}")))?
-            .into_inner();
-
-        let metadata = response.metadata.as_ref();
-
-        Ok(json!({
-            "tip_height": metadata.map(|m| m.best_block_height).unwrap_or(0),
-            "tip_hash": metadata
-                .map(|m| hex::encode(&m.best_block_hash))
-                .unwrap_or_default(),
-            "accumulated_difficulty": metadata
-                .map(|m| hex::encode(&m.accumulated_difficulty))
-                .unwrap_or_default(),
-            "pruned_height": metadata.map(|m| m.pruned_height).unwrap_or(0),
-            "timestamp": metadata.map(|m| m.timestamp).unwrap_or(0),
-            "initial_sync_achieved": response.initial_sync_achieved,
-            "base_node_state": match response.base_node_state {
-                0 => "START_UP",
-                1 => "HEADER_SYNC",
-                2 => "HORIZON_SYNC",
-                3 => "CONNECTING",
-                4 => "BLOCK_SYNC",
-                5 => "LISTENING",
-                6 => "SYNC_FAILED",
-                _ => "UNKNOWN",
-            },
-            "failed_checkpoints": response.failed_checkpoints,
-        }))
+        node_rpc::get_tip_info(self.grpc_client.clone()).await
     }
 }
 
 /// Tool for getting sync information
 #[derive(Clone)]
 pub struct GetSyncInfoTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetSyncInfoTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -421,41 +248,18 @@ impl McpTool for GetSyncInfoTool {
     }
 
     async fn execute(&self, _params: Value) -> McpResult<Value> {
-        let request = Request::new(Empty {});
-
-        let response = self
-            .grpc_client
-            .clone()
-            .get_sync_info(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get sync info: {e}")))?
-            .into_inner();
-
-        Ok(json!({
-            "tip_height": response.tip_height,
-            "local_height": response.local_height,
-            "sync_progress": if response.tip_height > 0 {
-                (response.local_height as f64 / response.tip_height as f64 * 100.0).round()
-            } else {
-                100.0
-            },
-            "blocks_behind": response.tip_height.saturating_sub(response.local_height),
-            "peer_node_ids": response.peer_node_id.iter()
-                .map(hex::encode)
-                .collect::<Vec<_>>(),
-            "is_synced": response.tip_height == response.local_height,
-        }))
+        node_rpc::get_sync_info(self.grpc_client.clone()).await
     }
 }
 
 /// Tool for getting network difficulty over time
 #[derive(Clone)]
 pub struct GetNetworkDifficultyTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNetworkDifficultyTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -480,7 +284,7 @@ impl McpTool for GetNetworkDifficultyTool {
             "properties": {
                 "from_tip": {
                     "type": "number",
-                    "description": "Number of blocks from tip",
+                    "description": "Number of blocks from tip (at most 511, as the tip is included)",
                     "minimum": 0
                 },
                 "start_height": {
@@ -494,68 +298,24 @@ impl McpTool for GetNetworkDifficultyTool {
                     "minimum": 0
                 }
             },
-            "required": []
+            "required": [],
+            "description": "Either start_height..=end_height, or from_tip; at most 512 heights"
         })
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let from_tip = params.get("from_tip").and_then(|v| v.as_u64()).unwrap_or(0);
-        let start_height = params.get("start_height").and_then(|v| v.as_u64()).unwrap_or(0);
-        let end_height = params.get("end_height").and_then(|v| v.as_u64()).unwrap_or(0);
-
-        let request = Request::new(HeightRequest {
-            from_tip,
-            start_height,
-            end_height,
-        });
-
-        let mut response_stream = self
-            .grpc_client
-            .clone()
-            .get_network_difficulty(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network difficulty: {e}")))?
-            .into_inner();
-
-        let mut difficulties = Vec::new();
-        while let Some(difficulty_response) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read difficulty stream: {e}")))?
-        {
-            difficulties.push(json!({
-                "height": difficulty_response.height,
-                "difficulty": difficulty_response.difficulty,
-                "adjusted_difficulty": difficulty_response.adjusted_difficulty,
-                "estimated_hash_rate": difficulty_response.estimated_hash_rate,
-                "timestamp": difficulty_response.timestamp,
-                "pow_algo": difficulty_response.pow_algo,
-                "sha3x_estimated_hash_rate": difficulty_response.sha3x_estimated_hash_rate,
-                "monero_randomx_estimated_hash_rate": difficulty_response.monero_randomx_estimated_hash_rate,
-                "tari_randomx_estimated_hash_rate": difficulty_response.tari_randomx_estimated_hash_rate,
-            }));
-        }
-
-        Ok(json!({
-            "difficulties": difficulties,
-            "count": difficulties.len(),
-            "query": {
-                "from_tip": from_tip,
-                "start_height": start_height,
-                "end_height": end_height,
-            }
-        }))
+        node_rpc::get_network_difficulty(self.grpc_client.clone(), &params).await
     }
 }
 
 /// Tool for getting tokens in circulation
 #[derive(Clone)]
 pub struct GetTokensInCirculationTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetTokensInCirculationTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -592,61 +352,18 @@ impl McpTool for GetTokensInCirculationTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let heights: Vec<u64> = params
-            .get("heights")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| McpError::invalid_request("heights array is required".to_string()))?
-            .iter()
-            .filter_map(|v| v.as_u64())
-            .collect();
-
-        if heights.is_empty() {
-            return Err(McpError::invalid_request("At least one height is required".to_string()));
-        }
-
-        let request = Request::new(GetBlocksRequest {
-            heights: heights.clone(),
-        });
-
-        let mut response_stream = self
-            .grpc_client
-            .clone()
-            .get_tokens_in_circulation(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get tokens in circulation: {e}")))?
-            .into_inner();
-
-        let mut circulation_data = Vec::new();
-        while let Some(value_response) = response_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read circulation stream: {e}")))?
-        {
-            circulation_data.push(json!({
-                "height": value_response.height,
-                "mined_rewards": value_response.mined_rewards,
-                "spendable_rewards": value_response.spendable_rewards,
-                "spendable_pre_mine": value_response.spendable_pre_mine,
-                "total_spendable": value_response.total_spendable,
-            }));
-        }
-
-        Ok(json!({
-            "circulation_data": circulation_data,
-            "count": circulation_data.len(),
-            "requested_heights": heights,
-        }))
+        node_rpc::get_tokens_in_circulation(self.grpc_client.clone(), &params).await
     }
 }
 
 /// Tool for getting network state
 #[derive(Clone)]
 pub struct GetNetworkStateTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    grpc_client: BaseNodeGrpcClient,
 }
 
 impl GetNetworkStateTool {
-    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient) -> Self {
         Self { grpc_client }
     }
 }
@@ -676,13 +393,7 @@ impl McpTool for GetNetworkStateTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(GetNetworkStateRequest {});
 
-        let response = self
-            .grpc_client
-            .clone()
-            .get_network_state(request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network state: {e}")))?
-            .into_inner();
+        let response = self.grpc_client.clone().get_network_state(request).await?.into_inner();
 
         let metadata = response.metadata.as_ref();
 

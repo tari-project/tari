@@ -51,13 +51,19 @@ use crate::{
             SignedOneSidedDepositMultisigTransactionResult,
             SignedOneSidedTransactionResult,
             SignedOneSidedWithdrawMultisigTransactionResult,
+            SigningReceipt,
             borsh_canonical_multisig,
             borsh_canonical_one_sided,
             get_latest_version,
             has_payload_auth_fields,
         },
-        one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
-        payload_summary::{LOG_TARGET, format_unix_time},
+        one_sided_signer::{
+            build_and_sign_transaction,
+            sign_multisig_transaction,
+            sign_multisig_withdraw_transaction,
+            validate_multisig_threshold,
+        },
+        payload_summary::{LOG_TARGET, PayloadKind, format_unix_time},
     },
     transaction_components::{MemoField, OutputFeatures, TransactionError, WalletOutput},
 };
@@ -356,6 +362,7 @@ pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKey
     recipient: TariAddress,
     payload_lifetime: Option<Duration>,
 ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
+    validate_multisig_threshold(party_number, public_keys.len())?;
     // The offline signer derives the recipient output from the view key; refuse here, before the operator approves.
     if recipient.public_view_key().is_none() {
         return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());
@@ -487,13 +494,27 @@ fn payload_log_context<P: OfflinePayload>(request: &P, policy: &PayloadKeyPolicy
 
 /// Records whether an offline payload was signed, after the integrity and key-id checks have run.
 fn log_signing_outcome<T>(
-    tx_id: TxId,
+    kind: PayloadKind,
+    receipt: &SigningReceipt,
     context: &str,
     result: Result<T, TransactionBuilderError>,
 ) -> Result<T, TransactionBuilderError> {
+    let SigningReceipt {
+        tx_id,
+        payload_hash,
+        confirmation,
+        ..
+    } = receipt;
     match &result {
-        Ok(_) => info!(target: LOG_TARGET, "Offline payload {tx_id} ({context}) signed"),
-        Err(e) => warn!(target: LOG_TARGET, "Offline payload {tx_id} ({context}) not signed: {e}"),
+        Ok(_) => info!(
+            target: LOG_TARGET,
+            "Offline payload {tx_id} ({kind}, {context}) signed, payload hash {payload_hash}, confirmation {confirmation:?}"
+        ),
+        // The error can quote amounts or an address, and the caller reports it in full
+        Err(_) => warn!(
+            target: LOG_TARGET,
+            "Offline payload {tx_id} ({kind}, {context}) not signed, payload hash {payload_hash}, confirmation {confirmation:?}"
+        ),
     }
     result
 }
@@ -505,13 +526,21 @@ pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
     confirmed: ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>,
     policy: &PayloadKeyPolicy,
 ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
+    let receipt = confirmed.receipt();
     let request = confirmed.into_payload();
-    let tx_id = request.tx_id;
     let context = payload_log_context(&request, policy);
     log_signing_outcome(
-        tx_id,
+        PayloadKind::OneSided,
+        &receipt,
         &context,
-        verify_and_sign_one_sided(key_manager, consensus_constants, network, request, policy),
+        verify_and_sign_one_sided(
+            key_manager,
+            consensus_constants,
+            network,
+            request,
+            policy,
+            receipt.clone(),
+        ),
     )
 }
 
@@ -521,6 +550,7 @@ fn verify_and_sign_one_sided<KM: TransactionKeyManagerInterface>(
     network: Network,
     request: PrepareOneSidedTransactionForSigningResult,
     policy: &PayloadKeyPolicy,
+    receipt: SigningReceipt,
 ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
     // Checked again here, as time passes at the prompt
     verify_payload(key_manager, policy, &request, unix_now())?;
@@ -532,6 +562,7 @@ fn verify_and_sign_one_sided<KM: TransactionKeyManagerInterface>(
         version: request.version.clone(),
         request,
         signed_transaction,
+        receipt: Some(receipt),
     })
 }
 
@@ -542,13 +573,21 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
     confirmed: ConfirmedPayload<PrepareDepositMultisigTransactionResult>,
     policy: &PayloadKeyPolicy,
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
+    let receipt = confirmed.receipt();
     let request = confirmed.into_payload();
-    let tx_id = request.tx_id;
     let context = payload_log_context(&request, policy);
     log_signing_outcome(
-        tx_id,
+        PayloadKind::MultisigDeposit,
+        &receipt,
         &context,
-        verify_and_sign_deposit_multisig(key_manager, consensus_constants, network, request, policy),
+        verify_and_sign_deposit_multisig(
+            key_manager,
+            consensus_constants,
+            network,
+            request,
+            policy,
+            receipt.clone(),
+        ),
     )
 }
 
@@ -558,6 +597,7 @@ fn verify_and_sign_deposit_multisig<KM: TransactionKeyManagerInterface>(
     network: Network,
     request: PrepareDepositMultisigTransactionResult,
     policy: &PayloadKeyPolicy,
+    receipt: SigningReceipt,
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
     // Checked again here, as time passes at the prompt
     verify_payload(key_manager, policy, &request, unix_now())?;
@@ -569,6 +609,7 @@ fn verify_and_sign_deposit_multisig<KM: TransactionKeyManagerInterface>(
         version: request.version.clone(),
         request,
         signed_transaction,
+        receipt: Some(receipt),
     })
 }
 
@@ -579,13 +620,21 @@ pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterf
     confirmed: ConfirmedPayload<PrepareWithdrawMultisigTransactionResult>,
     policy: &PayloadKeyPolicy,
 ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
+    let receipt = confirmed.receipt();
     let request = confirmed.into_payload();
-    let tx_id = request.tx_id;
     let context = payload_log_context(&request, policy);
     log_signing_outcome(
-        tx_id,
+        PayloadKind::MultisigWithdrawal,
+        &receipt,
         &context,
-        verify_and_sign_withdraw_multisig(key_manager, consensus_constants, network, request, policy),
+        verify_and_sign_withdraw_multisig(
+            key_manager,
+            consensus_constants,
+            network,
+            request,
+            policy,
+            receipt.clone(),
+        ),
     )
 }
 
@@ -595,6 +644,7 @@ fn verify_and_sign_withdraw_multisig<KM: TransactionKeyManagerInterface>(
     network: Network,
     request: PrepareWithdrawMultisigTransactionResult,
     policy: &PayloadKeyPolicy,
+    receipt: SigningReceipt,
 ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
     // Checked again here, as time passes at the prompt
     verify_payload(key_manager, policy, &request, unix_now())?;
@@ -606,6 +656,7 @@ fn verify_and_sign_withdraw_multisig<KM: TransactionKeyManagerInterface>(
         version: request.version.clone(),
         request,
         signed_transaction,
+        receipt: Some(receipt),
     })
 }
 
