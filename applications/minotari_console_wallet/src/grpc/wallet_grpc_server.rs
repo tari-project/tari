@@ -183,7 +183,7 @@ use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
     offline_signing::{
         MAX_PAYLOAD_LIFETIME,
-        models::SignedOneSidedTransactionResult,
+        models::SignedTransactionResult,
         one_sided_signer::validate_multisig_threshold,
     },
     rpc::MAX_ALLOWED_QUERY_SIZE,
@@ -1082,8 +1082,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
-        let request = SignedOneSidedTransactionResult::from_json(&message.request)
-            .map_err(|err| Status::internal(err.to_string()))?;
+        let request = SignedTransactionResult::from_json(&message.request)
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
         let response = match transaction_service
             .broadcast_signed_one_sided_transaction(request)
             .await

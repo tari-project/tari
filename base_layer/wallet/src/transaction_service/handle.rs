@@ -54,6 +54,7 @@ use tari_transaction_components::{
             SignedOneSidedDepositMultisigTransactionResult,
             SignedOneSidedTransactionResult,
             SignedOneSidedWithdrawMultisigTransactionResult,
+            SignedTransactionResult,
         },
     },
     rpc::models::FeePerGramStat,
@@ -189,7 +190,7 @@ pub enum TransactionServiceRequest {
         request: ConfirmedPayload<PrepareWithdrawMultisigTransactionResult>,
     },
     BroadcastSignedOneSidedTransaction {
-        request: SignedOneSidedTransactionResult,
+        request: SignedTransactionResult,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
@@ -1010,7 +1011,7 @@ impl TransactionServiceHandle {
 
     pub async fn broadcast_signed_one_sided_transaction(
         &mut self,
-        request: SignedOneSidedTransactionResult,
+        request: SignedTransactionResult,
     ) -> Result<Vec<TxId>, TransactionServiceError> {
         match self
             .handle

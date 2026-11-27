@@ -504,7 +504,9 @@ service Wallet {
   //
   // The BroadcastSignedOneSidedTransaction RPC takes a fully signed one-sided transaction prepared offline
   // and broadcasts it to the network for inclusion in the blockchain.
-  // The transaction must be a valid JSON string representation of a SignedOneSidedTransactionResult.
+  // The transaction must be a valid JSON string representation of a signed result file as the offline signer wrote
+  // it: a SignedOneSidedTransactionResult (also the form of a signed multisig withdraw) or a
+  // SignedOneSidedDepositMultisigTransactionResult.
   //
   // ### Request Parameters:
   //

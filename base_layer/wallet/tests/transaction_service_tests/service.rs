@@ -26,7 +26,7 @@ use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{Days, Utc};
-use digest::consts::U32;
+use digest::consts::{U32, U64};
 use minotari_wallet::{
     base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
@@ -104,13 +104,15 @@ use tari_core::base_node::{
     proto::wallet_rpc::{TxLocation, TxQueryResponse},
     rpc::BaseNodeWalletRpcServer,
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SK};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, hashing::DomainSeparatedHasher, keys::SecretKey as SK};
+use tari_hashing::OfflineSigningPayloadHashDomain;
 use tari_node_components::blocks::BlockHeader as NodeBlockHeader;
 use tari_p2p::Network;
 use tari_script::{
     CompressedCheckSigSchnorrSignature,
     ExecutionStack,
     Opcode,
+    StackItem,
     TariScript,
     inputs,
     push_pubkey_script,
@@ -136,7 +138,14 @@ use tari_transaction_components::{
         OfflinePayload,
         PayloadSummary,
         PaymentRecipient,
-        models::SignedOneSidedTransactionResult,
+        models::{
+            PayloadIntegritySignature,
+            PrepareOneSidedTransactionForSigningResult,
+            SignedOneSidedTransactionResult,
+            SignedOneSidedWithdrawMultisigTransactionResult,
+            SignedTransactionResult,
+            TransactionResult,
+        },
         one_sided_signer::{multisig_pending_output, withdraw_pending_output},
         prepare_withdraw_multisig_transaction,
         present_payload_summary,
@@ -3436,6 +3445,99 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
     let connection = make_wallet_database_memory_connection();
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
 
+    let signed = sign_a_multisig_withdraw(&mut alice_ts_interface).await;
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
+    );
+}
+
+/// A signed multisig withdraw goes back to the wallet through `BroadcastSignedOneSidedTransaction`, the only
+/// broadcast request there is. The wallet must accept the file as the signer wrote it, and refuse it once a field
+/// was changed.
+#[tokio::test]
+async fn a_signed_multisig_withdraw_is_broadcast_and_a_changed_one_is_refused() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let signed = sign_a_multisig_withdraw(&mut alice_ts_interface).await;
+    assert!(signed.payload_signature.is_some());
+    let json = signed.to_json().unwrap();
+
+    let mut changed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    changed["signed_transaction"]["change_output"]["value"] = 1_000_000.into();
+    let err = alice_ts_interface
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(SignedTransactionResult::from_json(&changed.to_string()).unwrap())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("integrity check failed"), "{err}");
+    assert!(
+        alice_ts_interface
+            .transaction_service_handle
+            .get_completed_transactions(None, None, None, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let tx_ids = alice_ts_interface
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(SignedTransactionResult::from_json(&json).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(tx_ids, vec![signed.signed_transaction.tx_id]);
+    let completed = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 10)
+        .await
+        .unwrap();
+    assert_eq!(completed.iter().map(|tx| tx.tx_id).collect::<Vec<_>>(), vec![
+        signed.signed_transaction.tx_id
+    ]);
+}
+
+/// Sets `request` back to version 6 and signs it again with the wallet's key, as a wallet of that version wrote it.
+fn as_version_6<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    request: &mut PrepareOneSidedTransactionForSigningResult,
+) {
+    request.version = "6.0.0".parse().unwrap();
+    sign_request_again(key_manager, request);
+}
+
+/// Signs `request` again with the wallet's key, after its fields were changed.
+fn sign_request_again<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    request: &mut PrepareOneSidedTransactionForSigningResult,
+) {
+    use blake2::Digest;
+
+    let canonical = request.canonical_bytes().unwrap();
+    let signing_key_id = request.payload_key_id.clone().unwrap_or(TariKeyId::ViewKey);
+    let signing_pub = key_manager.get_public_key_at_key_id(&signing_key_id).unwrap();
+    let nonce = key_manager.get_random_key(None, None).unwrap();
+    let hash = DomainSeparatedHasher::<Blake2b<U64>, OfflineSigningPayloadHashDomain>::new()
+        .chain_update(nonce.pub_key.as_bytes())
+        .chain_update(signing_pub.as_bytes())
+        .chain_update(&canonical)
+        .finalize();
+    let mut challenge = [0u8; 64];
+    challenge.copy_from_slice(hash.as_ref());
+    request.payload_signature = PayloadIntegritySignature {
+        signature: key_manager
+            .sign_with_nonce_and_challenge(&signing_key_id, &nonce.key_id, &challenge)
+            .unwrap(),
+    };
+}
+
+/// Prepares a withdraw from a multisig output of the wallet's own and signs it through the transaction service.
+#[allow(clippy::arithmetic_side_effects)]
+async fn sign_a_multisig_withdraw(
+    alice_ts_interface: &mut TransactionServiceNoCommsInterface,
+) -> SignedOneSidedWithdrawMultisigTransactionResult {
     let key_manager = alice_ts_interface.key_manager_handle.key_manager();
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let consensus_constants = consensus_manager.consensus_constants(0).clone();
@@ -3478,6 +3580,17 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         .sign_metadata_signature(key_manager, &sender_offset.key_id)
         .unwrap()
         .try_build(key_manager)
+        .unwrap();
+
+    // The wallet only broadcasts a withdraw of an output it holds unspent
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(input.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(input.output_hash(), true)])
         .unwrap();
 
     // The commitment mask key id genuinely attached to the UTXO must not be re-derivable from the wallet's view
@@ -3558,16 +3671,12 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         .sign_one_sided_withdraw_multisig_transaction(confirmed(PayloadSummary::from_withdraw_multisig(prepared)))
         .await;
 
-    let signed = result.unwrap_or_else(|e| {
+    result.unwrap_or_else(|e| {
         panic!(
             "expected SignOneSidedWithdrawMultisigTransaction to succeed using the output's own \
              commitment_mask_key_id, got: {e:?}"
         )
-    });
-    assert_eq!(
-        signed.signed_transaction.change_output.map(|o| o.value()),
-        Some(MicroMinotari(1))
-    );
+    })
 }
 
 /// Preparing a payload for the offline signer that would leave no change output has to be refused online too, with
@@ -4381,6 +4490,17 @@ async fn signed_one_sided_payload(
     count: usize,
     amount: MicroMinotari,
 ) -> (Vec<WalletOutput>, TxId, SignedOneSidedTransactionResult) {
+    signed_one_sided_payload_of(ts, count, amount, false).await
+}
+
+/// As `signed_one_sided_payload`. With `version_6` the payload is one a version 6 wallet prepared, so the signer does
+/// not sign its result and only the wallet's own checks stand between a changed file and its records.
+async fn signed_one_sided_payload_of(
+    ts: &mut TransactionServiceNoCommsInterface,
+    count: usize,
+    amount: MicroMinotari,
+    version_6: bool,
+) -> (Vec<WalletOutput>, TxId, SignedOneSidedTransactionResult) {
     let mut inputs = Vec::new();
     for _ in 0..count {
         let uo = make_input(
@@ -4405,7 +4525,7 @@ async fn signed_one_sided_payload(
         Network::LocalNet,
     )
     .unwrap();
-    let prepared = ts
+    let mut prepared = ts
         .transaction_service_handle
         .prepare_one_sided_transaction_for_signing(
             bob_address,
@@ -4419,12 +4539,16 @@ async fn signed_one_sided_payload(
         .await
         .unwrap();
     assert_eq!(prepared.info.inputs.len(), count);
+    if version_6 {
+        as_version_6(ts.key_manager_handle.key_manager(), &mut prepared);
+    }
     let prepared_tx_id = prepared.tx_id;
     let signed = ts
         .transaction_service_handle
         .sign_one_sided_transaction(confirmed(PayloadSummary::from_one_sided(prepared)))
         .await
         .unwrap();
+    assert_eq!(signed.payload_signature.is_none(), version_6);
     (inputs, prepared_tx_id, signed)
 }
 
@@ -4477,7 +4601,7 @@ async fn submitting_a_cancelled_payload_locks_its_input_again() {
 
     alice
         .transaction_service_handle
-        .broadcast_signed_one_sided_transaction(signed.clone())
+        .broadcast_signed_one_sided_transaction(signed.clone().into())
         .await
         .unwrap();
     assert_eq!(
@@ -4488,7 +4612,7 @@ async fn submitting_a_cancelled_payload_locks_its_input_again() {
     assert!(
         alice
             .transaction_service_handle
-            .broadcast_signed_one_sided_transaction(signed)
+            .broadcast_signed_one_sided_transaction(signed.into())
             .await
             .is_err()
     );
@@ -4514,7 +4638,7 @@ async fn submitting_a_payload_whose_input_is_locked_elsewhere_is_refused() {
 
     let result = alice
         .transaction_service_handle
-        .broadcast_signed_one_sided_transaction(signed)
+        .broadcast_signed_one_sided_transaction(signed.into())
         .await;
     assert!(result.is_err());
     let completed = alice
@@ -4541,7 +4665,7 @@ async fn submitting_a_payload_without_recipients_is_refused() {
     assert!(
         alice
             .transaction_service_handle
-            .broadcast_signed_one_sided_transaction(signed)
+            .broadcast_signed_one_sided_transaction(signed.into())
             .await
             .is_err()
     );
@@ -4565,23 +4689,35 @@ async fn submitting_a_payload_that_names_a_recorded_transaction_is_refused() {
     let recorded = sent.signed_transaction.tx_id;
     alice
         .transaction_service_handle
-        .broadcast_signed_one_sided_transaction(sent)
+        .broadcast_signed_one_sided_transaction(sent.into())
         .await
         .unwrap();
-    let (uo, signed) = signed_then_cancelled_one_sided_payload(&mut alice).await;
+    // A version 6 result is not signed, so its tx_id can be changed and only the wallet's records refuse it. The
+    // request's tx_id is covered by the request's signature.
+    let (mut inputs, prepared_tx_id, signed) =
+        signed_one_sided_payload_of(&mut alice, 1, MicroMinotari(100_000), true).await;
+    alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(prepared_tx_id)
+        .await
+        .unwrap();
+    let uo = inputs.remove(0);
 
     let mut naming_signed = signed.clone();
     naming_signed.signed_transaction.tx_id = recorded;
     let mut naming_prepared = signed;
     naming_prepared.request.tx_id = recorded;
-    for payload in [naming_signed, naming_prepared] {
-        assert!(
-            alice
-                .transaction_service_handle
-                .broadcast_signed_one_sided_transaction(payload)
-                .await
-                .is_err()
-        );
+    for (payload, reason) in [
+        (naming_signed, "already been submitted or recorded"),
+        (naming_prepared, "not one this wallet signed"),
+    ] {
+        let err = alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(payload.into())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(reason), "{err}");
         assert_eq!(output_status(&mut alice, &uo).await, (OutputStatus::Unspent, None));
         assert_eq!(
             output_status(&mut alice, &sent_inputs[0]).await,
@@ -4611,7 +4747,7 @@ async fn submitting_a_payload_with_unmatched_sent_outputs_is_refused() {
         assert!(
             alice
                 .transaction_service_handle
-                .broadcast_signed_one_sided_transaction(payload)
+                .broadcast_signed_one_sided_transaction(payload.into())
                 .await
                 .is_err()
         );
@@ -4673,7 +4809,7 @@ async fn submitting_a_payload_with_other_inputs_than_it_locked_is_refused() {
         assert!(
             alice
                 .transaction_service_handle
-                .broadcast_signed_one_sided_transaction(payload)
+                .broadcast_signed_one_sided_transaction(payload.into())
                 .await
                 .is_err()
         );
@@ -4698,9 +4834,9 @@ fn tampered(
 }
 
 /// A signed payload is refused, with nothing locked or recorded, if its change output does not open to its stated
-/// value, is missing, its transaction spends nothing, or it has expired and has to be locked again.
+/// value, is missing while its hash is listed, or its transaction spends nothing.
 #[tokio::test]
-async fn submitting_a_forged_or_expired_payload_is_refused() {
+async fn submitting_a_forged_payload_is_refused() {
     let factories = CryptoFactories::default();
     let connection = make_wallet_database_memory_connection();
     let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
@@ -4722,20 +4858,12 @@ async fn submitting_a_forged_or_expired_payload_is_refused() {
     let no_inputs = tampered(&signed, |json| {
         *json.pointer_mut("/signed_transaction/transaction/body/inputs").unwrap() = serde_json::json!([]);
     });
-    let mut expired = signed;
-    expired.request.expires_at = 1;
 
-    for payload in [
-        forged_change_value,
-        forged_change_hash,
-        missing_change,
-        no_inputs,
-        expired,
-    ] {
+    for payload in [forged_change_value, forged_change_hash, missing_change, no_inputs] {
         assert!(
             alice
                 .transaction_service_handle
-                .broadcast_signed_one_sided_transaction(payload)
+                .broadcast_signed_one_sided_transaction(payload.into())
                 .await
                 .is_err()
         );
@@ -4747,6 +4875,133 @@ async fn submitting_a_forged_or_expired_payload_is_refused() {
         .await
         .unwrap();
     assert!(completed.is_empty());
+}
+
+/// A result that comes back after its request has expired is accepted while the request's inputs are still locked for
+/// it: expiry limits when the signer may sign, and refusing here would leave the inputs locked with nothing to
+/// release them. Once the locks are released (the payload was cancelled), the expired result is refused, as the
+/// inputs would have to be locked again. Nothing is locked or recorded then.
+#[tokio::test]
+async fn an_expired_result_is_accepted_while_its_inputs_are_locked() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    // A version 6 result is not signed, so the request in it can be given a past expiry and signed again
+    let expire = |alice: &TransactionServiceNoCommsInterface, signed: &mut SignedOneSidedTransactionResult| {
+        signed.request.expires_at = 1;
+        sign_request_again(alice.key_manager_handle.key_manager(), &mut signed.request);
+    };
+
+    let (inputs, prepared_tx_id, mut signed) =
+        signed_one_sided_payload_of(&mut alice, 1, MicroMinotari(100_000), true).await;
+    expire(&alice, &mut signed);
+    let new_tx_id = signed.signed_transaction.tx_id;
+    assert_eq!(
+        output_status(&mut alice, &inputs[0]).await,
+        (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+    );
+    alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed.into())
+        .await
+        .unwrap();
+    assert_eq!(
+        output_status(&mut alice, &inputs[0]).await,
+        (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+    );
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert_eq!(completed.iter().map(|tx| tx.tx_id).collect::<Vec<_>>(), vec![new_tx_id]);
+
+    let (inputs, prepared_tx_id, mut signed) =
+        signed_one_sided_payload_of(&mut alice, 1, MicroMinotari(100_000), true).await;
+    expire(&alice, &mut signed);
+    alice
+        .transaction_service_handle
+        .cancel_record_less_transaction(prepared_tx_id)
+        .await
+        .unwrap();
+    let err = alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(signed.into())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("belong to a payload that has expired"), "{err}");
+    assert_eq!(
+        output_status(&mut alice, &inputs[0]).await,
+        (OutputStatus::Unspent, None)
+    );
+    let completed = alice
+        .transaction_service_handle
+        .get_completed_transactions(None, None, None, 0)
+        .await
+        .unwrap();
+    assert_eq!(completed.len(), 1);
+}
+
+/// A result changed on the way back fails `verify_signed_result`, which runs before anything else: the payload's
+/// inputs stay locked for it, nothing is recorded, and the file as the signer wrote it is still accepted afterwards.
+/// For an unsigned (version 6) result the wallet also refuses a change output whose `script_lock_height` or
+/// `input_data`, which its hash does not cover, is not what the signer writes.
+#[tokio::test]
+async fn a_changed_result_neither_locks_nor_releases_its_inputs() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
+    for version_6 in [false, true] {
+        let (inputs, prepared_tx_id, signed) =
+            signed_one_sided_payload_of(&mut alice, 1, MicroMinotari(100_000), version_6).await;
+        let unselectable = tampered(&signed, |json| {
+            *json
+                .pointer_mut("/signed_transaction/change_output/script_lock_height")
+                .unwrap() = serde_json::json!(u64::MAX);
+        });
+        let other_input_data = tampered(&signed, |json| {
+            let input_data = json
+                .pointer_mut("/signed_transaction/change_output/input_data")
+                .unwrap();
+            *input_data = serde_json::to_value(ExecutionStack::new(vec![StackItem::Number(1)])).unwrap();
+        });
+        let reason = if version_6 {
+            "script lock height or input data"
+        } else {
+            "signature is invalid"
+        };
+        for payload in [unselectable, other_input_data] {
+            let err = alice
+                .transaction_service_handle
+                .broadcast_signed_one_sided_transaction(payload.into())
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(reason), "{err}");
+            assert_eq!(
+                output_status(&mut alice, &inputs[0]).await,
+                (OutputStatus::EncumberedToBeSpent, Some(prepared_tx_id))
+            );
+        }
+        let completed = alice
+            .transaction_service_handle
+            .get_completed_transactions(None, None, None, 0)
+            .await
+            .unwrap();
+        assert!(completed.iter().all(|tx| tx.tx_id != signed.signed_transaction.tx_id));
+
+        let new_tx_id = signed.signed_transaction.tx_id;
+        alice
+            .transaction_service_handle
+            .broadcast_signed_one_sided_transaction(signed.into())
+            .await
+            .unwrap();
+        assert_eq!(
+            output_status(&mut alice, &inputs[0]).await,
+            (OutputStatus::EncumberedToBeSpent, Some(new_tx_id))
+        );
+    }
 }
 
 /// A payload whose inputs were locked again but cleared back to `Unspent` before the confirm (the startup clean-up of
@@ -4772,7 +5027,7 @@ async fn submitting_a_payload_whose_relock_was_cleared_succeeds() {
 
     alice
         .transaction_service_handle
-        .broadcast_signed_one_sided_transaction(signed)
+        .broadcast_signed_one_sided_transaction(signed.into())
         .await
         .unwrap();
     assert_eq!(
@@ -4788,17 +5043,19 @@ async fn submitting_a_payload_that_names_another_prepared_payload_is_refused() {
     let factories = CryptoFactories::default();
     let connection = make_wallet_database_memory_connection();
     let mut alice = setup_transaction_service_no_comms(factories, connection, None).await;
-    let (x_inputs, x_tx_id, mut x_signed) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
+    // X's result is not signed (version 6), so only the wallet's records stand in the way of the changed tx_id
+    let (x_inputs, x_tx_id, mut x_signed) =
+        signed_one_sided_payload_of(&mut alice, 1, MicroMinotari(100_000), true).await;
     let (y_inputs, y_tx_id, _) = signed_one_sided_payload(&mut alice, 1, MicroMinotari(100_000)).await;
     x_signed.signed_transaction.tx_id = y_tx_id;
 
-    assert!(
-        alice
-            .transaction_service_handle
-            .broadcast_signed_one_sided_transaction(x_signed)
-            .await
-            .is_err()
-    );
+    let err = alice
+        .transaction_service_handle
+        .broadcast_signed_one_sided_transaction(x_signed.into())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("which already has outputs"), "{err}");
     for (input, tx_id) in [(&x_inputs[0], x_tx_id), (&y_inputs[0], y_tx_id)] {
         assert_eq!(
             output_status(&mut alice, input).await,
@@ -4841,7 +5098,7 @@ async fn a_confirmed_but_unrecorded_payload_can_be_released_and_submitted_again(
 
     alice
         .transaction_service_handle
-        .broadcast_signed_one_sided_transaction(signed)
+        .broadcast_signed_one_sided_transaction(signed.into())
         .await
         .unwrap();
     assert_eq!(
@@ -4861,7 +5118,7 @@ async fn a_record_less_cancel_of_a_recorded_transaction_is_refused() {
     let change = signed.signed_transaction.change_output.clone().unwrap();
     alice
         .transaction_service_handle
-        .broadcast_signed_one_sided_transaction(signed)
+        .broadcast_signed_one_sided_transaction(signed.into())
         .await
         .unwrap();
     let statuses = async |alice: &mut TransactionServiceNoCommsInterface| {
@@ -4913,7 +5170,7 @@ async fn a_refused_payload_releases_its_other_inputs() {
     assert!(
         alice
             .transaction_service_handle
-            .broadcast_signed_one_sided_transaction(signed)
+            .broadcast_signed_one_sided_transaction(signed.into())
             .await
             .is_err()
     );
