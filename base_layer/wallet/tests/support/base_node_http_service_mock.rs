@@ -54,6 +54,7 @@ struct State {
     utxos_by_block: HashMap<u64, UtxosByBlock>,
     blocks: HashMap<u64, tari_node_components::blocks::BlockHeader>,
     tip_info: Option<models::TipInfoResponse>,
+    tip_info_delay: Option<Duration>,
     online: bool,
     http_address: Option<String>,
     last_request_latency: Option<Duration>,
@@ -129,6 +130,10 @@ impl HttpBaseNodeMock {
         let mut state = self.state.write().await;
         state.set_tip_info(tip_info);
         Ok(())
+    }
+
+    pub async fn set_tip_info_delay(&self, delay: Option<Duration>) {
+        self.state.write().await.tip_info_delay = delay;
     }
 
     pub async fn set_online_status(&self, is_online: bool) -> Result<(), Error> {
@@ -293,6 +298,10 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     }
 
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error> {
+        let delay = self.state.read().await.tip_info_delay;
+        if let Some(delay) = delay {
+            tokio::time::sleep(delay).await;
+        }
         let state = self.state.read().await;
         if let Some(tip_info) = &state.tip_info {
             Ok(tip_info.clone())
