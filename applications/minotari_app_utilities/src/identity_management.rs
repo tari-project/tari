@@ -102,16 +102,32 @@ where
     match load_node_identity(&identity_file, transport_type, persist) {
         Ok(mut id) => {
             id.set_peer_features(peer_features);
-            // Filter addresses based on transport type
-            let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
-            for public_address in filtered_addresses {
-                id.add_public_address(public_address.clone());
-                debug!(
+            // Filter and deduplicate addresses based on transport type
+            let mut filtered_addresses = Vec::new();
+            for addr in filter_addresses_for_transport(public_addresses, transport_type) {
+                if !filtered_addresses.contains(&addr) {
+                    filtered_addresses.push(addr);
+                }
+            }
+            let persisted_addresses = id.public_addresses();
+            if transport_type.uses_tor_hidden_service() {
+                for addr in &persisted_addresses {
+                    if addr.iter().any(|p| matches!(p, Protocol::Onion3(_))) && !filtered_addresses.contains(addr) {
+                        filtered_addresses.push(addr.clone());
+                    }
+                }
+            }
+            let dropped: Vec<&Multiaddr> = persisted_addresses
+                .iter()
+                .filter(|addr| !filtered_addresses.contains(addr))
+                .collect();
+            if !dropped.is_empty() {
+                info!(
                     target: LOG_TARGET,
-                    "Added address: {}",
-                    public_address
+                    "Dropping persisted public addresses not present in configured addresses: {dropped:?}"
                 );
             }
+            id.set_public_addresses(filtered_addresses);
             Ok(Arc::new(id))
         },
         Err(IdentityError::InvalidPermissions) => Err(invalid_permissions_error(
@@ -306,8 +322,8 @@ fn load_node_identity<P: AsRef<Path>>(
             .verify(id.public_key(), id.features(), &id.public_addresses())
             .is_ok()
     });
-    // Only these changes are written back, so an unchanged file is never rewritten on the read path.
-    let mut changed = !signature_is_valid;
+    // Only a missing or invalid signature is written back, so an unchanged file is never rewritten on the read path.
+    let changed = !signature_is_valid;
     if !signature_is_valid {
         warn!(
             target: LOG_TARGET,
@@ -316,39 +332,6 @@ fn load_node_identity<P: AsRef<Path>>(
         );
         id.sign();
     }
-
-    let id = if transport_type == TransportType::Tcp {
-        let current_addresses = id.public_addresses();
-        let current_addresses_len = current_addresses.len();
-        debug!(
-            target: LOG_TARGET,
-            "Filtering addresses for TCP transport. Current addresses: {:?}",
-            current_addresses
-        );
-        // For TCP transport remove all onion addresses
-        let filtered_addresses: Vec<Multiaddr> = current_addresses
-            .into_iter()
-            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
-            .collect();
-        debug!(
-            target: LOG_TARGET,
-            "After filtering for TCP transport, {} addresses remain: {:?}",
-            filtered_addresses.len(),
-            filtered_addresses
-        );
-        changed |= filtered_addresses.len() != current_addresses_len;
-        id.set_public_addresses(filtered_addresses);
-        id
-    } else {
-        id
-    };
-
-    debug!(
-        target: LOG_TARGET,
-        "Node ID loaded with public key {} and Node id {}",
-        id.public_key().to_hex(),
-        id.node_id().to_hex()
-    );
     if persist && changed {
         // Never let a save failure reach the caller as a load error, which would back up and replace a good identity.
         save_as_json(&path, &id).map_err(|e| {
@@ -366,6 +349,37 @@ fn load_node_identity<P: AsRef<Path>>(
             }
         })?;
     }
+
+    let id = if transport_type == TransportType::Tcp {
+        let current_addresses = id.public_addresses();
+        debug!(
+            target: LOG_TARGET,
+            "Filtering addresses for TCP transport. Current addresses: {:?}",
+            current_addresses
+        );
+        // For TCP transport remove all onion addresses in memory only
+        let filtered_addresses: Vec<Multiaddr> = current_addresses
+            .into_iter()
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "After filtering for TCP transport, {} addresses remain: {:?}",
+            filtered_addresses.len(),
+            filtered_addresses
+        );
+        id.set_public_addresses(filtered_addresses);
+        id
+    } else {
+        id
+    };
+
+    debug!(
+        target: LOG_TARGET,
+        "Node ID loaded with public key {} and Node id {}",
+        id.public_key().to_hex(),
+        id.node_id().to_hex()
+    );
     Ok(id)
 }
 
@@ -1415,36 +1429,45 @@ mod test {
     }
 
     #[test]
-    fn tcp_load_persists_removal_of_onion_addresses() {
+    fn loading_identity_with_onion_addresses_under_tcp_leaves_file_unchanged() {
         let tcp: Multiaddr = "/ip4/127.0.0.1/tcp/18141".parse().unwrap();
         let onion: Multiaddr = "/onion3/pd6sf3mqkkkfrn4rk5odgcr2j5sn7m523a4tt7pzy5hrdvhafdgn7ydt:18141"
             .parse()
             .unwrap();
-        let write_signed = |path: &Path| {
-            let id = NodeIdentity::random_multiple_addresses(
-                &mut rand::rng(),
-                vec![tcp.clone(), onion.clone()],
-                PeerFeatures::COMMUNICATION_NODE,
-            );
-            save_as_json(path, &id).unwrap();
-        };
         let (_dir, path) = temp_path();
-
-        // Non-TCP transports keep the onion address, so nothing changed and nothing is written.
-        write_signed(&path);
+        let id = NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            vec![tcp.clone(), onion.clone()],
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        save_as_json(&path, &id).unwrap();
+        let original = fs::read(&path).unwrap();
         let before = mtime_and_inode(&path);
-        load_node_identity(&path, TransportType::Tor, true).unwrap();
+
+        let loaded_tcp = load_node_identity(&path, TransportType::Tcp, true).unwrap();
+        assert_eq!(loaded_tcp.public_addresses(), vec![tcp.clone()]);
+        assert_eq!(fs::read(&path).unwrap(), original);
         assert_eq!(mtime_and_inode(&path), before);
 
-        load_node_identity(&path, TransportType::Tcp, true).unwrap();
-        assert_ne!(
-            mtime_and_inode(&path).1,
-            before.1,
-            "the filtered addresses must be persisted"
+        // A read-only (0400) signed identity with an onion address also loads under TCP without writing.
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let loaded_ro = load_node_identity(&path, TransportType::Tcp, true).unwrap();
+        assert_eq!(loaded_ro.public_addresses(), vec![tcp.clone()]);
+        assert_eq!(mtime_and_inode(&path), before);
+
+        // A writable (0600) unsigned identity repairs its signature without stripping onion addresses.
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let unsigned = NodeIdentity::with_signature_unchecked(
+            tari_comms::types::CommsSecretKey::random(&mut rand::rng()),
+            vec![tcp.clone(), onion.clone()],
+            PeerFeatures::COMMUNICATION_NODE,
+            None,
         );
-        assert!(!tmp_path(&path).exists());
+        save_as_json(&path, &unsigned).unwrap();
+        let repaired_tcp = load_node_identity(&path, TransportType::Tcp, true).unwrap();
+        assert_eq!(repaired_tcp.public_addresses(), vec![tcp.clone()]);
         let reloaded = load_node_identity(&path, TransportType::Tor, false).unwrap();
-        assert_eq!(reloaded.public_addresses(), vec![tcp.clone()]);
+        assert_eq!(reloaded.public_addresses(), vec![tcp.clone(), onion.clone()]);
         reloaded
             .identity_signature_read()
             .as_ref()
@@ -1452,13 +1475,79 @@ mod test {
             .verify(reloaded.public_key(), reloaded.features(), &reloaded.public_addresses())
             .unwrap();
 
-        let _unused = fs::remove_file(&path);
-        write_signed(&path);
+        // An unsigned 0400 identity loaded under TCP still fails with ReadOnly.
+        save_as_json(&path, &unsigned).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
-        let before = mtime_and_inode(&path);
+        let before_unsigned = mtime_and_inode(&path);
         let err = load_node_identity(&path, TransportType::Tcp, true).unwrap_err();
         assert!(matches!(err, IdentityError::ReadOnly(_)), "got {err:?}");
-        assert_eq!(mtime_and_inode(&path), before);
+        assert_eq!(mtime_and_inode(&path), before_unsigned);
+    }
+
+    #[test]
+    fn setup_node_identity_replaces_persisted_addresses_with_configured_set() {
+        let (_dir, path) = temp_path();
+        let addr_a: Multiaddr = "/ip4/127.0.0.1/tcp/18141".parse().unwrap();
+        let addr_b: Multiaddr = "/ip4/127.0.0.1/tcp/18142".parse().unwrap();
+        let onion: Multiaddr = "/onion3/pd6sf3mqkkkfrn4rk5odgcr2j5sn7m523a4tt7pzy5hrdvhafdgn7ydt:18141"
+            .parse()
+            .unwrap();
+        let created = setup_node_identity(
+            &path,
+            vec![addr_a, onion.clone()],
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tor,
+            true,
+        )
+        .unwrap();
+
+        // Under Tor, persisted Onion3 addresses are preserved alongside configured addresses.
+        let reloaded_tor = setup_node_identity(
+            &path,
+            vec![addr_b.clone()],
+            false,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tor,
+            true,
+        )
+        .unwrap();
+        assert_eq!(reloaded_tor.node_id(), created.node_id());
+        assert_eq!(reloaded_tor.public_addresses(), vec![addr_b.clone(), onion.clone()]);
+        save_as_json(&path, &reloaded_tor).unwrap();
+        let expected_sig = reloaded_tor.identity_signature_read().clone();
+
+        // A read-only (0400) signed identity holding [tcp, onion] with configured [tcp] (including duplicates)
+        // loads under TcpTor and TorTcp with the address list and signature unchanged.
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let before_ro = mtime_and_inode(&path);
+        for transport in [TransportType::TcpTor, TransportType::TorTcp] {
+            let loaded = setup_node_identity(
+                &path,
+                vec![addr_b.clone(), addr_b.clone()],
+                false,
+                PeerFeatures::COMMUNICATION_NODE,
+                transport,
+                true,
+            )
+            .unwrap();
+            assert_eq!(loaded.public_addresses(), vec![addr_b.clone(), onion.clone()]);
+            assert_eq!(*loaded.identity_signature_read(), expected_sig);
+            assert_eq!(mtime_and_inode(&path), before_ro);
+        }
+
+        // Under TCP, only the configured TCP addresses remain in memory.
+        let reloaded_tcp = setup_node_identity(
+            &path,
+            vec![addr_b.clone()],
+            false,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+            true,
+        )
+        .unwrap();
+        assert_eq!(reloaded_tcp.node_id(), created.node_id());
+        assert_eq!(reloaded_tcp.public_addresses(), vec![addr_b]);
     }
 
     #[test]
