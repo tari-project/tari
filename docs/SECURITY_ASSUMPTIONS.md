@@ -120,15 +120,25 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 
 - **Assumption:** The base node and wallet gRPC interfaces are administrative interfaces. Whoever can connect with
   valid credentials, to the methods the operator enabled, is acting for the operator. The operator is responsible
-  for the bind address, authentication, TLS and the list of enabled methods.
+  for the bind address, authentication, TLS and the list of enabled methods. When self-signed TLS certificates are
+  generated with `create-tls-certs`, the 10-year CA signing key (`node_ca.key` or `wallet_ca.key`) is retained in the
+  application's config directory (mode `0600` on Unix) so leaf certificates (`server.pem` / `server.key`) can be
+  renewed via `create-tls-certs --renew-leaf` without re-distributing the CA certificate to clients. The operator is
+  responsible for the confidentiality of the config directory.
 - **What that means:** An authenticated wallet gRPC client can spend funds, and can release the inputs locked by a
   prepared offline-signing payload with `CancelTransaction`. An authenticated base node gRPC client
-  can call every enabled method, including expensive ones.
+  can call every enabled method, including expensive ones. Because the local CA certificate has no name constraints,
+  anyone who reads `node_ca.key` or `wallet_ca.key` from the config directory can mint leaf certificates accepted by
+  any client that pins `node_ca.pem` or `wallet_ca.pem`. Running `create-tls-certs --renew-leaf` only rotates the leaf
+  certificate and key (`server.pem` / `server.key`) under the same CA; if the config directory or CA key is leaked, the
+  operator must delete the CA and leaf files, run `create-tls-certs` to generate a new CA, and re-distribute the new
+  CA certificate to every client.
 - **Not covered:** Reaching a method without the configured credentials, reaching a method the operator disabled,
   and anything an unauthenticated or remote peer-to-peer party can cause through these interfaces. Read-only methods
-  the operator exposes publicly must stay bounded in cost.
+  the operator exposes publicly must stay bounded in cost. Private key files written by `create-tls-certs` must not be
+  created world- or group-readable on Unix.
 - **Where:** `applications/minotari_app_grpc`, `applications/minotari_node`, `applications/minotari_console_wallet`.
-- **Recorded:** 2026-11-17.
+- **Recorded:** 2026-11-17; updated 2026-11-27 (#8417).
 
 ### A-GRPC-02: The miner, merge-mining proxy and node MCP server trust the base node they connect to
 
