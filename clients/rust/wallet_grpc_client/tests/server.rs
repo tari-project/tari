@@ -27,7 +27,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use minotari_app_grpc::tls::certs::generate_self_signed_certs;
+use minotari_app_grpc::tls::certs::{default_sans, generate_self_signed_certs};
 use minotari_wallet_grpc_client::{
     Certificate,
     ClientTlsConfig,
@@ -109,8 +109,8 @@ async fn spawn_server(identity: Option<Identity>) -> SocketAddr {
 }
 
 async fn spawn_tls_server() -> (SocketAddr, String) {
-    let (ca_pem, server_cert_pem, server_key_pem) = generate_self_signed_certs().unwrap();
-    let addr = spawn_server(Some(Identity::from_pem(server_cert_pem, server_key_pem))).await;
+    let (ca_pem, _, server_cert_pem, server_key_pem) = generate_self_signed_certs(default_sans()).unwrap();
+    let addr = spawn_server(Some(Identity::from_pem(server_cert_pem, server_key_pem.as_bytes()))).await;
     (addr, ca_pem)
 }
 
@@ -134,7 +134,7 @@ async fn tls_round_trip_with_pinned_ca() {
 #[tokio::test]
 async fn tls_with_unrelated_ca_fails() {
     let (addr, _) = spawn_tls_server().await;
-    let (unrelated_ca_pem, _, _) = generate_self_signed_certs().unwrap();
+    let (unrelated_ca_pem, _, _, _) = generate_self_signed_certs(default_sans()).unwrap();
     let err = WalletGrpcClient::builder(&format!("https://127.0.0.1:{}", addr.port()))
         .tls(tls_config(&unrelated_ca_pem))
         .connect()

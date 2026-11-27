@@ -197,7 +197,7 @@ pub enum CliCommands {
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RegisterValidatorNode(RegisterValidatorNodeArgs),
-    CreateTlsCerts,
+    CreateTlsCerts(CreateTlsCertsArgs),
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
     ImportPaperWallet(ImportPaperWalletArgs),
@@ -792,4 +792,15 @@ pub struct ValidateOutputsArgs {
     /// Hex-encoded commitments of outputs to validate
     #[clap(long, num_args = 1.., required = true)]
     pub commitments: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone, Default)]
+pub struct CreateTlsCertsArgs {
+    /// Renew the leaf certificate while retaining the existing CA. Note: --renew-leaf keeps the same CA, so it handles
+    /// certificate expiry but not a leaked config directory (which requires full regeneration).
+    #[clap(long)]
+    pub renew_leaf: bool,
+    /// DNS names or IP addresses for the leaf certificate (replaces existing SANs when used with --renew-leaf)
+    #[clap(long = "san")]
+    pub sans: Vec<String>,
 }

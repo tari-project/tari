@@ -687,7 +687,7 @@ mod test {
                 CliCommands::FinaliseShaAtomicSwap(_) => {},
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
                 CliCommands::RegisterValidatorNode(_) => {},
-                CliCommands::CreateTlsCerts => {},
+                CliCommands::CreateTlsCerts(_) => {},
                 CliCommands::PreMineSpendBackupUtxo(_) => {},
                 CliCommands::Sync(_) => {},
                 CliCommands::ExportViewKeyAndSpendKey(_) => {},
