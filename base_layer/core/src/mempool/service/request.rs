@@ -24,6 +24,7 @@ use core::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedSignature, HashOutput};
+use tari_comms::peer_manager::NodeId;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
@@ -37,6 +38,7 @@ pub enum MempoolRequest {
     GetState,
     GetTxStateByExcessSig(CompressedSignature),
     SubmitTransaction(Transaction),
+    SubmitTransactionFromPeer { tx: Transaction, source_peer: NodeId },
     GetFeePerGramStats { count: usize, tip_height: u64 },
     FilterOutputsInMempool(Vec<HashOutput>),
 }
@@ -55,6 +57,13 @@ impl Display for MempoolRequest {
                     .map(|sig| sig.get_signature().to_hex())
                     .unwrap_or_else(|| "No kernels!".to_string());
                 write!(f, "SubmitTransaction ({sig_hex})")
+            },
+            MempoolRequest::SubmitTransactionFromPeer { tx, source_peer } => {
+                let sig_hex = tx
+                    .first_kernel_excess_sig()
+                    .map(|sig| sig.get_signature().to_hex())
+                    .unwrap_or_else(|| "No kernels!".to_string());
+                write!(f, "SubmitTransactionFromPeer ({sig_hex}, peer: {source_peer})")
             },
             MempoolRequest::GetFeePerGramStats { count, tip_height } => {
                 write!(f, "GetFeePerGramStats(count: {}, tip_height: {})", *count, *tip_height)

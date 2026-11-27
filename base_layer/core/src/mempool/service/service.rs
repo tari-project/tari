@@ -290,17 +290,28 @@ async fn handle_request(
     mut reply: MempoolReply,
     submission_permits: Arc<Semaphore>,
 ) -> Result<(), Result<MempoolResponse, MempoolServiceError>> {
-    let MempoolRequest::SubmitTransaction(tx) = request else {
-        let result = tokio::select! {
-            biased;
-            () = reply.closed() => {
-                debug!(target: LOG_TARGET, "Dropping an abandoned mempool request");
-                return Ok(());
-            },
-            result = inbound_handlers.handle_request(request) => result,
-        };
-        return reply.send(result);
+    let (tx, source_peer) = match request {
+        MempoolRequest::SubmitTransaction(tx) => (tx, None),
+        MempoolRequest::SubmitTransactionFromPeer { tx, source_peer } => (tx, Some(source_peer)),
+        other => {
+            let result = tokio::select! {
+                biased;
+                () = reply.closed() => {
+                    debug!(target: LOG_TARGET, "Dropping an abandoned mempool request");
+                    return Ok(());
+                },
+                result = inbound_handlers.handle_request(other) => result,
+            };
+            return reply.send(result);
+        },
     };
+
+    if tx.body.kernels().is_empty() {
+        if reply.is_closed() {
+            return Ok(());
+        }
+        return reply.send(Err(MempoolServiceError::TransactionNoKernels));
+    }
 
     let _submission_permit = tokio::select! {
         biased;
@@ -329,7 +340,9 @@ async fn handle_request(
         },
     };
     // Not cancellable from here on
-    let result = inbound_handlers.submit_transaction_request(tx, validation_permit).await;
+    let result = inbound_handlers
+        .submit_transaction_request(tx, source_peer, validation_permit)
+        .await;
     reply.send(result)
 }
 
@@ -523,7 +536,7 @@ mod test {
         task: task::JoinHandle<Result<(), MempoolServiceError>>,
         _block_events: tokio::sync::broadcast::Sender<Arc<BlockEvent>>,
         _outbound: mpsc::UnboundedSender<(Arc<Transaction>, Vec<NodeId>)>,
-        _propagated: mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>,
+        propagated: mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>,
     }
 
     fn start_service() -> RunningService {
@@ -560,7 +573,7 @@ mod test {
             task: tokio::spawn(service.start(streams)),
             _block_events: block_event_sender,
             _outbound: outbound_tx_sender,
-            _propagated: propagated,
+            propagated,
         }
     }
 
@@ -727,6 +740,71 @@ mod test {
         })
         .await
         .expect("the abandoned submission was not completed");
+        service.task.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn kernel_less_submission_fails_without_taking_permits() {
+        let mut service = start_service();
+        let _held_submissions = service
+            .handle_submission_permits
+            .clone()
+            .acquire_many_owned(u32::try_from(MAX_CONCURRENT_HANDLE_SUBMISSIONS).unwrap())
+            .await
+            .unwrap();
+        let mut held_validations = Vec::new();
+        while let Ok(Ok(permit)) = tokio::time::timeout(
+            std::time::Duration::from_millis(20),
+            service.mempool.acquire_validation_permit(),
+        )
+        .await
+        {
+            held_validations.push(permit);
+        }
+
+        let empty_tx = Transaction::new(vec![], vec![], vec![], Default::default(), Default::default());
+        let err = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            service.handle.submit_transaction(empty_tx.clone()),
+        )
+        .await
+        .expect("kernel-less submission waited for saturated permits")
+        .unwrap_err();
+        assert!(matches!(err, MempoolServiceError::TransactionNoKernels), "{err:?}");
+
+        let err = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            service.handle.submit_transaction_from_peer(empty_tx, NodeId::default()),
+        )
+        .await
+        .expect("kernel-less peer submission waited for saturated permits")
+        .unwrap_err();
+        assert!(matches!(err, MempoolServiceError::TransactionNoKernels), "{err:?}");
+
+        drop(held_validations);
+        service.task.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn peer_handle_submission_excludes_submitting_peer_from_propagation() {
+        let mut service = start_service();
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = new_tx(&key_manager);
+        let peer = create_peer_message(TariMessageType::NewTransaction, vec![])
+            .source_peer
+            .node_id
+            .clone();
+
+        let response = service
+            .handle
+            .submit_transaction_from_peer(tx.clone(), peer.clone())
+            .await
+            .unwrap();
+        assert_eq!(response, crate::mempool::TxStorageResponse::UnconfirmedPool);
+
+        let (propagated_tx, excluded) = service.propagated.recv().await.unwrap();
+        assert_eq!(*propagated_tx, tx);
+        assert_eq!(excluded, vec![peer]);
         service.task.abort();
     }
 }

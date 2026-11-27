@@ -174,9 +174,16 @@ mod get_tx_state_by_excess_sig {
 }
 
 mod submit_transaction {
-    use tari_comms::protocol::rpc::RpcStatusCode;
+    use std::convert::TryFrom;
+
+    use tari_comms::{
+        peer_manager::PeerFeatures,
+        protocol::rpc::RpcStatusCode,
+        test_utils::node_identity::build_node_identity,
+    };
     use tari_crypto::ristretto::RistrettoSecretKey;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -185,11 +192,36 @@ mod submit_transaction {
         proto::types::{AggregateBody, PrivateKey, Transaction},
     };
 
+    fn valid_proto_tx() -> Transaction {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .expect("Failed to create test tx")
+            .0;
+        Transaction::try_from(tx).unwrap()
+    }
+
     #[tokio::test]
-    async fn it_submits_transaction() {
+    async fn it_submits_transaction_and_forwards_peer_node_id() {
         let (service, mempool, req_mock) = setup();
         let expected = TxStorageResponse::UnconfirmedPool;
         mempool.set_submit_transaction_response(expected.clone()).await;
+        let peer_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let peer_node_id = peer_identity.node_id().clone();
+        let txn = valid_proto_tx();
+
+        let resp = service
+            .submit_transaction(req_mock.request_with_context(peer_node_id.clone(), txn))
+            .await
+            .unwrap();
+        let resp = resp.into_message();
+        assert_eq!(resp, expected.into());
+        assert_eq!(mempool.get_call_count(), 1);
+        assert_eq!(mempool.submitted_transaction_peers().await, vec![Some(peer_node_id)]);
+    }
+
+    #[tokio::test]
+    async fn it_rejects_transaction_with_no_kernels_as_bad_request() {
+        let (service, mempool, req_mock) = setup();
         let txn = Transaction {
             offset: Some(PrivateKey {
                 data: RistrettoSecretKey::default().to_vec(),
@@ -203,12 +235,12 @@ mod submit_transaction {
                 data: RistrettoSecretKey::default().to_vec(),
             }),
         };
-        let resp = service
+        let status = service
             .submit_transaction(req_mock.request_with_context(Default::default(), txn))
             .await
-            .unwrap();
-        let resp = resp.into_message();
-        assert_eq!(resp, expected.into());
+            .unwrap_err();
+
+        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
         assert_eq!(mempool.get_call_count(), 1);
     }
 

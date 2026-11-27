@@ -27,7 +27,7 @@ use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
-    mempool::{rpc::MempoolService, service::MempoolHandle},
+    mempool::{MempoolServiceError, rpc::MempoolService, service::MempoolHandle},
     proto,
 };
 const LOG_TARGET: &str = "c::mempool::rpc";
@@ -50,6 +50,15 @@ impl MempoolRpcService {
 fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
     error!(target: LOG_TARGET, "Internal error: {err}");
     RpcStatus::general_default()
+}
+
+fn to_submit_error(err: MempoolServiceError) -> RpcStatus {
+    match err {
+        MempoolServiceError::TransactionNoKernels => {
+            RpcStatus::bad_request("Malformed transaction: Transaction has no kernels")
+        },
+        other => to_internal_error(other),
+    }
 }
 
 #[tari_comms::async_trait]
@@ -80,20 +89,23 @@ impl MempoolService for MempoolRpcService {
         request: Request<proto::types::Transaction>,
     ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
         let (context, message) = request.into_parts();
+        let peer_node_id = context.peer_node_id().clone();
         let tx = match Transaction::try_from(message) {
             Ok(tx) => tx,
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Received invalid message from peer `{}`: {}",
-                    context.peer_node_id(),
-                    err
+                    "Received invalid message from peer `{peer_node_id}`: {err}"
                 );
                 // These error messages are safe to send back to the requester
                 return Err(RpcStatus::bad_request(&format!("Malformed transaction: {err}")));
             },
         };
-        let tx_storage = self.mempool().submit_transaction(tx).await.map_err(to_internal_error)?;
+        let tx_storage = self
+            .mempool()
+            .submit_transaction_from_peer(tx, peer_node_id)
+            .await
+            .map_err(to_submit_error)?;
         Ok(Response::new(tx_storage.into()))
     }
 }

@@ -131,6 +131,16 @@ pub(crate) fn extract_transaction(msg: &PeerMessage) -> Result<DomainMessage<Tra
                 },
                 Ok(b) => b,
             };
+            if tx.body.kernels().is_empty() {
+                warn!(
+                    target: LOG_TARGET,
+                    "Inbound transaction message from {} has no kernels.",
+                    msg.source_peer.public_key
+                );
+                return Err(ExtractTransactionError::IllFormed(
+                    "Transaction has no kernels".to_string(),
+                ));
+            }
             Ok(DomainMessage {
                 source_peer: msg.source_peer.clone(),
                 dht_header: msg.dht_header.clone(),
