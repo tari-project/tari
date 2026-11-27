@@ -197,19 +197,28 @@ fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Res
 }
 
 /// This function tests that the block timestamp is less than the FTL
+///
+/// The limit is measured from the local clock, so the verdict has two forms. A timestamp that is beyond the limit by
+/// no more than a slow local clock can explain (`ConsensusConstants::ftl_clock_skew_limit`) is
+/// `InvalidTimestampFutureTimeLimit`. One further ahead is `InvalidTimestampFarBeyondFutureTimeLimit`. Both reject the
+/// header, and neither is a permanent verdict on it; they differ in what is held against the peer that sent it.
 pub fn check_timestamp_ftl(
     block_header: &BlockHeader,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<(), ValidationError> {
-    if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
+    let constants = consensus_manager.consensus_constants(block_header.height);
+    if block_header.timestamp > constants.ftl() {
         warn!(
             target: LOG_TARGET,
             "Invalid Future Time Limit on block:{}",
             block_header.hash().to_hex()
         );
-        return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
-        ));
+        let verdict = if block_header.timestamp > constants.ftl_clock_skew_limit() {
+            BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit
+        } else {
+            BlockHeaderValidationError::InvalidTimestampFutureTimeLimit
+        };
+        return Err(ValidationError::BlockHeaderError(verdict));
     }
     Ok(())
 }
@@ -379,6 +388,49 @@ mod test {
 
     use super::*;
     use crate::proof_of_work::{create_tari_mining_blob, cuckaroo_pow::cuckaroo_pow_data_size};
+
+    /// The future time limit verdict has two forms: within the margin that a slow local clock can explain (one more
+    /// future time limit offset), and beyond it. A timestamp at the limit passes.
+    #[test]
+    fn the_future_time_limit_verdict_is_split_at_the_clock_skew_margin() {
+        let rules = crate::test_helpers::create_consensus_rules();
+        let constants = rules.consensus_constants(1);
+        let ftl = constants.ftl().as_u64();
+        let offset = constants.ftl_clock_skew_limit().as_u64() - ftl;
+        assert!(offset > 120, "the test needs room either side of the margin");
+
+        let verdict = |timestamp: u64| {
+            let mut header = BlockHeader::new(1);
+            header.height = 1;
+            header.timestamp = timestamp.into();
+            check_timestamp_ftl(&header, &rules)
+        };
+
+        // The clock runs on while the test does, so each timestamp is a minute clear of the boundary it is next to
+        assert!(verdict(ftl - 60).is_ok());
+        for within in [ftl + 60, ftl + offset - 60] {
+            assert!(
+                matches!(
+                    verdict(within),
+                    Err(ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::InvalidTimestampFutureTimeLimit
+                    ))
+                ),
+                "{within}"
+            );
+        }
+        for beyond in [ftl + offset + 60, u64::MAX] {
+            assert!(
+                matches!(
+                    verdict(beyond),
+                    Err(ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit
+                    ))
+                ),
+                "{beyond}"
+            );
+        }
+    }
 
     /// `PowData`'s bound is applied when a header is decoded, before any of the per-algorithm rules above run. If it
     /// were ever smaller than what one of those rules accepts, headers that are valid by the rules could not even be

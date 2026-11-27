@@ -662,6 +662,14 @@ impl ConsensusConstants {
             .into()
     }
 
+    /// The latest timestamp that a slow local clock can explain: the FTL plus one more FTL offset, so the local time
+    /// plus twice the offset. A block that an honest node with a correct clock accepts is at most one offset ahead of
+    /// that node, so it is within this limit on any local clock that is up to one offset slow. A timestamp beyond it
+    /// is rejected like any other beyond the FTL, and is not put down to the local clock.
+    pub fn ftl_clock_skew_limit(&self) -> EpochTime {
+        self.ftl().as_u64().saturating_add(self.future_time_limit).into()
+    }
+
     /// This returns the FTL(Future Time Limit) for blocks
     /// Any block with a timestamp greater than this is rejected.
     /// This function returns the FTL as a UTC datetime

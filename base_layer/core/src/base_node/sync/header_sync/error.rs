@@ -28,7 +28,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
-use tari_node_components::blocks::{BlockError, ChainBlock};
+use tari_node_components::blocks::{BlockError, BlockHeaderValidationError, ChainBlock};
 use tari_transaction_components::{BanPeriod, BanReason};
 
 use crate::{chain_storage::ChainStorageError, validation::ValidationError};
@@ -185,6 +185,18 @@ impl BlockHeaderSyncError {
                 ban_duration: BanPeriod::Long,
             }),
 
+            // The future time limit is measured from our own clock, so the header may be valid and our clock slow. The
+            // peer is still set aside, so that one that does send headers from the future is not asked again straight
+            // away, but only for the short period. (A relayed block with this verdict is not a ban at all: it has
+            // passed the minimum difficulty check before its header is validated. Here the limit is checked before
+            // the proof of work, so the header costs nothing to make.) A timestamp further ahead than a slow clock
+            // can explain, `InvalidTimestampFarBeyondFutureTimeLimit`, is not matched and keeps the long ban.
+            BlockHeaderSyncError::ValidationFailed(
+                err @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit),
+            ) => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Short,
+            }),
             BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err),
         }
     }
@@ -253,5 +265,26 @@ mod connect_error_test {
                 .get_ban_reason()
                 .is_some()
         );
+    }
+
+    /// A header beyond the future time limit on our clock sets the sync peer aside for the short period only: the same
+    /// header is within the limit on a clock that is ahead of ours. One further ahead than a slow clock can explain,
+    /// and any other invalid header, is still a long ban.
+    #[test]
+    fn a_header_beyond_the_future_time_limit_is_a_short_ban() {
+        let err = BlockHeaderSyncError::from(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
+        ));
+        assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
+
+        let err = BlockHeaderSyncError::from(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit,
+        ));
+        assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
+
+        let err = BlockHeaderSyncError::from(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidNonce,
+        ));
+        assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
     }
 }

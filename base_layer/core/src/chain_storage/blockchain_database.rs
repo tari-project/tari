@@ -4963,7 +4963,9 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
 /// out of body validation (`BlockBodyFullValidator::check_monero_seed_height`), and here it is the block's fault: the
 /// seed height index is rewound with the chain, so when the block is validated on top of its own parent the verdict
 /// is a fact about the block's own chain, and it cannot change. (`verdict_can_change` is for header verdicts reached
-/// against some other chain's view.) The other, `InvalidTimestampFutureTimeLimit`, is a header check only.
+/// against some other chain's view.) The others, `InvalidTimestampFutureTimeLimit` and
+/// `InvalidTimestampFarBeyondFutureTimeLimit`, are header checks only. The second carries a ban and so would count as
+/// the block's fault here, but it never comes out of body validation.
 fn is_block_fault(err: &ValidationError) -> bool {
     err.get_ban_reason().is_some()
 }
@@ -5154,6 +5156,7 @@ fn classify_header_failure(err: &ValidationError) -> HeaderFailure {
         // The future time limit can pass, and the seed age rule is measured against the chain the header is on, so
         // neither verdict belongs to the header alone. The others are local failures that say nothing about it.
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) |
+        ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit) |
         ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash) |
         ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
         ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(_)) => HeaderFailure::NotAttributable,
@@ -6379,6 +6382,7 @@ impl ChainTips {
 fn verdict_can_change(err: &ValidationError) -> bool {
     match err {
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) |
+        ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit) |
         ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash) => true,
         e => e.get_ban_reason().is_none(),
     }
@@ -12241,6 +12245,10 @@ mod test {
             // clock problem.
             assert!(verdict_can_change(&ValidationError::BlockHeaderError(
                 BlockHeaderValidationError::InvalidTimestampFutureTimeLimit
+            )));
+            // The same verdict further ahead than a slow clock explains: the peer is held to it, the block is not.
+            assert!(verdict_can_change(&ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::InvalidTimestampFarBeyondFutureTimeLimit
             )));
             // Measured against the chain the header is on, not against the header.
             assert!(verdict_can_change(&ValidationError::BlockHeaderError(
