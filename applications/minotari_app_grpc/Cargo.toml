@@ -27,6 +27,8 @@ tari_transaction_components = { workspace = true }
 
 base64 = { workspace = true }
 borsh = { workspace = true }
+http = "1"
+http-body = "1"
 log = { workspace = true }
 prost = "0.13.3"
 rand = { workspace = true }
@@ -35,6 +37,8 @@ subtle = "2.5.0"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 tonic = { version = "0.13.1", features = ["tls-ring"] }
+tower-layer = "0.3.3"
+tower-service = "0.3.3"
 zeroize = "1"
 
 [dev-dependencies]

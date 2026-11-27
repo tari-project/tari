@@ -109,6 +109,9 @@ pub struct BaseNodeConfig {
     pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
+    /// Whether gRPC health checks require authentication when Basic auth is enabled (defaults to false)
+    #[serde(default)]
+    pub grpc_health_requires_auth: bool,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
     /// Enable the readiness gRPC server
@@ -230,6 +233,7 @@ impl Default for BaseNodeConfig {
             grpc_address: None,
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
             grpc_authentication: GrpcAuthentication::default(),
+            grpc_health_requires_auth: false,
             grpc_tls_enabled: false,
             grpc_readiness_enabled: true,
             mining_enabled: false,
@@ -299,4 +303,29 @@ impl BaseNodeConfig {
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseType {
     Lmdb,
+}
+
+#[cfg(test)]
+mod tests {
+    use config::{Config, File, FileFormat};
+    use minotari_app_grpc::authentication::GrpcAuthLayer;
+    use tari_common::DefaultConfigLoader;
+
+    use super::*;
+
+    #[test]
+    fn grpc_health_requires_auth_defaults_to_false_on_default_and_loaded_config() {
+        let default_cfg = BaseNodeConfig::default();
+        assert!(!default_cfg.grpc_health_requires_auth);
+        assert!(GrpcAuthLayer::new(default_cfg.grpc_authentication, default_cfg.grpc_health_requires_auth).is_some());
+
+        let loaded = BaseNodeConfig::load_from(
+            &Config::builder()
+                .add_source(File::from_str("[base_node]\n", FileFormat::Toml))
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(!loaded.grpc_health_requires_auth);
+    }
 }
