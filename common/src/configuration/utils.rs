@@ -449,6 +449,7 @@ const SECRET_WORDS: &[&str] = &[
     "secret",
     "seed_words",
     "auth",
+    "credentials",
     "token",
     "cookie",
     "mnemonic",
@@ -498,6 +499,12 @@ fn find_secret_keys_in(prefix: &str, table: config::Map<String, config::Value>, 
             found.push(full_key);
         } else if let ValueKind::Table(table) = value.kind {
             find_secret_keys_in(&full_key, table, found);
+        } else if let ValueKind::Array(items) = value.kind {
+            for item in items {
+                if let ValueKind::Table(table) = item.kind {
+                    find_secret_keys_in(&full_key, table, found);
+                }
+            }
         } else {
             // Not a secret and not a table
         }
@@ -1761,6 +1768,8 @@ p2pool_node_grpc_address = "http://127.0.0.1:18145"
         let cfg = Config::builder()
             .add_source(config::File::from_str(
                 r#"
+[base_node]
+grpc_credentials = [{ username = "admin", password = "x" }]
 [wallet]
 password = "hunter2"
 grpc_authentication = { username = "admin", password = "x" }
@@ -1781,6 +1790,7 @@ password = "scoped"
         let mut found = find_secret_keys(&cfg);
         found.sort();
         assert_eq!(found, vec![
+            "base_node.grpc_credentials".to_string(),
             "mainnet.wallet.password".to_string(),
             "merge_mining_proxy.base_node_grpc_authentication".to_string(),
             "wallet.grpc_authentication".to_string(),

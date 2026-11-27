@@ -41,7 +41,7 @@ use tari_common::{
         serializers,
     },
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredential, resolve_grpc_credentials};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
@@ -107,7 +107,17 @@ pub struct BaseNodeConfig {
     /// `get_tip_info`, `get_active_validator_nodes`, `get_validator_node_changes`, `get_shard_key`,
     /// `get_header_by_hash`, `get_side_chain_utxos`) on top of this list.
     pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
-    /// GRPC authentication mode
+    /// GRPC server credentials list
+    #[serde(
+        default,
+        deserialize_with = "tari_common_types::grpc_authentication::deserialize_grpc_credentials"
+    )]
+    pub grpc_credentials: Vec<GrpcCredential>,
+    /// GRPC authentication mode (deprecated: use `grpc_credentials`)
+    #[serde(
+        default,
+        deserialize_with = "tari_common_types::grpc_authentication::deserialize_grpc_authentication"
+    )]
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
@@ -229,6 +239,7 @@ impl Default for BaseNodeConfig {
             grpc_enabled: true,
             grpc_address: None,
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
+            grpc_credentials: Vec::new(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             grpc_readiness_enabled: true,
@@ -293,10 +304,139 @@ impl BaseNodeConfig {
         }
         self.p2p.set_base_path(base_path);
     }
+
+    /// Returns the effective gRPC credentials. When `grpc_credentials` is non-empty it takes precedence and any
+    /// deprecated `grpc_authentication` setting is ignored with a warning. When only `grpc_authentication` is set,
+    /// its credential is used and a deprecation warning is logged.
+    pub fn effective_grpc_credentials(&self) -> Vec<GrpcCredential> {
+        let (creds, warning) = resolve_grpc_credentials(&self.grpc_credentials, &self.grpc_authentication);
+        if let Some(msg) = warning {
+            log::warn!(target: "applications::minotari_node::config", "{msg}");
+        }
+        creds
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseType {
     Lmdb,
+}
+
+#[cfg(test)]
+mod tests {
+    use config::{Config, File, FileFormat};
+    use tari_common::DefaultConfigLoader;
+
+    use super::*;
+
+    fn load_node_config(toml_src: &str, overrides: &[(&str, &str)]) -> Result<BaseNodeConfig, tari_common::ConfigError> {
+        let mut builder = Config::builder().add_source(File::from_str(toml_src, FileFormat::Toml));
+        for (k, v) in overrides {
+            builder = builder.set_override(*k, *v).unwrap();
+        }
+        let cfg = builder.build().unwrap();
+        BaseNodeConfig::load_from(&cfg)
+    }
+
+    #[test]
+    fn effective_grpc_credentials_resolves_modern_and_legacy_configs() {
+        let empty = load_node_config("[base_node]\n", &[]).unwrap();
+        assert!(empty.effective_grpc_credentials().is_empty());
+
+        let legacy = load_node_config(
+            r#"
+[base_node]
+grpc_authentication = { username = "legacy", password = "old" }
+"#,
+            &[],
+        )
+        .unwrap();
+        let creds = legacy.effective_grpc_credentials();
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds.first().unwrap().username, "legacy");
+        assert_eq!(creds.first().unwrap().password.reveal(), "old");
+
+        let legacy_empty_pass = load_node_config(
+            r#"
+[base_node]
+grpc_authentication = { username = "admin", password = "" }
+"#,
+            &[],
+        )
+        .unwrap();
+        let legacy_empty_creds = legacy_empty_pass.effective_grpc_credentials();
+        assert_eq!(legacy_empty_creds.len(), 1);
+        assert_eq!(legacy_empty_creds.first().unwrap().username, "admin");
+        assert_eq!(legacy_empty_creds.first().unwrap().password.reveal(), "");
+
+        let both = load_node_config(
+            r#"
+[base_node]
+grpc_credentials = [
+    { username = "alice", password = "pw1" },
+    { username = "bob", password = "pw2" },
+]
+grpc_authentication = { username = "legacy", password = "old" }
+"#,
+            &[],
+        )
+        .unwrap();
+        let both_creds = both.effective_grpc_credentials();
+        assert_eq!(both_creds.len(), 2);
+        assert_eq!(both_creds.first().unwrap().username, "alice");
+        assert_eq!(both_creds.get(1).unwrap().username, "bob");
+    }
+
+    #[test]
+    fn loads_json_string_overrides_and_rejects_invalid_credentials() {
+        let overridden = load_node_config(
+            "[base_node]\n",
+            &[(
+                "base_node.grpc_credentials",
+                r#"[{"username":"alice","password":"pw1"}]"#,
+            )],
+        )
+        .unwrap();
+        let creds = overridden.effective_grpc_credentials();
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds.first().unwrap().username, "alice");
+        assert_eq!(creds.first().unwrap().password.reveal(), "pw1");
+
+        assert!(load_node_config("[base_node]\n", &[("base_node.grpc_credentials", "")]).is_err());
+        assert!(load_node_config("[base_node]\n", &[("base_node.grpc_credentials", "   ")]).is_err());
+        assert!(
+            load_node_config(
+                r#"
+[base_node]
+grpc_credentials = [{ username = "admin", password = "" }]
+"#,
+                &[],
+            )
+            .is_err()
+        );
+        assert!(
+            load_node_config(
+                r#"
+[base_node]
+grpc_credentials = [{ username = "ad:min", password = "pw1" }]
+"#,
+                &[],
+            )
+            .is_err()
+        );
+        assert!(
+            load_node_config(
+                r#"
+[base_node]
+grpc_credentials = [
+    { username = "admin", password = "pw1" },
+    { username = "admin", password = "pw2" },
+]
+"#,
+                &[],
+            )
+            .is_err()
+        );
+    }
 }

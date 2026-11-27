@@ -63,7 +63,7 @@ use tari_common::{
     configuration::bootstrap::{ApplicationType, grpc_default_port},
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::GrpcCredential;
 use tari_comms::{NodeIdentity, multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_core::base_node::{StateMachineHandle, state_machine_service::states::StatusInfo};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -150,7 +150,7 @@ pub async fn run_base_node_with_cli(
         );
     }
 
-    let (grpc_address, auth, tls_identity) = prepare_grpc_params(&config).await?;
+    let (grpc_address, credentials, tls_identity) = prepare_grpc_params(&config).await?;
 
     let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
     let readiness_grpc_shutdown = Shutdown::new();
@@ -159,7 +159,7 @@ pub async fn run_base_node_with_cli(
         readiness_task = Some(task::spawn(run_grpc(
             readiness_grpc_server,
             grpc_address.clone(),
-            auth.clone(),
+            credentials.clone(),
             tls_identity.clone(),
             None,
             readiness_grpc_shutdown.to_signal(),
@@ -236,7 +236,7 @@ pub async fn run_base_node_with_cli(
         let grpc_handle = task::spawn(run_grpc(
             grpc,
             grpc_address.clone(),
-            auth.clone(),
+            credentials.clone(),
             tls_identity,
             Some(ctx.state_machine()),
             shutdown.to_signal(),
@@ -353,7 +353,7 @@ pub async fn run_base_node_with_cli(
 async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     grpc: T,
     grpc_address: Multiaddr,
-    auth_config: GrpcAuthentication,
+    credentials: Vec<GrpcCredential>,
     tls_identity: Option<Identity>,
     health_state_machine: Option<StateMachineHandle>,
     interrupt_signal: ShutdownSignal,
@@ -361,7 +361,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
+    let auth = ServerAuthenticationInterceptor::from_credentials(credentials)
         .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
 
     let sized_server = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc)
@@ -463,13 +463,13 @@ fn is_grpc_health_serving(status: &StatusInfo) -> bool {
 /// Prepares the parameters required to call the `run_grpc` function
 async fn prepare_grpc_params(
     config: &ApplicationConfig,
-) -> Result<(Multiaddr, GrpcAuthentication, Option<Identity>), ExitError> {
+) -> Result<(Multiaddr, Vec<GrpcCredential>, Option<Identity>), ExitError> {
     let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
         let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
         format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap()
     });
 
-    let auth = config.base_node.grpc_authentication.clone();
+    let credentials = config.base_node.effective_grpc_credentials();
 
     let mut tls_identity = None;
     if config.base_node.grpc_tls_enabled {
@@ -479,7 +479,7 @@ async fn prepare_grpc_params(
             .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
     }
 
-    Ok((grpc_address, auth, tls_identity))
+    Ok((grpc_address, credentials, tls_identity))
 }
 
 #[cfg(test)]

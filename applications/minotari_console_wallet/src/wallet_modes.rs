@@ -38,7 +38,7 @@ use tari_common::{
     MAX_GRPC_MESSAGE_SIZE,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::GrpcCredential;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::{runtime::Handle, sync::broadcast};
@@ -281,7 +281,8 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
-            warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
+            let credentials = config.effective_grpc_credentials();
+            warn_if_payload_key_without_grpc_auth(&credentials, &wallet);
             let grpc = WalletGrpcServer::new_with_allow_methods(
                 wallet.clone(),
                 config.grpc_server_allow_methods.as_slice().to_vec(),
@@ -295,13 +296,7 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
                     .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
             }
 
-            handle.spawn(run_grpc(
-                grpc,
-                address,
-                config.grpc_authentication.clone(),
-                tls_identity,
-                wallet.clone(),
-            ));
+            handle.spawn(run_grpc(grpc, address, credentials, tls_identity, wallet.clone()));
         }
         #[cfg(not(feature = "grpc"))]
         return Err(ExitError::new(
@@ -436,12 +431,12 @@ pub fn grpc_mode(
             });
             wallet.shutdown_signal = grpc_shutdown.to_signal();
 
-            warn_if_payload_key_without_grpc_auth(&config.grpc_authentication, &wallet);
+            let credentials = config.effective_grpc_credentials();
+            warn_if_payload_key_without_grpc_auth(&credentials, &wallet);
             let grpc = WalletGrpcServer::new_with_allow_methods(
                 wallet.clone(),
                 config.grpc_server_allow_methods.as_slice().to_vec(),
             );
-            let auth = config.grpc_authentication.clone();
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
@@ -454,7 +449,7 @@ pub fn grpc_mode(
             handle.block_on(async { grpc.start_balance_debouncer_event_monitor().await });
 
             handle
-                .block_on(run_grpc(grpc, address, auth, tls_identity, wallet))
+                .block_on(run_grpc(grpc, address, credentials, tls_identity, wallet))
                 .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
         }
         #[cfg(not(feature = "grpc"))]
@@ -478,8 +473,8 @@ const GRPC_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
 /// The gRPC prepare endpoints sign with the payload key, so without authentication anyone who can reach the port can
 /// produce payloads a strict signer accepts. Called before gRPC is spawned and before the TUI takes the terminal, so
 /// the warning is seen.
-fn warn_if_payload_key_without_grpc_auth(auth_config: &GrpcAuthentication, wallet: &WalletSqlite) {
-    if matches!(auth_config, GrpcAuthentication::None) && wallet.key_manager_service.get_payload_auth_key().is_some() {
+fn warn_if_payload_key_without_grpc_auth(credentials: &[GrpcCredential], wallet: &WalletSqlite) {
+    if credentials.is_empty() && wallet.key_manager_service.get_payload_auth_key().is_some() {
         const WARNING: &str = "a payload key is loaded and gRPC has no authentication: anyone that can reach the gRPC \
                                port can prepare payloads signed with it";
         warn!(target: LOG_TARGET, "{WARNING}");
@@ -490,7 +485,7 @@ fn warn_if_payload_key_without_grpc_auth(auth_config: &GrpcAuthentication, walle
 async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
-    auth_config: GrpcAuthentication,
+    credentials: Vec<GrpcCredential>,
     tls_identity: Option<Identity>,
     wallet: WalletSqlite,
 ) -> Result<(), String> {
@@ -500,7 +495,7 @@ async fn run_grpc(
 
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_listener_addr}");
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
+    let auth = ServerAuthenticationInterceptor::from_credentials(credentials)
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;
 
     let sized_server = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc)

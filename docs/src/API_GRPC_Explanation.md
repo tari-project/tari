@@ -224,17 +224,22 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
 
 #### 2. **Enable gRPC Authentication**
    - Open the configuration file in a text editor.
-   - Find the following commented-out section:
+   - Configure credentials using the `grpc_credentials` list (passwords are stored in plaintext and verified using constant-time comparison in-memory; restrict `config.toml` to mode `0600` or load environment variables from a `0600` env file via systemd `EnvironmentFile=` or Docker `--env-file`):
      ```toml
-     # gRPC authentication method (default = "none")
-     #grpc_authentication = { username = "admin", password = "xxxx" }
+     grpc_credentials = [
+         { username = "admin", password = "mysecurepassword" },
+     ]
      ```
+     > **Note:** Every credential in `grpc_credentials` grants the same full access to the configured gRPC endpoints (method filtering is applied globally via `grpc_server_allow_methods`).
+   - Alternatively, supply credentials from a `0600` environment file using JSON format:
+     - `TARI_BASE_NODE__GRPC_CREDENTIALS=[{"username":"admin","password":"mysecurepassword"}]`
+     - `TARI_WALLET__GRPC_CREDENTIALS=[{"username":"admin","password":"mysecurepassword"}]`
+   - *(Deprecated)* The single credential `grpc_authentication = { username = "admin", password = "mysecurepassword" }` continues to work when `grpc_credentials` is not set and logs a deprecation warning at startup. When `grpc_credentials` is non-empty, `grpc_credentials` takes precedence and `grpc_authentication` is ignored with a warning.
 
-#### 3. **Uncomment and Configure**
-   - Uncomment the `grpc_authentication` line by removing the `#` at the beginning.
-   - Set a clear-text username and password. For example:
-     ```toml
-     grpc_authentication = { username = "admin", password = "mysecurepassword" }
+#### 3. **Secure Configuration File Permissions**
+   - Ensure your configuration file permissions are set to `0600` (read/write only by owner):
+     ```bash
+     chmod 0600 config.toml
      ```
 
 #### 4. **Save the File**

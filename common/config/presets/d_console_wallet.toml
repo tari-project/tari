@@ -58,7 +58,11 @@
 #grpc_enabled = false
 # The socket to expose for the gRPC base node server (default = "http://127.0.0.1:18143")
 #grpc_address = "/ip4/127.0.0.1/tcp/18143"
-# gRPC authentication method (default = "none")
+# gRPC credentials (plaintext passwords; use chmod 0600 on config.toml or inject TARI_WALLET__GRPC_CREDENTIALS from a 0600 env file)
+#grpc_credentials = [
+#    { username = "admin", password = "xxxx" },
+#]
+# Deprecated single-credential form:
 #grpc_authentication = { username = "admin", password = "xxxx" }
 
 # List of all gRPC server methods that should be allowed (only active when `grpc_enabled = true`).
